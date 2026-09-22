@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#060A1A">
+  <title>Parful</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg:#060A1A; --panel:#0E1630; --ink:#EAF2FF; --muted:#8A9BC4; --blue:#2E6BFF; --glow:#5CE1FF; }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      margin: 0; min-height: 100vh; min-height: 100dvh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+      padding: calc(24px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));
+      font-family: "Chakra Petch", system-ui, sans-serif; color: var(--ink);
+      background: radial-gradient(ellipse 80% 50% at 50% 100%, rgba(46,107,255,0.28), transparent 70%), var(--bg);
+      isolation: isolate; overflow-x: hidden;
+    }
+    body::before {
+      content: ""; position: fixed; left: -50%; right: -50%; bottom: 0; height: 45vh; z-index: -1; pointer-events: none;
+      background-image: linear-gradient(rgba(92,225,255,0.18) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(92,225,255,0.18) 1px, transparent 1px);
+      background-size: 48px 48px;
+      transform: perspective(300px) rotateX(60deg); transform-origin: bottom;
+      -webkit-mask-image: linear-gradient(to top, black, transparent); mask-image: linear-gradient(to top, black, transparent);
+    }
+    h1 {
+      font-family: "Bungee", sans-serif; font-weight: 400;
+      font-size: clamp(3.5rem, 19vw, 7.5rem); line-height: 0.9; margin: 0 0 16px;
+      text-shadow: 0 0 4px #fff, 0 0 10px var(--glow), 0 0 24px var(--glow), 0 0 48px rgba(46,107,255,0.9);
+      transform: rotate(-4deg);
+    }
+    @keyframes flicker { 0%,18%,22%,26% { opacity: 0.15; } 20%,24%,100% { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) { h1 { animation: none; } }
+    h1 + p { font-size: 1.15rem; color: var(--muted); margin: 0 0 40px; }
+    body.in-round h1 { font-size: clamp(1.8rem, 9vw, 3rem); transform: none; margin-bottom: 6px; }
+    body.in-round h1 + p { margin-bottom: 20px; }
+
+    button {
+      font: inherit; font-weight: 700; font-size: 1.1rem; color: #fff;
+      background: var(--blue); border: none; padding: 15px 28px; cursor: pointer;
+      clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+      transition: transform .08s, background .15s;
+    }
+    button:hover { background: #4A80FF; }
+    button:active { filter: brightness(0.85); }
+    button:focus-visible { outline: none; background: var(--glow); color: var(--bg); }
+    .btn-ghost { background: rgba(92,225,255,0.12); color: var(--glow); }
+    .btn-ghost:hover { background: rgba(92,225,255,0.22); }
+
+    .home-actions { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 340px; }
+    .quip { margin: 40px 0 0; color: var(--muted); font-size: 0.95rem; max-width: 300px; font-style: italic; }
+    #status { color: var(--muted); margin: 16px 0 0; min-height: 1em; }
+
+    input, select { background: var(--panel); color: var(--ink); border: 1px solid rgba(92,225,255,0.3) !important; font-family: inherit; }
+    .modal { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
+      padding: 20px; background: rgba(6,10,26,0.8); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+    .modal-panel { width: 100%; max-width: 360px; background: var(--panel); padding: 24px; text-align: left;
+      border: 1px solid rgba(92,225,255,0.3);
+      clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px); }
+    .modal-panel h2 { font-family: "Bungee", sans-serif; font-weight: 400; font-size: 1.5rem; margin: 0 0 18px; }
+    .modal-panel label { display: block; margin-bottom: 14px; }
+    .modal-panel label span { display: block; font-size: 0.9rem; color: var(--muted); margin-bottom: 6px; }
+    .modal-panel input { width: 100%; padding: 14px; font-size: 16px; outline: none; }
+    .modal-panel input:focus { border-color: var(--glow) !important; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 8px; }
+    .modal-actions button { flex: 1; padding: 14px 10px; }
+    button:disabled { opacity: 0.45; cursor: default; }
+    .lobby h3, .game h3 { font-size: 1rem; font-weight: 600; color: var(--muted); text-align: left; margin: 24px 0 6px; }
+    .lobby > button { display: block; width: 100%; margin-top: 10px; }
+    .player-list { list-style: none; padding: 0; margin: 0 0 8px; font-size: 1.15rem; }
+    .player-list li { display: flex; justify-content: space-between; text-align: left; padding: 10px 4px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+    .mode-tile { display: block; width: 100%; text-align: left; background: var(--panel); color: var(--ink); font-weight: 400; padding: 16px; margin-bottom: 10px; }
+    .mode-tile:hover { background: rgba(46,107,255,0.2); }
+    .mode-tile.selected { background: rgba(46,107,255,0.3); box-shadow: inset 0 0 0 2px var(--glow); }
+    .mode-tile b { display: block; font-size: 1.1rem; margin-bottom: 4px; }
+    .mode-tile span { color: var(--muted); font-size: 0.95rem; }
+    .waiting { color: var(--muted); font-style: italic; margin: 20px 0 0; }
+    .tabs { display: flex; gap: 6px; margin-bottom: 16px; padding: 6px 0; position: sticky; top: 0; z-index: 5; background: var(--bg); }
+    .tab { flex: 1; padding: 12px 6px; font-size: 0.95rem; background: var(--panel); color: var(--muted); }
+    .tab:hover { background: rgba(46,107,255,0.2); }
+    .tab.active { background: var(--blue); color: #fff; }
+    body.in-round { justify-content: flex-start; }
+    .hole-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 14px; scrollbar-width: none; }
+    .hole-strip::-webkit-scrollbar { display: none; }
+    .hole-chip { flex: 0 0 46px; height: 52px; padding: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: var(--panel); color: var(--muted); font-size: 1rem;
+      clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+    .hole-chip small { font-size: 0.7rem; font-weight: 600; color: var(--glow); min-height: 0.9em; }
+    .hole-chip.done { color: var(--ink); }
+    .hole-chip:hover { background: rgba(46,107,255,0.25); }
+    .hole-chip.active, .hole-chip.active:hover { background: var(--blue); color: #fff; }
+    .hole-chip.active small { color: #fff; }
+    .hole-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+    .hole-head b { font-family: "Bungee", sans-serif; font-weight: 400; font-size: 1.6rem; }
+    .hole-head span { color: var(--muted); }
+    .ch-box { padding: 14px; background: rgba(46,107,255,0.18); border: 1px solid rgba(92,225,255,0.35); border-radius: 10px; text-align: left; margin-bottom: 18px; }
+    .ch-kicker { font-size: 0.85rem; color: var(--muted); }
+    .ch-text { font-weight: 700; font-size: 1.2rem; margin: 4px 0; }
+    .ch-winner { font-size: 0.95rem; }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .chip-row button { padding: 9px 14px; font-size: 0.95rem; background: var(--panel); color: var(--ink); }
+    .chip-row button:hover { background: rgba(46,107,255,0.25); }
+    .chip-row button.selected, .chip-row button.selected:hover { background: var(--glow); color: var(--bg); }
+    .score-label { text-align: left; color: var(--muted); font-size: 0.9rem; margin-bottom: 8px; }
+    .score-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+    .score-grid button { padding: 14px 0; font-size: 1.2rem; background: var(--panel); color: var(--ink); }
+    .score-grid button:hover { background: rgba(46,107,255,0.25); }
+    .score-grid button.selected, .score-grid button.selected:hover { background: var(--blue); color: #fff; }
+    .score-grid .score-max { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 0; }
+    .score-max small { font-size: 0.8rem; font-weight: 400; opacity: 0.75; }
+    .account-line { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: center; color: var(--muted); font-size: 0.95rem; }
+    .link-btn { background: none; color: var(--glow); padding: 4px 2px; font-size: 0.95rem; font-weight: 600; clip-path: none; text-decoration: underline; text-underline-offset: 3px; }
+    .link-btn:hover { background: none; color: var(--ink); }
+    .lobby > button.link-btn { display: inline-block; width: auto; margin: 0 0 8px; }
+    .modal-note { color: var(--muted); margin: -8px 0 16px; }
+    .pick-list { margin-bottom: 10px; }
+    .detail { display: block; font-size: 0.85rem; color: var(--muted); margin-top: 2px; }
+    .podium { display: flex; align-items: flex-end; justify-content: center; gap: 8px; margin: 8px 0 12px; }
+    .podium-col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; }
+    .podium-name { font-weight: 700; font-size: 1.05rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .podium-score { color: var(--muted); font-size: 0.9rem; margin: 2px 0 8px; }
+    .podium-block { width: 100%; display: flex; justify-content: center; padding-top: 10px; font-family: "Bungee", sans-serif; font-size: 1.3rem;
+      background: var(--panel); clip-path: polygon(10px 0, 100% 0, 100% 100%, 0 100%, 0 10px); }
+    .place-1 .podium-block { height: 120px; background: var(--blue); color: #fff; }
+    .place-1 .podium-name { color: var(--glow); }
+    .place-2 .podium-block { height: 88px; }
+    .place-3 .podium-block { height: 64px; }
+    .sc-wrap { overflow-x: auto; margin-bottom: 8px; }
+    .sc-table { border-collapse: collapse; font-size: 0.9rem; min-width: 100%; }
+    .sc-table th, .sc-table td { padding: 8px 6px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1); white-space: nowrap; }
+    .sc-table th { color: var(--muted); font-weight: 600; }
+    .sc-table th:first-child, .sc-table td:first-child { text-align: left; position: sticky; left: 0; background: var(--bg); }
+    .sc-table td.best { color: var(--glow); font-weight: 700; }
+    .sc-table td.tot { font-weight: 700; }
+    h1 .L { display: inline-block; animation: power 1.6s ease-out both; }
+    h1 .L:nth-child(1) { transform-origin: 92% 6%; animation: power 1.6s ease-out 0.1s both, pdrop 1.3s ease-out 2s both, sputter 9s 5s infinite; }
+    h1 .L:nth-child(2) { animation-delay: 0.35s; }
+    h1 .L:nth-child(3) { animation-delay: 0.2s; }
+    h1 .L:nth-child(4) { animation-delay: 0.5s; }
+    h1 .L:nth-child(5) { animation: power 1.6s ease-out 0.15s both, sputter 5s 3s infinite; }
+    h1 .L:nth-child(6) { animation-delay: 0.42s; }
+    @keyframes power {
+      0% { opacity: 0; text-shadow: none; }
+      8% { opacity: 0.9; } 10% { opacity: 0.08; } 14% { opacity: 0.8; } 16% { opacity: 0.12; }
+      30% { opacity: 0.12; } 33% { opacity: 1; } 36% { opacity: 0.3; } 40%, 100% { opacity: 1; }
+    }
+    @keyframes pdrop {
+      0% { transform: rotate(0deg); }
+      12% { transform: rotate(3deg); }
+      40% { transform: rotate(-26deg) translateY(4px); }
+      58% { transform: rotate(-12deg) translateY(3px); }
+      72% { transform: rotate(-20deg) translateY(4px); }
+      86% { transform: rotate(-15deg) translateY(4px); }
+      100% { transform: rotate(-17deg) translateY(4px); }
+    }
+    @keyframes sputter {
+      0%, 88%, 100% { opacity: 1; }
+      89% { opacity: 0.15; } 90% { opacity: 0.9; } 92% { opacity: 0.05; } 94% { opacity: 1; } 95.5% { opacity: 0.4; } 97% { opacity: 1; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      h1 .L, h1 .L:nth-child(1), h1 .L:nth-child(5) { animation: none; }
+      h1 .L:nth-child(1) { transform: rotate(-17deg) translateY(4px); }
+    }
+    .modal-error { color: #FF7A90; font-weight: 600; margin: 0 0 12px; }
+    .modal-error:empty { display: none; }
+    .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 20;
+      width: max-content; max-width: calc(100% - 40px); padding: 14px 18px; text-align: left; font-weight: 600;
+      background: var(--panel); color: var(--ink); border: 1px solid #FF5C7A; border-left-width: 4px; transition: opacity .3s; }
+    .toast.out { opacity: 0; }
+    .player-list li.group-head { color: var(--glow); font-family: "Bungee", sans-serif; font-size: 1rem; border-bottom: none; padding: 16px 4px 4px; }
+    .player-list li.lobby-player { flex-wrap: wrap; gap: 8px; }
+    .lobby-ctl { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+    .mini { padding: 6px 12px; font-size: 0.9rem; background: var(--panel); color: var(--muted);
+      clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+    .mini:hover { background: rgba(46,107,255,0.25); }
+    .mini.selected, .mini.selected:hover { background: var(--blue); color: #fff; }
+    .mini.co { margin-left: auto; }
+    .mini.co.selected, .mini.co.selected:hover { background: var(--glow); color: var(--bg); }
+    .stick { display: inline-block; vertical-align: -0.2em; margin-right: 6px; flex: none; line-height: 0; }
+    .field-label { display: block; font-size: 0.9rem; color: var(--muted); margin-bottom: 6px; }
+    .swatches { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+    .swatch { padding: 6px; background: var(--bg); clip-path: none; border-radius: 10px; }
+    .swatch .stick { margin: 0; }
+    .swatch:hover { background: rgba(46,107,255,0.2); }
+    .swatch.selected, .swatch.selected:hover { background: rgba(92,225,255,0.12); box-shadow: inset 0 0 0 2px var(--glow); }
+    .swatch:disabled { opacity: 0.2; }
+    .chip-row button { display: inline-flex; align-items: center; }
+    .podium-col > .stick { margin: 0 0 4px; }
+    h1 { position: relative; }
+    body:not(.in-round) h1 { margin-bottom: 0.45em; }
+    .victim { position: absolute; left: 0.05em; top: 0.86em; width: 0.42em; height: 0.42em; overflow: visible; transform: rotate(4deg); }
+    .v-body { transform-box: view-box; transform-origin: 20px 38px; animation: bonk 1.2s ease-out 2.45s both; }
+    .v-stars { opacity: 0; transform-box: fill-box; transform-origin: center; animation: starsin .3s 3.1s both, spin 1.4s linear 3.1s infinite; }
+    @keyframes bonk {
+      0% { transform: none; } 10% { transform: scaleY(0.78); } 22% { transform: scaleY(0.9) rotate(-10deg); }
+      50% { transform: rotate(-100deg); } 65% { transform: rotate(-84deg); } 80% { transform: rotate(-93deg); } 100% { transform: rotate(-90deg); }
+    }
+    @keyframes starsin { to { opacity: 1; } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .course { width: 100%; max-width: 420px; margin-top: 28px; overflow: visible; }
+    .course .fig { fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .cart { transform-box: fill-box; transform-origin: center; animation: drive 18s linear infinite; }
+    @keyframes drive {
+      0% { transform: translateX(-40px) scaleX(1); }
+      40% { transform: translateX(300px) scaleX(1); }
+      45% { transform: translateX(300px) scaleX(-1); }
+      85% { transform: translateX(-40px) scaleX(-1); }
+      90%, 100% { transform: translateX(-40px) scaleX(1); }
+    }
+    .knock { transform-box: view-box; }
+    .k-swing { transform-origin: 46px 95px; animation: k-swing 18s linear infinite; }
+    .k-bunker { transform-origin: 165px 95px; animation: k-bunker 18s linear infinite; }
+    .k-putt { transform-origin: 265px 95px; animation: k-putt 18s linear infinite; }
+    @keyframes k-swing {
+      0%, 3.7% { transform: none; } 5.2% { transform: rotate(95deg); } 6.2% { transform: rotate(88deg); } 7.2%, 14% { transform: rotate(90deg); } 17% { transform: none; }
+      74.3% { transform: none; } 75.8% { transform: rotate(-95deg); } 76.8% { transform: rotate(-88deg); } 77.8%, 84.6% { transform: rotate(-90deg); } 87.6%, 100% { transform: none; }
+    }
+    @keyframes k-bunker {
+      0%, 17.7% { transform: none; } 19.2% { transform: rotate(95deg); } 20.2% { transform: rotate(88deg); } 21.2%, 28% { transform: rotate(90deg); } 31% { transform: none; }
+      60.3% { transform: none; } 61.8% { transform: rotate(-95deg); } 62.8% { transform: rotate(-88deg); } 63.8%, 70.6% { transform: rotate(-90deg); } 73.6%, 100% { transform: none; }
+    }
+    @keyframes k-putt {
+      0%, 29.5% { transform: none; } 31% { transform: rotate(95deg); } 32% { transform: rotate(88deg); } 33%, 40% { transform: rotate(90deg); } 43% { transform: none; }
+      48.6% { transform: none; } 50.1% { transform: rotate(-95deg); } 51.1% { transform: rotate(-88deg); } 52.1%, 58.9% { transform: rotate(-90deg); } 61.9%, 100% { transform: none; }
+    }
+    .bounce { animation: bounce .35s ease-in-out infinite alternate; }
+    @keyframes bounce { to { transform: translateY(-1.5px); } }
+    .swing { transform-box: view-box; transform-origin: 46px 66px; animation: swing 4s ease-in-out infinite; }
+    @keyframes swing { 0%,10% { transform: rotate(0); } 25%,38% { transform: rotate(-140deg); } 46% { transform: rotate(0); } 56%,80% { transform: rotate(150deg); } 100% { transform: rotate(0); } }
+    .drive-ball { animation: flight 4s linear infinite; }
+    @keyframes flight { 0%,46% { transform: translate(0,0); opacity: 1; } 58% { transform: translate(60px,-45px); } 72% { transform: translate(125px,-55px); opacity: 1; }
+      78% { transform: translate(140px,-50px); opacity: 0; } 79%,96% { transform: translate(0,0); opacity: 0; } 100% { opacity: 1; } }
+    .chop { transform-box: view-box; transform-origin: 165px 66px; animation: chop 3.2s ease-in-out infinite; }
+    @keyframes chop { 0%,15% { transform: rotate(0); } 35% { transform: rotate(-120deg); } 45% { transform: rotate(25deg); } 60%,100% { transform: rotate(0); } }
+    .sand { opacity: 0; animation: sand 3.2s ease-out infinite; }
+    @keyframes sand { 0%,43% { transform: translate(0,0); opacity: 0; } 46% { opacity: 1; } 75% { transform: translate(var(--dx), var(--dy)); opacity: 0; } 100% { opacity: 0; } }
+    .putt { transform-box: view-box; transform-origin: 265px 66px; animation: putt 6s ease-in-out infinite; }
+    @keyframes putt { 0% { transform: rotate(0); opacity: 1; } 8% { transform: rotate(-22deg); } 16% { transform: rotate(14deg); } 24% { transform: rotate(0); }
+      60% { opacity: 1; } 62%,88% { opacity: 0; } 90%,100% { opacity: 1; transform: rotate(0); } }
+    .mad { opacity: 0; animation: mad 6s infinite; }
+    @keyframes mad { 0%,60% { opacity: 0; } 62%,88% { opacity: 1; } 90%,100% { opacity: 0; } }
+    .putt-ball { animation: roll 6s ease-out infinite; }
+    @keyframes roll { 0%,15% { transform: translate(0,0); } 44% { transform: translate(48px,0); } 48% { transform: translate(51px,-2px); } 58% { transform: translate(60px,0); }
+      90% { transform: translate(60px,0); opacity: 1; } 92% { transform: translate(60px,0); opacity: 0; } 93%,100% { transform: translate(0,0); opacity: 1; } }
+    .flag { transform-box: view-box; transform-origin: 330px 59px; animation: wave 1.4s ease-in-out infinite alternate; }
+    @keyframes wave { to { transform: skewY(6deg) scaleX(0.9); } }
+
+    @media (prefers-reduced-motion: reduce) {
+      .course *, .v-body, .v-stars { animation: none !important; }
+      .v-body { transform: rotate(-90deg); }
+      .v-stars { opacity: 1; }
+      .mad, .sand { opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+  <h1 aria-label="Parful"><span class="L" aria-hidden="true">P</span><span class="L" aria-hidden="true">a</span><span class="L" aria-hidden="true">r</span><span class="L" aria-hidden="true">f</span><span class="L" aria-hidden="true">u</span><span class="L" aria-hidden="true">l</span><svg class="victim" viewBox="0 0 40 40" aria-hidden="true">
+    <g class="v-body" fill="none" stroke="#FF5C7A" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 0 3px #FF5C7A)">
+      <circle cx="20" cy="10" r="5"/><path d="M20 15V27M20 19l-6 4M20 19l6 4M20 27l-5 11M20 27l5 11"/>
+    </g>
+    <g class="v-stars" fill="#FFD84D">
+      <path transform="translate(-9 19)" d="M0-3L1-1L3 0L1 1L0 3L-1 1L-3 0L-1-1Z"/>
+      <path transform="translate(-3.8 28)" d="M0-3L1-1L3 0L1 1L0 3L-1 1L-3 0L-1-1Z"/>
+      <path transform="translate(-14.2 28)" d="M0-3L1-1L3 0L1 1L0 3L-1 1L-3 0L-1-1Z"/>
+    </g>
+  </svg></h1>
+  <p>Golf is hard, let's make it harder</p>
+  <div class="home-actions home-only">
+    <button id="create-round">Start a new round</button>
+    <button id="join-code" class="btn-ghost">Join with a code</button>
+    <button id="seasons-btn" class="btn-ghost">Seasons</button>
+  </div>
+  <div class="account-line home-only" id="account"></div>
+  <svg class="course home-only" viewBox="0 0 360 110" aria-hidden="true">
+    <line x1="0" y1="96.5" x2="360" y2="96.5" stroke="rgba(92,225,255,0.35)"/>
+    <ellipse cx="170" cy="96" rx="34" ry="6" fill="rgba(255,159,67,0.15)" stroke="rgba(255,159,67,0.45)"/>
+    <ellipse cx="300" cy="96" rx="52" ry="5" fill="rgba(124,255,107,0.08)"/>
+    <ellipse cx="330" cy="96" rx="4" ry="1.5" fill="#000"/>
+    <path d="M330 96V54" stroke="#EAF2FF" stroke-width="1.5"/>
+    <path class="flag" d="M330 54L346 59L330 64Z" fill="#FF5C7A"/>
+    <g class="cart"><g class="bounce">
+      <g class="fig" stroke="#8A9BC4"><path d="M4 58H44M8 58V84M40 58V80M2 84H48V76H40M16 84V74H26"/></g>
+      <circle cx="10" cy="90" r="5" fill="#060A1A" stroke="#8A9BC4" stroke-width="2"/>
+      <circle cx="40" cy="90" r="5" fill="#060A1A" stroke="#8A9BC4" stroke-width="2"/>
+      <g class="fig" stroke="#FFD84D" style="filter:drop-shadow(0 0 3px #FFD84D)"><circle cx="22" cy="64" r="4.5"/><path d="M22 68.5V78L32 80L34 88M22 71L36 75M36 72L38 78"/></g>
+    </g></g>
+    <g class="knock k-swing"><g class="fig" stroke="#5CE1FF" style="filter:drop-shadow(0 0 3px #5CE1FF)">
+      <circle cx="46" cy="58" r="5"/><path d="M46 63V78M46 78L40 95M46 78L52 95"/>
+      <path class="swing" d="M46 66L52 78L58 94M56 94H61"/>
+    </g></g>
+    <circle class="drive-ball" cx="63" cy="93.5" r="2" fill="#fff"/>
+    <g class="knock k-bunker"><g class="fig" stroke="#FF9F43" style="filter:drop-shadow(0 0 3px #FF9F43)">
+      <circle cx="165" cy="58" r="5"/><path d="M165 63V78M165 78L159 95M165 78L171 95"/>
+      <path class="chop" d="M165 66L171 78L176 93M174 93H179"/>
+    </g></g>
+    <g fill="#FF9F43">
+      <circle class="sand" cx="178" cy="92" r="1.5" style="--dx:10px;--dy:-20px"/>
+      <circle class="sand" cx="178" cy="92" r="1.5" style="--dx:18px;--dy:-13px"/>
+      <circle class="sand" cx="178" cy="92" r="1.5" style="--dx:4px;--dy:-25px"/>
+      <circle class="sand" cx="178" cy="92" r="1.5" style="--dx:23px;--dy:-6px"/>
+      <circle class="sand" cx="178" cy="92" r="1.5" style="--dx:-6px;--dy:-17px"/>
+    </g>
+    <g class="knock k-putt"><g class="fig" stroke="#7CFF6B" style="filter:drop-shadow(0 0 3px #7CFF6B)">
+      <circle cx="265" cy="58" r="5"/><path d="M265 63V78M265 78L259 95M265 78L271 95"/>
+      <path class="putt" d="M265 66L270 80L272 94M271 94H277"/>
+      <path class="mad" d="M265 67L258 60L262 53M265 67L272 60L268 53"/>
+    </g></g>
+    <circle class="putt-ball" cx="279" cy="93.5" r="2" fill="#fff"/>
+  </svg>
+  <p class="quip home-only" id="quip"></p>
+  <p id="status"></p>
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const db = supabase.createClient(PARFUL_CONFIG.SUPABASE_URL, PARFUL_CONFIG.SUPABASE_KEY);
+  </script>
+  <script src="scorecard.js"></script>
+  <script src="app.js"></script>
+  <script src="seasons.js"></script>
+</body>
+</html>
