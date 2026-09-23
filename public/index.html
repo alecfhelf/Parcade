@@ -326,7 +326,7 @@
     .chat-form input { flex: 1; min-width: 0; padding: 12px; border-radius: 10px; font-size: 16px; }
     .chat-form button { flex: 0 0 auto; padding: 12px 18px; }
     .emoji { font-style: normal; display: inline-block; }
-    .swatches { max-height: 220px; overflow-y: auto; }
+    .swatches { max-height: 160px; overflow-y: auto; }
     .mode-row { display: flex; gap: 8px; align-items: stretch; margin-bottom: 10px; }
     .mode-row .mode-tile { flex: 1; margin-bottom: 0; }
     .info-btn { flex: none; width: 48px; padding: 0; display: flex; align-items: center; justify-content: center; background: var(--panel); color: var(--glow); }
@@ -474,6 +474,24 @@
     .sound-home { position: fixed; z-index: 7; top: calc(10px + env(safe-area-inset-top, 0px)); right: calc(10px + env(safe-area-inset-right, 0px)); }
     .sound-btn { width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; clip-path: none; border-radius: 50%; }
     .sound-home { left: auto; }
+    .sound-ctl { position: relative; display: inline-block; }
+    .sound-ctl .copy-top { position: static; }
+    .sound-panel { position: absolute; top: calc(100% + 8px); right: 0; z-index: 9; width: 210px; padding: 12px; text-align: left;
+      background: var(--panel); border: 1px solid rgba(92,225,255,0.35); border-radius: 10px; }
+    .sound-panel[hidden] { display: none; }
+    .top-actions .sound-panel { right: auto; left: 0; }
+    .sp-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; font-size: 0.9rem; color: var(--muted); }
+    .sp-row input[type=range] { flex: 1; min-width: 0; accent-color: var(--glow); background: transparent; border: none !important; }
+    .sp-music { padding: 6px 12px; min-width: 56px; font-size: 0.85rem; }
+    .sound-ctl.sound-home { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); right: calc(10px + env(safe-area-inset-right, 0px)); left: auto; z-index: 7; }
+    .modal-stack { margin: auto 0; flex: none; width: 100%; max-width: 360px; display: flex; flex-direction: column; }
+    .modal-stack .modal-panel { max-width: none; }
+    .modal-guide .cd-bubble { font-size: 0.85rem; }
+    .wad-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+    .cd-text { display: block; }
+    .cd-ctl { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
+    .cd-count { font-size: 0.8rem; color: var(--muted); }
+    .cd-ctl .link-btn { font-size: 0.9rem; }
   </style>
 </head>
 <body>
@@ -548,6 +566,7 @@
   <script src="caddy.js"></script>
   <script src="teams.js"></script>
   <script src="money.js"></script>
+  <script src="wad.js"></script>
   <script src="app.js"></script>
   <script src="seasons.js"></script>
 </body>

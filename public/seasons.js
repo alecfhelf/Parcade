@@ -9,16 +9,19 @@ const h3el = (text) => el("h3", { textContent: text });
 
 function pageShell(title, subtitle) {
   document.querySelectorAll(".home-only").forEach(x => (x.style.display = "none"));
+  document.querySelectorAll(".sound-home").forEach(x => (x.style.display = ""));
+  Sound.music(true);
   document.body.classList.add("in-round");
   document.querySelector("h1").textContent = title;
   document.querySelector("h1 + p").textContent = subtitle;
-  const box = el("div", { className: "lobby" });
+  document.querySelectorAll(".season-box").forEach(b => b.remove());
+  const box = el("div", { className: "lobby season-box" });
   box.style.cssText = "margin-top:16px;width:100%;max-width:360px";
   $("status").before(box);
   return box;
 }
 
-const backBtn = (href, text) => el("button", { className: "link-btn", textContent: text, onclick: () => (location.href = href) });
+const backBtn = (href, text) => el("button", { className: "link-btn", textContent: text, onclick: () => navTo(href) });
 
 async function currentAccount() {
   const { data: { session } } = await db.auth.getSession();
@@ -29,8 +32,8 @@ async function currentAccount() {
 function accountPrompt(box, msg) {
   box.append(
     el("p", { className: "waiting", textContent: msg }),
-    el("button", { textContent: "Create account", onclick: async () => { await createAccount(); location.reload(); } }),
-    el("button", { className: "btn-ghost", textContent: "Sign in", onclick: async () => { await signIn(); location.reload(); } })
+    el("button", { textContent: "Create account", onclick: async () => { await createAccount(); seasonsRoute(); } }),
+    el("button", { className: "btn-ghost", textContent: "Sign in", onclick: async () => { await signIn(); seasonsRoute(); } })
   );
 }
 
@@ -39,6 +42,9 @@ async function loadSeasonList() {
   box.append(backBtn("/", "Back to home"), infoLink("How seasons work", () => showRulesModal("Seasons", ["seasons"])));
   await ensureUser();
   const acct = await currentAccount();
+  const desk = crabbyDesk();
+  box.append(desk);
+  crabbyTour(desk, acct ? CRABBY_SEASON.tour : CRABBY_SEASON.tourGuest);
   if (!acct) { accountPrompt(box, "Seasons need an account so your points follow you from round to round."); return; }
 
   const list = el("ul", { className: "player-list" });
@@ -58,30 +64,31 @@ async function loadSeasonList() {
     if (!m.seasons) return;
     const li = el("li", {}, el("span", { textContent: m.seasons.name }), el("span", { className: "link-btn", textContent: "Open" }));
     li.style.cursor = "pointer";
-    li.onclick = () => (location.href = "/?s=" + m.seasons.code);
+    li.onclick = () => navTo("/?s=" + m.seasons.code);
     list.append(li);
   });
 }
 
 async function startSeason() {
+  const myName = await accountName();
   const vals = await ask("Start a season", [
     { label: "Season name", placeholder: "Scottsdale 2026" },
-    { label: "Your name", placeholder: "What the boys call you", max: 20 }
+    { label: "Your name", placeholder: "What the boys call you", max: 20, value: myName }
   ], "Start season");
   if (!vals) return;
   const { data: season, error } = await db.from("seasons").insert({ name: vals[0] }).select().single();
   if (error) { toast("Error: " + error.message); return; }
   const r = await db.from("season_members").insert({ season_id: season.id, name: vals[1] });
   if (r.error) { toast("Error: " + r.error.message); return; }
-  location.href = "/?s=" + season.code;
+  navTo("/?s=" + season.code);
 }
 
 async function joinSeasonByCode() {
   const vals = await ask("Join a season", [{ label: "Season code", placeholder: "AB12CD", max: 6, upper: true }], "Let's go");
-  if (vals) location.href = "/?s=" + vals[0].toUpperCase();
+  if (vals) navTo("/?s=" + vals[0].toUpperCase());
 }
 
-function roundStandings(round, rp, rs, rr, wp, cpr, cmu) {
+function roundStandings(round, rp, rs, rr, wp, cpr, cmu, wd) {
   if (round.mode === "caddy") {
     const cp = caddyTotals(cpr || [], cmu || []);
     const cad = rp.filter(p => p.role === "caddy").map(pl => ({ pl, v: cp[pl.id] || 0 })).sort((a, b) => b.v - a.v);
@@ -100,6 +107,7 @@ function roundStandings(round, rp, rs, rr, wp, cpr, cmu) {
   const matchWon = round.mode === "match" ? matchTotals(round, rp, rs) : {};
   const bestTot = round.mode === "bestball" ? bestBallTotals(round, rp, rs) : {};
   const vegasTot = round.mode === "vegas" ? vegasTotals(round, rp, rs) : {};
+  const wadHold = round.mode === "wad" ? wadHolders(rp, wd || []) : new Set();
   const rows = rp.map(pl => {
     const mine = played.filter(x => x.player_id === pl.id);
     if (!mine.length) return null;
@@ -108,6 +116,7 @@ function roundStandings(round, rp, rs, rr, wp, cpr, cmu) {
     if (round.mode === "match") return { pl, v: matchWon[pl.id] || 0 };
     if (round.mode === "bestball") return { pl, v: bestTot[pl.id] || 0 };
     if (round.mode === "vegas") return { pl, v: vegasTot[pl.id] || 0 };
+    if (round.mode === "wad") return { pl, v: (wadHold.has(pl.id) ? 1000 : 0) + (wd || []).filter(w => w.player_id === pl.id).length };
     if (round.mode === "bbb") return { pl, v: rr.filter(x => x.award && x.winner_id === pl.id).length };
     if (round.mode === "stroke") {
       const total = mine.reduce((a, x) => a + x.strokes, 0);
@@ -137,6 +146,8 @@ async function loadSeason(code) {
   document.querySelector("h1").textContent = season.name;
   document.querySelector("h1 + p").textContent = "Season code: " + season.code;
   const isOwner = !!acct && acct.id === season.owner_id;
+  const seasonDesk = crabbyDesk();
+  seasonDesk.reserve([CRABBY_SEASON.owner, CRABBY_SEASON.member, CRABBY_SEASON.join, CRABBY_SEASON.guest]);
 
   const link = location.origin + "/?s=" + season.code;
   const linkInput = el("input", { value: link, readOnly: true, onclick: () => linkInput.select() });
@@ -156,7 +167,7 @@ async function loadSeason(code) {
   const moneyArea = el("div");
   const roundsList = el("ul", { className: "player-list" });
   const addArea = el("div");
-  box.append(backBtn("/?seasons", "All seasons"), infoLink("How seasons work", () => showRulesModal("Seasons", ["seasons"])), linkRow, joinArea,
+  box.append(backBtn("/?seasons", "All seasons"), infoLink("How seasons work", () => showRulesModal("Seasons", ["seasons"])), seasonDesk, linkRow, joinArea,
     h3el("Standings"), standings, moneyArea, h3el("Rounds"), roundsList, addArea);
 
   async function refresh() {
@@ -165,7 +176,7 @@ async function loadSeason(code) {
       db.from("season_rounds").select("round_id").eq("season_id", season.id),
     ]);
     const ids = (sr || []).map(x => x.round_id);
-    let rounds = [], players = [], scores = [], results = [], picks = [], cpreds = [], cmulls = [], sbets = [];
+    let rounds = [], players = [], scores = [], results = [], picks = [], cpreds = [], cmulls = [], sbets = [], swads = [];
     if (ids.length) {
       const res = await Promise.all([
         db.from("rounds").select("*").in("id", ids).order("created_at"),
@@ -176,24 +187,28 @@ async function loadSeason(code) {
         db.from("predictions").select("*").in("round_id", ids),
         db.from("mulligans").select("*").in("round_id", ids),
         db.from("bets").select("*").in("round_id", ids),
+        db.from("wads").select("*").in("round_id", ids),
       ]);
-      [rounds, players, scores, results, picks, cpreds, cmulls, sbets] = res.map(r => r.data || []);
+      [rounds, players, scores, results, picks, cpreds, cmulls, sbets, swads] = res.map(r => r.data || []);
     }
     renderJoin(members || []);
-    renderStandings(members || [], rounds, players, scores, results, picks, cpreds, cmulls);
-    renderMoneyStats(members || [], rounds, players, scores, results, picks, cpreds, cmulls, sbets);
+    renderStandings(members || [], rounds, players, scores, results, picks, cpreds, cmulls, swads);
+    renderMoneyStats(members || [], rounds, players, scores, results, picks, cpreds, cmulls, sbets, swads);
     renderRounds(rounds);
     if (isOwner) renderAdd(ids);
   }
 
   function renderJoin(members) {
     joinArea.innerHTML = "";
+    const joined = !!acct && members.some(m => m.user_id === acct.id);
+    seasonDesk.say(!acct ? CRABBY_SEASON.guest : isOwner ? CRABBY_SEASON.owner : joined ? CRABBY_SEASON.member : CRABBY_SEASON.join);
     if (!acct) { accountPrompt(joinArea, "Create an account or sign in to join this season."); return; }
     if (members.some(m => m.user_id === acct.id)) return;
     const b = el("button", { textContent: "Join this season" });
     b.style.cssText = "width:100%;margin-top:10px";
     b.onclick = async () => {
-      const vals = await ask("Join " + season.name, [{ label: "Your name", placeholder: "What the boys call you", max: 20 }], "I'm in");
+      const joinName = await accountName();
+      const vals = await ask("Join " + season.name, [{ label: "Your name", placeholder: "What the boys call you", max: 20, value: joinName }], "I'm in");
       if (!vals) return;
       const { error } = await db.from("season_members").insert({ season_id: season.id, name: vals[0] });
       if (error) { toast("Error: " + error.message); return; }
@@ -202,7 +217,7 @@ async function loadSeason(code) {
     joinArea.append(b);
   }
 
-  function renderStandings(members, rounds, players, scores, results, picks, cpreds, cmulls) {
+  function renderStandings(members, rounds, players, scores, results, picks, cpreds, cmulls, swads) {
     const memberById = new Map(members.map(m => [m.user_id, m]));
     const totals = new Map();
     members.forEach(m => totals.set("u:" + m.user_id, { name: m.name, pts: 0, wins: 0, rounds: 0 }));
@@ -213,7 +228,8 @@ async function loadSeason(code) {
         results.filter(x => x.round_id === round.id),
         picks.filter(x => x.round_id === round.id),
         cpreds.filter(x => x.round_id === round.id),
-        cmulls.filter(x => x.round_id === round.id));
+        cmulls.filter(x => x.round_id === round.id),
+        swads.filter(x => x.round_id === round.id));
       rows.forEach(r => {
         const m = memberById.get(r.pl.user_id);
         const key = m ? "u:" + r.pl.user_id : "n:" + r.pl.name.trim().toLowerCase();
@@ -234,7 +250,7 @@ async function loadSeason(code) {
     });
   }
 
-  function renderMoneyStats(members, rounds, players, scores, results, picks, cpreds, cmulls, sbets) {
+  function renderMoneyStats(members, rounds, players, scores, results, picks, cpreds, cmulls, sbets, swads) {
     moneyArea.innerHTML = "";
     const staked = r => r.stakes === "pot" || r.stakes === "point";
     const moneyRounds = rounds.filter(r => staked(r) || sbets.some(b => b.round_id === r.id));
@@ -265,9 +281,9 @@ async function loadSeason(code) {
           return { pl, v: -(total - (allow[pl.id] || 0) * mine.length) };
         }).filter(Boolean);
       } else {
-        entries = roundStandings(round, rp, rs, rr, wp, cpr, cmu).map(r => ({ pl: r.pl, v: r.v }));
+        entries = roundStandings(round, rp, rs, rr, wp, cpr, cmu, of(swads)).map(r => ({ pl: r.pl, v: r.v }));
       }
-      const { net } = moneyNet(round, entries, rp, rb);
+      const { net } = moneyNet(round, entries, rp, rb, round.mode === "wad" ? wadMoney(round, rp, of(swads)) : null);
       rp.forEach(pl => {
         const inRound = staked(round) && entries.some(e => e.pl.id === pl.id);
         const inBets = rb.some(b => b.creator_id === pl.id || b.taker_id === pl.id);
@@ -311,7 +327,7 @@ async function loadSeason(code) {
       const mode = MODES[r.mode] ? MODES[r.mode].name : "Not started";
       const name = el("span", { textContent: r.name + " (" + mode + ")" });
       name.style.cursor = "pointer";
-      name.onclick = () => (location.href = "/?r=" + r.code);
+      name.onclick = () => openRound(r.code);
       const li = el("li", {}, name);
       if (isOwner) {
         li.append(el("button", { className: "link-btn", textContent: "Remove", onclick: async () => {
@@ -348,7 +364,30 @@ async function loadSeason(code) {
 }
 
 const seasonBtn = $("seasons-btn");
-if (seasonBtn) seasonBtn.onclick = () => (location.href = "/?seasons");
-const sp = new URLSearchParams(location.search);
-if (sp.has("seasons")) loadSeasonList();
-else if (sp.get("s")) loadSeason(sp.get("s"));
+if (seasonBtn) seasonBtn.onclick = () => navTo("/?seasons");
+const HOME_H1 = document.querySelector("h1").innerHTML;
+const HOME_SUB = document.querySelector("h1 + p").textContent;
+
+function seasonsRoute() {
+  window.scrollTo(0, 0);
+  const sp = new URLSearchParams(location.search);
+  if (sp.has("seasons")) loadSeasonList();
+  else if (sp.get("s")) loadSeason(sp.get("s"));
+}
+
+function showHomeView() {
+  document.querySelectorAll(".season-box").forEach(b => b.remove());
+  document.body.classList.remove("in-round");
+  document.querySelector("h1").innerHTML = HOME_H1;
+  document.querySelector("h1 + p").textContent = HOME_SUB;
+  document.querySelectorAll(".home-only").forEach(x => (x.style.display = ""));
+  Sound.music(true);
+  window.scrollTo(0, 0);
+}
+
+function navTo(url) {
+  history.pushState({}, "", url);
+  if (url === "/") showHomeView(); else seasonsRoute();
+}
+
+seasonsRoute();

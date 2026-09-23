@@ -11,7 +11,7 @@ function moneySummary(round) {
     return "💵 " + moneyFmt(round.buy_in) + " buy-in. " + places;
   }
   if (round.stakes === "point") {
-    const unit = round.mode === "stroke" ? "stroke" : round.mode === "skins" ? "skin" : "point";
+    const unit = round.mode === "stroke" ? "stroke" : round.mode === "skins" ? "skin" : round.mode === "wad" ? "Wad" : "point";
     return "💵 " + moneyFmt(round.per_point) + " per " + unit;
   }
   return "";
@@ -23,10 +23,11 @@ function moneySigned(n) {
 }
 
 // entries: [{ pl, v }] where a higher v is better
-function moneyNet(round, entries, players, bets) {
+function moneyNet(round, entries, players, bets, override) {
   const net = {};
   players.forEach(p => (net[p.id] = { round: 0, bets: 0, total: 0 }));
-  if (round.stakes === "pot" && entries.length) {
+  if (override) Object.entries(override).forEach(([id, v]) => { if (net[id]) net[id].round += v; });
+  else if (round.stakes === "pot" && entries.length) {
     const sorted = entries.slice().sort((a, b) => b.v - a.v);
     const pays = round.payouts || [];
     let i = 0;
@@ -41,7 +42,7 @@ function moneyNet(round, entries, players, bets) {
     }
     entries.forEach(e => (net[e.pl.id].round -= Number(round.buy_in || 0)));
   }
-  if (round.stakes === "point" && entries.length) {
+  if (!override && round.stakes === "point" && entries.length) {
     const rate = Number(round.per_point || 0), n = entries.length, sum = entries.reduce((a, e) => a + e.v, 0);
     entries.forEach(e => (net[e.pl.id].round += rate * (n * e.v - sum)));
   }

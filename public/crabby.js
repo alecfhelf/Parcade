@@ -117,10 +117,27 @@ function crabbyDesk(line) {
   const bubble = document.createElement("div");
   bubble.className = "cd-bubble";
   bubble.setAttribute("aria-live", "polite");
+  const textEl = document.createElement("span");
+  textEl.className = "cd-text";
+  bubble.append(textEl);
+  let reserveLines = null, measured = false, tries = 0;
+  const measure = () => {
+    if (!reserveLines || measured) return;
+    if (!wrap.isConnected || !textEl.offsetWidth) { if (++tries < 300) requestAnimationFrame(measure); return; }
+    const cur = textEl.textContent;
+    let max = 0;
+    textEl.style.minHeight = "";
+    reserveLines.forEach(l => { textEl.textContent = l; max = Math.max(max, textEl.offsetHeight); });
+    textEl.textContent = cur;
+    textEl.style.minHeight = max + "px";
+    measured = true;
+  };
+  wrap.reserve = (lines) => { reserveLines = lines; measured = false; tries = 0; measure(); };
+  window.addEventListener("resize", () => { if (reserveLines) { measured = false; tries = 0; measure(); } });
   wrap.append(stage, bubble);
   wrap.say = (text) => {
-    if (!text || bubble.textContent === text) return;
-    bubble.textContent = text;
+    if (!text || textEl.textContent === text) return;
+    textEl.textContent = text;
     const secs = typeof Sound !== "undefined" ? Sound.grumble(text.length) : 0;
     if (secs && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
       fig.style.transformOrigin = "50% 70%";
@@ -133,4 +150,45 @@ function crabbyDesk(line) {
   };
   if (line) wrap.say(line);
   return wrap;
+}
+
+const CRABBY_SEASON = {
+  tour: [
+    "Oh good, a Seasons guy. A season strings your rounds together so you can keep beating the same friends all year long.",
+    "Tap Start a season, then send the code to your buddies so they can join. They need accounts. Guests don't get to hold grudges.",
+    "Whoever starts it is the commissioner. Only the commissioner adds rounds, and only rounds they actually played in.",
+    "Every round pays out season points: 5 for 1st, 3 for 2nd, 1 for 3rd. Everybody else gets character development.",
+    "Playing for money? I track who's up, who's down, the biggest win, the biggest loss, and everybody's side bet record. Try not to cry.",
+    "That's it. Tap Start a season, or Join with a code if somebody already did the hard part.",
+  ],
+  tourGuest: [
+    "Oh good, a Seasons guy. A season strings your rounds together so you can keep beating the same friends all year long.",
+    "Seasons need an account so your points follow you around. Hit Create account or Sign in below. I'll wait. Again.",
+  ],
+  owner: "This is your season, commissioner. Share the link, then add rounds from the list at the bottom. Standings and money update themselves.",
+  member: "Standings up top, money below if you play for cash. The commissioner adds the rounds, so complain to them, not me.",
+  join: "Hit Join this season. Takes two seconds. Even you can manage that.",
+  guest: "You need an account to join a season. Create one or sign in. Guests don't get to hold grudges.",
+};
+
+function crabbyTour(desk, lines) {
+  desk.reserve(lines);
+  let i = 0;
+  const ctl = document.createElement("div");
+  ctl.className = "cd-ctl";
+  const count = document.createElement("span");
+  count.className = "cd-count";
+  const next = document.createElement("button");
+  next.className = "link-btn";
+  ctl.append(count, next);
+  desk.querySelector(".cd-bubble").append(ctl);
+  const show = () => {
+    desk.say(lines[i]);
+    count.textContent = (i + 1) + " / " + lines.length;
+    next.textContent = i < lines.length - 1 ? "Next" : "Got it";
+  };
+  next.onclick = () => {
+    if (i < lines.length - 1) { i++; show(); } else ctl.remove();
+  };
+  if (lines.length > 1) show(); else { ctl.remove(); desk.say(lines[0]); }
 }

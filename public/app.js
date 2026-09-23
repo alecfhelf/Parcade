@@ -131,6 +131,7 @@ function ask(title, fields, confirmText, note, onSubmit, guide) {
       span.textContent = f.label;
       const input = document.createElement("input");
       input.placeholder = f.placeholder || "";
+      if (f.value) input.value = f.value;
       input.maxLength = f.max || 40;
       input.autocomplete = "off";
       if (f.type) input.type = f.type;
@@ -154,14 +155,18 @@ function ask(title, fields, confirmText, note, onSubmit, guide) {
     err.className = "modal-error";
     err.setAttribute("role", "alert");
     panel.append(err, row);
-    wrap.append(panel);
+    const stack = document.createElement("div");
+    stack.className = "modal-stack";
     if (guide) {
       const d = crabbyDesk(guide);
       d.classList.add("modal-guide");
-      wrap.insertBefore(d, panel);
+      stack.append(d);
     }
+    stack.append(panel);
+    wrap.append(stack);
+    requestAnimationFrame(() => (wrap.scrollTop = 0));
     document.body.append(wrap);
-    setTimeout(() => (inputs[0] || ok).focus(), 50);
+    setTimeout(() => { (inputs[0] || ok).focus({ preventScroll: true }); wrap.scrollTop = 0; }, 50);
     const close = v => { wrap.remove(); resolve(v); };
     cancel.onclick = () => close(null);
     wrap.onclick = e => { if (e.target === wrap) close(null); };
@@ -275,9 +280,10 @@ function ensureUser() {
 }
 
 $("create-round").addEventListener("click", async () => {
+  const myName = await accountName();
   const vals = await ask("Start a new round", [
     { label: "Round name", placeholder: "Saturday Showdown" },
-    { label: "Your name", placeholder: "What the boys call you", max: 20 },
+    { label: "Your name", placeholder: "What the boys call you", max: 20, value: myName },
     { label: "Pick your stick figure", type: "colors" },
     { label: "Handicaps", type: "toggle", hint: "Levels the field so everyone has a shot" }
   ], "Tee it up", null, null, CRABBY_LINES.welcome);
@@ -297,7 +303,7 @@ $("create-round").addEventListener("click", async () => {
     const { error: e2 } = await db.from("players")
       .insert({ round_id: round.id, name: playerName.trim(), color: color === "-" ? null : color, usual_score: usual });
     if (e2) throw e2;
-    location.href = "/?r=" + round.code;
+    openRound(round.code);
   } catch (err) {
     $("status").textContent = "Error: " + err.message;
   }
@@ -308,6 +314,7 @@ const MODES = {
   stroke: { name: "Stroke Play", desc: "Regular golf rules, lowkey boring but so is your personality." },
   skins: { name: "Skins", desc: "Ties roll the prize into the next hole, so holes stack up. One clutch hole can win you a pile." },
   match: { name: "Match Play", desc: "Every hole is worth exactly 1 point. Ties just cancel out. Win the most holes, win the match." },
+  wad: { name: "Wad", desc: "Drain your first putt from long range and the pot grows. Make the last one of the round and everybody pays you." },
   vegas: { name: "Vegas", desc: "2 vs 2. Your team's scores mash into one number, so a 4 and a 5 is 45. Lowest number wins the difference." },
   bestball: { name: "Best Ball", desc: "2 vs 2. Your team's best score on each hole counts. Carry your partner, or get carried." },
   bbb: { name: "Bingo Bango Bongo", desc: "Three points every hole: first on the green, closest to the pin, first in the cup. Anyone can steal them." },
@@ -332,7 +339,7 @@ async function loadRound(code) {
   const sub = document.querySelector("h1 + p");
   const link = location.origin + "/?r=" + round.code;
 
-  let me = null, players = [], scores = [], results = [], picks = [], pairs = [], preds = [], mulls = [], bets = [];
+  let me = null, players = [], scores = [], results = [], picks = [], pairs = [], preds = [], mulls = [], bets = [], wads = [];
   let hole = 1, strokes = 4, cardReady = false, pickedMode = null;
   const isParty = () => !round.mode || round.mode === "party";
   const isSkins = () => round.mode === "skins";
@@ -341,6 +348,7 @@ async function loadRound(code) {
   const isBbb = () => round.mode === "bbb";
   const isBest = () => round.mode === "bestball";
   const isVegas = () => round.mode === "vegas";
+  const isWad = () => round.mode === "wad";
   const isWolf = () => round.mode === "wolf";
   const h3 = (text) => { const el = document.createElement("h3"); el.textContent = text; return el; };
 
@@ -413,6 +421,7 @@ async function loadRound(code) {
   teamBtn.onclick = () => randomizeTeams();
   teamTools.append(teamBtn);
   const guide = crabbyDesk();
+  guide.reserve(Object.values(CRABBY_LINES).filter(l => l !== CRABBY_LINES.welcome));
   const whoTitle = h3("Who's in");
   [linkRow, share, whoTitle, lobbyList, addPlayerBtn, groupTools, teamTools].forEach(el => el.classList.add("room-only"));
   lobby.append(guide, linkRow, share, whoTitle, lobbyList, addPlayerBtn, groupTools, teamTools, join, rejoinBtn, hostArea, waiting);
@@ -426,7 +435,7 @@ async function loadRound(code) {
     startBtn.style.width = "100%";
     const SIZES = [["2", "2 players"], ["3", "3 players"], ["4", "4 players"], ["5", "5 or more"]];
     const sizeFits = { "2": n => n === 2, "3": n => n === 3, "4": n => n === 4, "5": n => n >= 5 };
-    const MODES_FOR = { "2": ["party", "stroke", "skins", "match", "caddy"], "3": ["party", "stroke", "skins", "match", "wolf", "bbb", "caddy"], "4": ["party", "stroke", "skins", "match", "wolf", "bbb", "bestball", "vegas", "caddy"], "5": ["party", "stroke", "skins", "match", "wolf", "bbb", "bestball", "vegas", "caddy"] };
+    const MODES_FOR = { "2": ["party", "stroke", "skins", "match", "wad", "caddy"], "3": ["party", "stroke", "skins", "match", "wolf", "bbb", "wad", "caddy"], "4": ["party", "stroke", "skins", "match", "wolf", "bbb", "bestball", "vegas", "wad", "caddy"], "5": ["party", "stroke", "skins", "match", "wolf", "bbb", "bestball", "vegas", "wad", "caddy"] };
     const SIZE_NOTES = {
       "2": "Head to head. Nowhere to hide.",
       "3": "A threesome. Every hole is a three-way grudge match.",
@@ -674,6 +683,12 @@ async function loadRound(code) {
         if (!pot) { toast("Enter a buy-in, or turn off Play for money."); return; }
         if (Math.round((pot - sum) * 100) !== 0) { toast("Payouts need to add up to the " + moneyFmt(pot) + " pot."); return; }
       }
+      if (pickedMode === "wad") {
+        const sizes = {};
+        players.forEach(pl => (sizes[pl.group_no] = (sizes[pl.group_no] || 0) + 1));
+        if (Object.values(sizes).some(n => n < 2 || n > 4)) { toast("Wad needs 2 to 4 players in every group."); return; }
+        if (stakes !== "point") { toast("Turn on Play for money and set a dollar amount per Wad."); return; }
+      }
       if (stakes === "point" && !num("m-per")) { toast("Enter a dollar amount per point, or turn off Play for money."); return; }
       const yes = await ask("Start the game?", [], "Let's play", "No one can join the round once the game has begun.");
       if (!yes) return;
@@ -716,6 +731,11 @@ async function loadRound(code) {
     const num = id => { const v = parseFloat(mq(id).value); return isNaN(v) || v < 0 ? 0 : Math.round(v * 100) / 100; };
     const payers = () => (pickedMode === "caddy" ? players.filter(pl => pl.role === "caddy").length : players.length);
     function syncMoney() {
+      if (pickedMode === "wad" && stakes === "pot") stakes = "point";
+      mq("money-type").querySelector('[data-t="pot"]').style.display = pickedMode === "wad" ? "none" : "";
+      mq("money-point").querySelector(".cp-note").textContent = pickedMode === "wad"
+        ? "Whoever makes the last Wad collects the whole pot from everyone else in their group."
+        : "At the end, everyone settles the point difference with everyone else.";
       const on = stakes !== "none";
       const sw = mq("money-switch");
       sw.textContent = on ? "On" : "Off";
@@ -725,7 +745,7 @@ async function loadRound(code) {
       mq("money-type").querySelectorAll("button").forEach(b => b.classList.toggle("selected", b.dataset.t === stakes));
       mq("money-pot").style.display = stakes === "pot" ? "block" : "none";
       mq("money-point").style.display = stakes === "point" ? "block" : "none";
-      mq("m-unit").textContent = pickedMode === "stroke" ? "Dollars per stroke" : pickedMode === "skins" ? "Dollars per skin" : "Dollars per point";
+      mq("m-unit").textContent = pickedMode === "stroke" ? "Dollars per stroke" : pickedMode === "skins" ? "Dollars per skin" : pickedMode === "wad" ? "Dollars per Wad" : "Dollars per point";
       const pot = num("m-buyin") * payers();
       const np = payers();
       mq("m-pot").textContent = "Pot: " + moneyFmt(pot) + " (" + np + (pickedMode === "caddy" ? (np === 1 ? " caddy)" : " caddies)") : (np === 1 ? " player)" : " players)"));
@@ -778,6 +798,12 @@ async function loadRound(code) {
       <div id="wolf-pick" class="chip-row"></div>
     </div>
     <div id="keeper-row" class="chip-row keeper-row"></div>
+    <div id="wad-box" class="ch-box" style="display:none">
+      <div class="ch-kicker">Wad</div>
+      <div id="wad-pot" class="ch-text"></div>
+      <div id="wad-note" class="cp-note"></div>
+      <div id="wad-log"></div>
+    </div>
     <div id="vegas-box" class="ch-box" style="display:none">
       <div class="ch-kicker">Vegas</div>
       <div id="vegas-teams" class="ch-text"></div>
@@ -1238,7 +1264,7 @@ async function loadRound(code) {
 
   // ---------- Data + render ----------
   async function refresh() {
-    const [r, p, sc, c, wp, cp, pr, mu, bt] = await Promise.all([
+    const [r, p, sc, c, wp, cp, pr, mu, bt, wd] = await Promise.all([
       fetchRound(),
       db.from("players").select("*").eq("round_id", round.id).order("created_at"),
       db.from("scores").select("*").eq("round_id", round.id),
@@ -1248,6 +1274,7 @@ async function loadRound(code) {
       db.from("predictions").select("*").eq("round_id", round.id),
       db.from("mulligans").select("*").eq("round_id", round.id),
       db.from("bets").select("*").eq("round_id", round.id).order("created_at"),
+      db.from("wads").select("*").eq("round_id", round.id).order("created_at"),
     ]);
     if (r.data) round = r.data;
     players = p.data || [];
@@ -1258,6 +1285,7 @@ async function loadRound(code) {
     preds = (pr && pr.data) || [];
     mulls = (mu && mu.data) || [];
     bets = (bt && bt.data) || [];
+    wads = (wd && wd.data) || [];
     me = players.find(pl => pl.user_id === user.id) || null;
     render();
   }
@@ -1287,7 +1315,7 @@ async function loadRound(code) {
     }
     document.body.classList.add("has-copy");
     scoreArea.style.display = finished ? "block" : "none";
-    if (finished) renderScorecard(scoreArea, { round, players, scores, results, user, picks, preds, mulls, bets });
+    if (finished) renderScorecard(scoreArea, { round, players, scores, results, user, picks, preds, mulls, bets, wads });
     sub.textContent = finished ? "Final results" : playing
       ? (MODES[round.mode] || MODES.party).name + (round.handicap ? " with handicaps" : "")
       : "Round code: " + round.code + (round.handicap ? ", handicaps on" : "");
@@ -1307,6 +1335,7 @@ async function loadRound(code) {
     const matchWon = isMatch() ? matchTotals(round, players, scores) : {};
     const bestTot = isBest() ? bestBallTotals(round, players, scores) : {};
     const vegasTot = isVegas() ? vegasTotals(round, players, scores) : {};
+    const wadHold = isWad() ? wadHolders(players, wads) : new Set();
     const rows = players.map(pl => {
       const mine = played.filter(x => x.player_id === pl.id);
       const total = mine.reduce((a, x) => a + x.strokes, 0);
@@ -1321,10 +1350,12 @@ async function loadRound(code) {
       if (isBbb()) pts = results.filter(x => x.award && x.winner_id === pl.id).length;
       if (isBest()) pts = bestTot[pl.id] || 0;
       if (isVegas()) pts = vegasTot[pl.id] || 0;
+      if (isWad()) pts = wads.filter(w => w.player_id === pl.id).length;
       return { pl, pts, total, net: total - (allow[pl.id] || 0) * mine.length, thru: mine.length };
     });
-    if (isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas()) rows.sort((a, b) => b.pts - a.pts);
+    if (isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas() || isWad()) rows.sort((a, b) => b.pts - a.pts);
     else { const avg = r => (r.thru ? r.net / r.thru : Infinity); rows.sort((a, b) => avg(a) - avg(b)); }
+    if (isWad()) rows.sort((a, b) => (wadHold.has(b.pl.id) - wadHold.has(a.pl.id)) || b.pts - a.pts);
 
     board.innerHTML = "";
     rows.forEach((r, i) => {
@@ -1332,10 +1363,11 @@ async function loadRound(code) {
       const name = document.createElement("span");
       name.append((i + 1) + ". ", figureEl(r.pl.color), r.pl.name + (r.pl.user_id === user.id ? " (you)" : ""));
       const val = document.createElement("span");
-      val.textContent = (isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas())
-        ? r.pts + (isSkins() ? (r.pts === 1 ? " skin" : " skins") : isMatch() ? (r.pts === 1 ? " hole won" : " holes won") : " pts")
+      val.textContent = (isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas() || isWad())
+        ? r.pts + (isSkins() ? (r.pts === 1 ? " skin" : " skins") : isMatch() ? (r.pts === 1 ? " hole won" : " holes won") : isWad() ? " made" : " pts")
         : (r.thru ? r.total + " strokes" + (round.handicap ? ", net " + Math.round(r.net) : "") + " (thru " + r.thru + ")" : "-");
-      if ((isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas()) && r.thru) {
+      if (isWad() && wadHold.has(r.pl.id)) val.prepend("💰 ");
+      if ((isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas() || isWad()) && r.thru) {
         const sub = document.createElement("span");
         sub.className = "sub-score";
         sub.textContent = " (" + r.total + " thru " + r.thru + ")";
@@ -1410,11 +1442,17 @@ async function loadRound(code) {
     if (isBbb()) message = "🎯 3 points up for grabs";
     if (isBest()) message = "🤝 Carry your partner";
     if (isVegas()) message = "🎰 Lowest number wins the difference";
+    if (isWad()) {
+      const st = wadState(players, wads, me.group_no);
+      const per = Number(round.per_point || 0);
+      const holder = players.find(pl => pl.id === st.holder);
+      message = "💰 Pot: " + (per ? moneyFmt(st.units * per) : st.units + " Wads") + (holder ? ". " + holder.name + " holds it" : ". Up for grabs");
+    }
     if (isSkins()) {
       const n = skinsState(round, players, scores).holes[h].pot;
       message = "💰 " + n + (n === 1 ? " skin" : " skins") + " on the line";
     }
-    playHoleIntro({ hole: h, color, challenge: ch, idx, message, wolfGrab: isWolf(), coins: isSkins(), cartRun: isMatch(), bbb: isBbb(), carry: isBest(), slots: isVegas(), items }).then(() => { introRunning = false; });
+    playHoleIntro({ hole: h, color, challenge: ch, idx, message, wolfGrab: isWolf(), coins: isSkins(), cartRun: isMatch(), bbb: isBbb(), carry: isBest(), slots: isVegas(), cashRain: isWad(), items }).then(() => { introRunning = false; });
   }
 
   function drawCard() {
@@ -1486,6 +1524,8 @@ async function loadRound(code) {
     if (isBbb()) drawBbb(myGroup, isLeader);
     $("best-box").style.display = isBest() ? "block" : "none";
     if (isBest()) drawBest(myGroup);
+    $("wad-box").style.display = isWad() ? "block" : "none";
+    if (isWad()) drawWad(myGroup, isLeader);
     $("vegas-box").style.display = isVegas() ? "block" : "none";
     if (isVegas()) drawVegas(myGroup);
     const hideGrid = isCaddy() && !!me && me.role === "caddy" && !(keeperMode && canKeep());
@@ -1689,6 +1729,78 @@ async function loadRound(code) {
       return { pl, total, net: total - (allow[pl.id] || 0) * mine.length, thru: mine.length };
     }).sort((a, b) => (a.thru ? a.net / a.thru : Infinity) - (b.thru ? b.net / b.thru : Infinity))
       .forEach((r, i) => row(r.pl, r.thru ? r.total + " strokes" + (round.handicap ? ", net " + Math.round(r.net) : "") + " (thru " + r.thru + ")" : "-", i));
+  }
+
+  function drawWad(g, isLeader) {
+    const st = wadState(players, wads, g);
+    const per = Number(round.per_point || 0);
+    const holder = players.find(pl => pl.id === st.holder);
+    $("wad-pot").textContent = "💰 Pot: " + (per ? moneyFmt(st.units * per) : st.units + (st.units === 1 ? " Wad" : " Wads")) +
+      (holder ? ". " + holder.name + " holds it." : ". Nobody's holding it yet.");
+    $("wad-note").textContent = hole >= 16
+      ? "Last three holes: only a Wad for net par or better takes the pot."
+      : "First putt on the green from flagstick length or longer (or a chip-in) that drops. Birdie or better counts double.";
+    const box = $("wad-log");
+    box.innerHTML = "";
+    const here = wads.filter(w => w.hole === hole && st.grp.some(pl => pl.id === w.player_id));
+    here.forEach(w => {
+      const pl = players.find(x => x.id === w.player_id);
+      if (!pl) return;
+      const line = document.createElement("div");
+      line.className = "wad-line";
+      const txt = document.createElement("span");
+      txt.append(figureEl(pl.color), pl.name + " made one" + (w.birdie ? " for birdie (x2)" : ""));
+      line.append(txt);
+      if (isLeader || pl.user_id === user.id) {
+        const un = document.createElement("button");
+        un.className = "mini";
+        un.textContent = "Undo";
+        un.onclick = () => undoWad(w);
+        line.append(un);
+      }
+      box.append(line);
+    });
+    const loggable = (isLeader ? st.grp : (me ? [me] : [])).filter(pl => !here.some(w => w.player_id === pl.id));
+    if (loggable.length) {
+      const row = document.createElement("div");
+      row.className = "chip-row";
+      loggable.forEach(pl => {
+        const b = document.createElement("button");
+        if (isLeader) b.append(figureEl(pl.color), pl.name + " made one");
+        else b.textContent = "I made a Wad";
+        b.onclick = () => logWad(pl);
+        row.append(b);
+      });
+      box.append(row);
+    }
+  }
+
+  async function logWad(pl) {
+    const late = hole >= 16;
+    const vals = await ask("Wad for " + pl.name + "?", [
+      { label: "For birdie or better?", type: "toggle", hint: "Birdies count double" },
+      ...(late ? [{ label: "For net par or better?", type: "toggle", hint: "On 16 to 18, only these can take the pot" }] : []),
+    ], "Log it");
+    if (!vals) return;
+    const birdie = vals[0] === "on";
+    const par = birdie || (late ? vals[1] === "on" : true);
+    const { error } = await db.from("wads").insert({ round_id: round.id, player_id: pl.id, hole, birdie, par_or_better: par });
+    if (error) { toast(error.code === "23505" ? pl.name + " already has a Wad on this hole." : error.message); return; }
+    Sound.play("coin");
+    const next = wads.concat([{ player_id: pl.id, hole, birdie, par_or_better: par, created_at: new Date().toISOString() }]);
+    const st = wadState(players, next, pl.group_no);
+    const per = Number(round.per_point || 0);
+    const holder = players.find(x => x.id === st.holder);
+    const body = "💰 " + pl.name + " drained a Wad on hole " + hole + (birdie ? " for birdie (double!)" : "") +
+      ". Pot's at " + (per ? moneyFmt(st.units * per) : st.units + " Wads") + (holder ? ". " + holder.name + " holds it." : ".");
+    db.from("messages").insert({ round_id: round.id, player_id: me.id, kind: "auto", body: body.slice(0, 280) }).then(() => {});
+    refresh();
+  }
+
+  async function undoWad(w) {
+    const { error } = await db.from("wads").delete().eq("id", w.id);
+    if (error) { toast(error.message); return; }
+    refresh();
   }
 
   function drawVegas(g) {
@@ -2017,8 +2129,9 @@ async function loadRound(code) {
   }
 
   async function doJoin() {
+    const joinName = await accountName();
     const vals = await ask("Join " + round.name, [
-      { label: "Your name", placeholder: "What the boys call you", max: 20 },
+      { label: "Your name", placeholder: "What the boys call you", max: 20, value: joinName },
       { label: "Pick your stick figure", type: "colors", taken: players.map(p => p.color) },
       ...(round.handicap ? [{ label: "What do you usually shoot for 18?", type: "number", placeholder: "e.g. 95", max: 3 }] : [])
     ], "I'm in", null, async (v) => (round.handicap && !validUsual(v[2]) ? "Enter your usual score for 18 holes (40 to 200)." : null));
@@ -2041,6 +2154,7 @@ async function loadRound(code) {
     .on("postgres_changes", { ...live, event: "*", table: "scores", filter: "round_id=eq." + round.id }, refresh)
     .on("postgres_changes", { ...live, event: "*", table: "challenge_results", filter: "round_id=eq." + round.id }, refresh)
     .on("postgres_changes", { ...live, event: "UPDATE", table: "rounds", filter: "id=eq." + round.id }, refresh)
+    .on("postgres_changes", { ...live, event: "*", table: "wads", filter: "round_id=eq." + round.id }, refresh)
     .on("postgres_changes", { ...live, event: "*", table: "bets", filter: "round_id=eq." + round.id }, refresh)
     .on("postgres_changes", { ...live, event: "*", table: "caddy_pairs", filter: "round_id=eq." + round.id }, refresh)
     .on("postgres_changes", { ...live, event: "*", table: "predictions", filter: "round_id=eq." + round.id }, refresh)
@@ -2051,9 +2165,9 @@ async function loadRound(code) {
 }
 
 const roundCode = new URLSearchParams(location.search).get("r");
-if (!roundCode && !location.search) {
+if (!roundCode) {
   const sb = soundButton();
-  sb.classList.add("sound-home");
+  sb.classList.add("sound-home", "home-only");
   document.body.append(sb);
   Sound.music(true);
 }
@@ -2066,7 +2180,7 @@ $("join-code").onclick = async () => {
   const vals = await ask("Join a round", [
     { label: "Round code", placeholder: "AB12CD", max: 6, upper: true }
   ], "Let's go");
-  if (vals) location.href = "/?r=" + vals[0].toUpperCase();
+  if (vals) openRound(vals[0].toUpperCase());
 };
 
 const QUIPS = [
@@ -2096,8 +2210,11 @@ async function renderAccount() {
   el.innerHTML = "";
   if (u && !u.is_anonymous) {
     const who = document.createElement("span");
-    who.textContent = "Signed in as " + u.email;
-    el.append(who, linkBtn("Sign out", signOut));
+    const nm = u.user_metadata && u.user_metadata.first_name;
+    who.textContent = "Signed in as " + (nm || u.email);
+    el.append(who);
+    if (!nm) el.append(linkBtn("Add your name", async () => { if (await askFirstName()) renderAccount(); }));
+    el.append(linkBtn("Sign out", signOut));
   } else {
     el.append(linkBtn("Create account", createAccount), linkBtn("Sign in", signIn));
   }
@@ -2118,7 +2235,7 @@ function friendlyAuthError(err) {
 }
 
 async function createAccount() {
-  const vals = await ask("Create your account", authFields, "Create account", null, async ([email, password]) => {
+  const vals = await ask("Create your account", [{ label: "First name", placeholder: "What should we call you?", max: 30 }, ...authFields], "Create account", null, async ([first, email, password]) => {
     if (password.length < 6) return "Password needs at least 6 characters.";
     try {
       await ensureUser();
@@ -2126,10 +2243,13 @@ async function createAccount() {
       if (r1.error) throw r1.error;
       const r2 = await db.auth.updateUser({ password });
       if (r2.error) throw r2.error;
+      const r3 = await db.auth.updateUser({ data: { first_name: first } });
+      if (r3.error) throw r3.error;
       return null;
     } catch (e) { return friendlyAuthError(e); }
   });
   if (vals) renderAccount();
+  return !!vals;
 }
 
 async function signIn() {
@@ -2137,9 +2257,11 @@ async function signIn() {
     const { error } = await db.auth.signInWithPassword({ email, password });
     return error ? friendlyAuthError(error) : null;
   });
-  if (!vals) return;
+  if (!vals) return false;
   userPromise = null;
+  if (!(await accountName())) await askFirstName();
   renderAccount();
+  return true;
 }
 
 async function signOut() {
@@ -2156,4 +2278,30 @@ function toast(msg) {
   document.body.append(t);
   setTimeout(() => t.classList.add("out"), 3200);
   setTimeout(() => t.remove(), 3600);
+}
+
+function openRound(code) {
+  document.querySelectorAll(".season-box").forEach(b => b.remove());
+  history.pushState({}, "", "/?r=" + code);
+  loadRound(code);
+}
+window.addEventListener("popstate", () => {
+  const sp = new URLSearchParams(location.search);
+  if (sp.get("r") || document.querySelector(".top-actions")) return location.reload();
+  if (sp.has("seasons") || sp.get("s")) return seasonsRoute();
+  showHomeView();
+});
+
+async function accountName() {
+  const { data: { session } } = await db.auth.getSession();
+  const u = session && session.user;
+  return (u && !u.is_anonymous && u.user_metadata && u.user_metadata.first_name) || "";
+}
+
+async function askFirstName() {
+  const n = await ask("What's your first name?", [{ label: "First name", placeholder: "So we can fill it in for you", max: 30 }], "Save");
+  if (!n) return false;
+  const { error } = await db.auth.updateUser({ data: { first_name: n[0] } });
+  if (error) { toast(error.message); return false; }
+  return true;
 }

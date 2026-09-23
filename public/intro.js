@@ -80,7 +80,7 @@ function slotSVG() {
     '</svg>';
 }
 
-function playHoleIntro({ hole, color, challenge, idx, message, wolfGrab, coins, cartRun, bbb, carry, slots, items = CHALLENGES }) {
+function playHoleIntro({ hole, color, challenge, idx, message, wolfGrab, coins, cartRun, bbb, carry, slots, cashRain, items = CHALLENGES }) {
   return new Promise(resolve => {
     const c = PALETTE.some(p => p[0] === color) ? color : "#5CE1FF";
     const ov = document.createElement("div");
@@ -265,6 +265,26 @@ function playHoleIntro({ hole, color, challenge, idx, message, wolfGrab, coins, 
                 { duration: 1400, delay: k * 20, easing: "cubic-bezier(.2,.6,.5,1)", fill: "both" });
             }
             await sleep(300);
+            if (done) return;
+          } else if (cashRain) {
+            // Wad: it's raining money and Crabby jumps for it
+            const wr = walker.getBoundingClientRect();
+            walker.classList.add("holding");
+            for (let k = 0; k < 18; k++) {
+              const bill = document.createElement("div");
+              bill.className = "intro-coin";
+              bill.textContent = "💵";
+              bill.style.left = Math.random() * (W - 30) + "px";
+              ov.append(bill);
+              bill.animate([{ transform: "translateY(-40px) rotate(0deg)" },
+                { transform: "translateY(" + (wr.bottom - 10) + "px) rotate(" + (Math.random() * 540 - 270) + "deg)" }],
+                { duration: 1300 + Math.random() * 900, delay: Math.random() * 700, easing: "cubic-bezier(.3,0,.7,1)", fill: "both" });
+              if (k % 5 === 0) setTimeout(() => Sound.play("coin"), 300 + k * 60);
+            }
+            walker.style.transformOrigin = "50% 100%";
+            walker.animate([{ transform: "translateY(0)" }, { transform: "translateY(-18px)" }, { transform: "translateY(0)" }],
+              { duration: 420, iterations: 3, easing: "ease-out" });
+            await sleep(1500);
             if (done) return;
           } else if (slots) {
             // Vegas: 7, 7, skull... and the machine falls on him

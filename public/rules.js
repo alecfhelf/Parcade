@@ -127,6 +127,20 @@ const RULES = {
       "The party leader sets Team A and Team B in the lobby, or taps Randomize teams."] },
     { h: "Winning", p: ["Most points after 18 wins. One blow-up hole can flip the whole round, so nobody's safe."] },
   ],
+  wad: [
+    { h: "Wad", p: ["A putting game that pays the clutch. Every time someone drains their first putt on the green from long range, the pot grows. Whoever makes the last one of the round takes it all."] },
+    { h: "What counts as a Wad", list: [
+      "Your first putt on the green, from at least the length of the flagstick, that drops. Any score counts, even a triple.",
+      "Chip-ins count. Putts from the fringe only count if they go in.",
+      "Each Wad adds the per-Wad amount to the pot. Made for birdie or better? It counts double.",
+      "The party leader, the group's co-leader, or the player who made it logs it on the hole card."] },
+    { h: "Winning", list: [
+      "Whoever makes the last Wad of the round collects the full pot from every other player in the group. In a foursome, that's three payouts.",
+      "The closing rule: on holes 16 to 18, a Wad only takes the pot if it's for net par or better. It still grows the pot either way.",
+      "Nobody makes a qualifying one late? The last earlier Wad still wins.",
+      "Early Wads mostly fatten the pot for whoever makes the next one. Keep the putter hot all day.",
+      "In a tournament, each group plays for its own pot."] },
+  ],
   round: [
     { h: "How a round works", list: [
       "The party leader creates the round, shares the link, picks a mode and starts it.",

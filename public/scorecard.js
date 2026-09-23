@@ -55,10 +55,10 @@ function podiumFigure(color, place) {
   return w;
 }
 
-function renderMoneySection(box, { round, players, entries, bets, user }) {
+function renderMoneySection(box, { round, players, entries, bets, user, override }) {
   const hasStakes = round.stakes === "pot" || round.stakes === "point";
   if (!hasStakes && !bets.length) return;
-  const { net, open } = moneyNet(round, entries, players, bets);
+  const { net, open } = moneyNet(round, entries, players, bets, override);
   box.append(scEl("h3", null, "💵 Payouts"));
   if (hasStakes) box.append(scEl("p", "waiting", moneySummary(round)));
 
@@ -190,10 +190,10 @@ function renderCaddyResults(box, { round, players, scores, user, preds, mulls, b
 
   const addWrap = scEl("div");
   box.append(addWrap);
-  renderAddToSeason(addWrap, round);
+  renderAddToSeason(addWrap, round, players);
 }
 
-function renderScorecard(box, { round, players, scores, results, user, picks, preds, mulls, bets }) {
+function renderScorecard(box, { round, players, scores, results, user, picks, preds, mulls, bets, wads }) {
   if (round.mode === "caddy") return renderCaddyResults(box, { round, players, scores, user, preds: preds || [], mulls: mulls || [], bets: bets || [] });
   const wolf = round.mode === "wolf";
   const skins = round.mode === "skins";
@@ -201,6 +201,8 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
   const bbb = round.mode === "bbb";
   const best = round.mode === "bestball";
   const vegas = round.mode === "vegas";
+  const wadMode = round.mode === "wad";
+  const wadHold = wadMode ? wadHolders(players, wads || []) : new Set();
   const vegasTot = vegas ? vegasTotals(round, players, scores) : {};
   const bestTot = best ? bestBallTotals(round, players, scores) : {};
   const bbbCount = (pl, k) => results.filter(x => x.award === k && x.winner_id === pl.id).length;
@@ -209,7 +211,7 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
     return n + " " + k[0].toUpperCase() + k.slice(1) + (n === 1 ? "" : "s");
   }).join(", ");
   const matchWon = match ? matchTotals(round, players, scores) : {};
-  const party = round.mode !== "stroke" && !wolf && !skins && !match && !bbb && !best && !vegas;
+  const party = round.mode !== "stroke" && !wolf && !skins && !match && !bbb && !best && !vegas && !wadMode;
   const skinTot = skins ? skinsState(round, players, scores).totals : {};
   const wolfTot = wolf ? wolfTotals(round, players, scores, picks || []) : {};
   const played = scores.filter(x => x.strokes);
@@ -226,11 +228,12 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
     const cursed = results.filter(r => r.winner_id === pl.id && r.points < 0);
     const chPts = [...won, ...cursed].reduce((a, r) => a + r.points, 0);
     return { pl, byHole, thru: mine.length, strokes: mine.reduce((a, x) => a + x.strokes, 0),
-             holePts, chPts, won: won.length, cursed: cursed.length, total: wolf ? (wolfTot[pl.id] || 0) : skins ? (skinTot[pl.id] || 0) : match ? (matchWon[pl.id] || 0) : bbb ? results.filter(x => x.award && x.winner_id === pl.id).length : best ? (bestTot[pl.id] || 0) : vegas ? (vegasTot[pl.id] || 0) : holePts + chPts };
+             holePts, chPts, won: won.length, cursed: cursed.length, total: wolf ? (wolfTot[pl.id] || 0) : skins ? (skinTot[pl.id] || 0) : match ? (matchWon[pl.id] || 0) : bbb ? results.filter(x => x.award && x.winner_id === pl.id).length : best ? (bestTot[pl.id] || 0) : vegas ? (vegasTot[pl.id] || 0) : wadMode ? (wads || []).filter(w => w.player_id === pl.id).length : holePts + chPts };
   });
-  if (party || wolf || skins || match || bbb || best || vegas) rows.sort((a, b) => b.total - a.total);
+  if (party || wolf || skins || match || bbb || best || vegas || wadMode) rows.sort((a, b) => b.total - a.total);
   else { const avg = r => (r.thru ? (r.strokes - (allow[r.pl.id] || 0) * r.thru) / r.thru : Infinity); rows.sort((a, b) => avg(a) - avg(b)); }
-  const headline = r => (match ? r.total + (r.total === 1 ? " hole won" : " holes won") : skins ? r.total + (r.total === 1 ? " skin" : " skins") : (party || wolf || bbb || best || vegas) ? r.total + " pts" : (r.thru ? r.strokes + " strokes" + (round.handicap ? ", net " + Math.round(r.strokes - (allow[r.pl.id] || 0) * r.thru) : "") : "-"));
+  if (wadMode) rows.sort((a, b) => (wadHold.has(b.pl.id) - wadHold.has(a.pl.id)) || b.total - a.total);
+  const headline = r => (wadMode ? (wadHold.has(r.pl.id) ? "💰 Won the Wad" : r.total + " made") : match ? r.total + (r.total === 1 ? " hole won" : " holes won") : skins ? r.total + (r.total === 1 ? " skin" : " skins") : (party || wolf || bbb || best || vegas) ? r.total + " pts" : (r.thru ? r.strokes + " strokes" + (round.handicap ? ", net " + Math.round(r.strokes - (allow[r.pl.id] || 0) * r.thru) : "") : "-"));
 
   box.innerHTML = "";
 
@@ -271,22 +274,22 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
     nm.append((i + 1) + ". ", figureEl(r.pl.color), r.pl.name + (r.pl.user_id === user.id ? " (you)" : ""));
     left.append(nm);
     const sign = r.chPts > 0 ? "+" : "";
-    const detail = bbb ? bbbDetail(r.pl) : (best || vegas) ? (r.pl.team ? TEAM_NAMES[r.pl.team] : "No team") + (r.thru ? ", thru " + r.thru + " holes" : "") : party
+    const detail = wadMode ? r.total + (r.total === 1 ? " Wad made" : " Wads made") : bbb ? bbbDetail(r.pl) : (best || vegas) ? (r.pl.team ? TEAM_NAMES[r.pl.team] : "No team") + (r.thru ? ", thru " + r.thru + " holes" : "") : party
       ? "Holes " + r.holePts + ", challenges " + sign + r.chPts + " (" + r.won + " won, " + r.cursed + (r.cursed === 1 ? " curse" : " curses") + ")"
       : (r.thru ? "Thru " + r.thru + " holes" : "No scores entered");
     left.append(scEl("span", "detail", detail));
     const li = scEl("li");
     const right = scEl("span", null, headline(r));
-    if ((party || wolf || skins || match || bbb || best || vegas) && r.thru) right.append(scEl("span", "sub-score", " (" + r.strokes + ")"));
+    if ((party || wolf || skins || match || bbb || best || vegas || wadMode) && r.thru) right.append(scEl("span", "sub-score", " (" + r.strokes + ")"));
     li.append(left, right);
     list.append(li);
   });
   box.append(list);
 
-  const pointsMode = party || wolf || skins || match || bbb || best || vegas;
+  const pointsMode = party || wolf || skins || match || bbb || best || vegas || wadMode;
   const entries = rows.filter(r => pointsMode || r.thru).map(r => ({
     pl: r.pl, v: pointsMode ? r.total : -(r.strokes - (allow[r.pl.id] || 0) * r.thru) }));
-  renderMoneySection(box, { round, players, entries, bets: bets || [], user });
+  renderMoneySection(box, { round, players, entries, bets: bets || [], user, override: wadMode ? wadMoney(round, players, wads || []) : null });
 
   box.append(scEl("h3", null, "Scorecard"));
   if (!holes.length) {
@@ -319,21 +322,41 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
 
   const addWrap = scEl("div");
   box.append(addWrap);
-  renderAddToSeason(addWrap, round);
+  renderAddToSeason(addWrap, round, players);
 }
 
-function renderAddToSeason(wrap, round) {
+function renderAddToSeason(wrap, round, players) {
   const btn = scEl("button", null, "Add to season");
   btn.style.cssText = "width:100%;margin-top:20px";
   const note = scEl("p", "waiting");
   const home = scEl("button", "btn-ghost", "Back to home");
   home.style.cssText = "width:100%;margin-top:10px";
   home.onclick = () => (location.href = "/");
-  wrap.append(btn, note, home);
+  const acct = scEl("div", "chip-row");
+  acct.style.justifyContent = "center";
+  wrap.append(btn, note, acct, home);
   btn.onclick = async () => {
     const { data: { session } } = await db.auth.getSession();
     const u = session && session.user;
-    if (!u || u.is_anonymous) { note.textContent = "Create an account on the home screen to use seasons."; return; }
+    if (!u || u.is_anonymous) {
+      note.textContent = "Seasons need an account. Sign in or make one right here and this round comes with you.";
+      acct.innerHTML = "";
+      const go = async (fn) => {
+        const oldId = u ? u.id : null;
+        if (!(await fn())) return;
+        const { data: { session: s2 } } = await db.auth.getSession();
+        const nu = s2 && s2.user;
+        if (!nu || nu.is_anonymous) return;
+        const mine = (players || []).find(pl => pl.user_id === oldId);
+        if (mine && oldId && nu.id !== oldId) await db.rpc("claim_player", { p_player_id: mine.id });
+        acct.innerHTML = "";
+        note.textContent = "";
+        btn.onclick();
+      };
+      const mk = (label, fn) => { const b = scEl("button", null, label); b.onclick = () => go(fn); return b; };
+      acct.append(mk("Create account", createAccount), mk("Sign in", signIn));
+      return;
+    }
     const { data: seasons } = await db.from("seasons").select("id, name").eq("owner_id", u.id).order("created_at", { ascending: false });
     if (!seasons || !seasons.length) { note.textContent = "You don't run any seasons yet. Start one from Seasons on the home screen."; return; }
     const { data: already } = await db.from("season_rounds").select("season_id").eq("round_id", round.id);

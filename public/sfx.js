@@ -2,7 +2,9 @@
 const Sound = (() => {
   const load = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v === "1"; } catch (e) { return d; } };
   const save = (k, v) => { try { localStorage.setItem(k, v ? "1" : "0"); } catch (e) {} };
-  let sfxOn = load("parful-sfx", true), musicOn = load("parful-music", true), wantMusic = false;
+  let muted = load("parful-muted2", true), musicOn = load("parful-music2", true), wantMusic = false;
+  let sfxOn = !muted;
+  let vol = (() => { try { const v = parseFloat(localStorage.getItem("parful-vol")); return isNaN(v) ? 0.6 : v; } catch (e) { return 0.6; } })();
   let ctx = null, master = null, musicBus = null, hatBuf = null;
 
   function ac() {
@@ -10,7 +12,7 @@ const Sound = (() => {
       const C = window.AudioContext || window.webkitAudioContext;
       if (!C) return null;
       ctx = new C();
-      master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
+      master = ctx.createGain(); master.gain.value = vol * 0.8; master.connect(ctx.destination);
       musicBus = ctx.createGain(); musicBus.gain.value = 0.35; musicBus.connect(master);
     }
     return ctx;
@@ -82,16 +84,16 @@ const Sound = (() => {
     env.connect(out);
 
     const lfo = ctx.createOscillator(), lfoG = ctx.createGain();
-    lfo.frequency.value = 5.5;
-    lfoG.gain.value = 9;
+    lfo.frequency.value = 4.8;
+    lfoG.gain.value = 7;
     lfo.connect(lfoG);
     [[1, "sine", 1], [2, "triangle", 0.18]].forEach(([mult, type, vol]) => {
       const o = ctx.createOscillator(), g = ctx.createGain();
       o.type = type;
-      o.frequency.setValueAtTime(330 * mult, t);
-      o.frequency.exponentialRampToValueAtTime(680 * mult, t + 0.45);
-      o.frequency.linearRampToValueAtTime(740 * mult, t + 1.2);
-      o.frequency.exponentialRampToValueAtTime(420 * mult, t + D);
+      o.frequency.setValueAtTime(200 * mult, t);
+      o.frequency.exponentialRampToValueAtTime(430 * mult, t + 0.45);
+      o.frequency.linearRampToValueAtTime(470 * mult, t + 1.2);
+      o.frequency.exponentialRampToValueAtTime(260 * mult, t + D);
       lfoG.connect(o.frequency);
       g.gain.value = vol;
       o.connect(g); g.connect(env);
@@ -106,9 +108,9 @@ const Sound = (() => {
     const bp = ctx.createBiquadFilter();
     bp.type = "bandpass";
     bp.Q.value = 3;
-    bp.frequency.setValueAtTime(700, t);
-    bp.frequency.exponentialRampToValueAtTime(1400, t + 0.45);
-    bp.frequency.exponentialRampToValueAtTime(900, t + D);
+    bp.frequency.setValueAtTime(500, t);
+    bp.frequency.exponentialRampToValueAtTime(950, t + 0.45);
+    bp.frequency.exponentialRampToValueAtTime(650, t + D);
     const ng = ctx.createGain();
     ng.gain.value = 0.12;
     n.connect(bp); bp.connect(ng); ng.connect(env);
@@ -118,6 +120,7 @@ const Sound = (() => {
   }
 
   const FX = {
+    click: () => tone(900, 0.03, { type: "triangle", vol: 0.08, slide: 650 }),
     tick: () => tone(1800, 0.03, { vol: 0.07 }),
     pop: () => tone(520, 0.09, { type: "triangle", vol: 0.25, slide: 880 }),
     blip: () => { tone(880, 0.06, { type: "sine", vol: 0.15 }); tone(1320, 0.08, { type: "sine", vol: 0.12, at: 0.06 }); },
@@ -161,7 +164,7 @@ const Sound = (() => {
     }
   }
   function syncMusic() {
-    const should = musicOn && wantMusic && live() && !document.hidden;
+    const should = musicOn && !muted && wantMusic && live() && !document.hidden;
     if (should && !timer) { nextT = ctx.currentTime + 0.05; timer = setInterval(schedule, 60); }
     else if (!should && timer) { clearInterval(timer); timer = null; }
   }
@@ -176,35 +179,63 @@ const Sound = (() => {
     music(want) { wantMusic = want; syncMusic(); },
     get sfxOn() { return sfxOn; },
     get musicOn() { return musicOn; },
-    setSfx(v) { sfxOn = v; save("parful-sfx", v); },
-    setMusic(v) { musicOn = v; save("parful-music", v); syncMusic(); },
+    get muted() { return muted; },
+    get volume() { return vol; },
+    setMuted(m) { muted = m; sfxOn = !m; save("parful-muted2", m); if (!m) { const c = ac(); if (c) c.resume().then(syncMusic).catch(() => {}); } syncMusic(); },
+    setVolume(v) {
+      vol = Math.max(0, Math.min(1, v));
+      try { localStorage.setItem("parful-vol", String(vol)); } catch (e) {}
+      if (master) master.gain.setTargetAtTime(vol * 0.8, ctx.currentTime, 0.02);
+    },
+    setMusic(v) { musicOn = v; save("parful-music2", v); syncMusic(); },
   };
 })();
 
 function soundButton() {
+  const wrap = document.createElement("span");
+  wrap.className = "sound-ctl";
   const b = document.createElement("button");
   b.className = "copy-top sound-btn";
-  const states = [[true, true, "Sound: On"], [true, false, "Sound: FX only"], [false, false, "Sound: Off"]];
-  const idx = () => states.findIndex(st => st[0] === Sound.sfxOn && st[1] === Sound.musicOn);
-  const icons = [
-    '<path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/>',
-    '<path d="M16 8.5a5 5 0 0 1 0 7"/>',
-    '<path d="M16 9l5 6M21 9l-5 6"/>',
-  ];
+  const panel = document.createElement("div");
+  panel.className = "sound-panel";
+  panel.hidden = true;
+  panel.innerHTML = '<label class="sp-row"><span>Volume</span><input type="range" min="0" max="100" step="1"></label>' +
+    '<div class="sp-row"><span>Music</span><button type="button" class="switch sp-music" role="switch"></button></div>' +
+    '<button type="button" class="link-btn sp-mute">Mute</button>';
+  const slider = panel.querySelector("input"), mBtn = panel.querySelector(".sp-music"), muteBtn = panel.querySelector(".sp-mute");
   const sync = () => {
-    const i = Math.max(0, idx());
+    const m = Sound.muted, v = Sound.volume;
+    const waves = m || v === 0 ? '<path d="M16 9l5 6M21 9l-5 6"/>'
+      : v < 0.5 ? '<path d="M16 8.5a5 5 0 0 1 0 7"/>'
+      : '<path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/>';
     b.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">' +
-      '<path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" stroke="none"/>' + icons[i] + '</svg>';
-    b.setAttribute("aria-label", states[i][2]);
-    b.title = states[i][2];
+      '<path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" stroke="none"/>' + waves + '</svg>';
+    const label = m ? "Sound is off. Tap to turn it on" : "Sound settings";
+    b.setAttribute("aria-label", label);
+    b.title = label;
+    b.setAttribute("aria-expanded", String(!panel.hidden));
+    slider.value = Math.round(v * 100);
+    mBtn.textContent = Sound.musicOn ? "On" : "Off";
+    mBtn.classList.toggle("on", Sound.musicOn);
+    mBtn.setAttribute("aria-checked", String(Sound.musicOn));
   };
-  b.onclick = () => {
-    const n = states[(idx() + 1) % states.length];
-    Sound.setSfx(n[0]);
-    Sound.setMusic(n[1]);
+  b.onclick = (e) => {
+    e.stopPropagation();
+    if (Sound.muted) { Sound.setMuted(false); panel.hidden = false; setTimeout(() => Sound.play("pop"), 60); }
+    else panel.hidden = !panel.hidden;
     sync();
-    if (n[0]) Sound.play("pop");
   };
+  slider.oninput = () => { Sound.setVolume(slider.value / 100); sync(); };
+  slider.onchange = () => Sound.play("pop");
+  mBtn.onclick = () => { Sound.setMusic(!Sound.musicOn); sync(); };
+  muteBtn.onclick = () => { Sound.setMuted(true); panel.hidden = true; sync(); };
+  panel.onclick = (e) => e.stopPropagation();
+  document.addEventListener("click", () => { if (!panel.hidden) { panel.hidden = true; sync(); } });
+  wrap.append(b, panel);
   sync();
-  return b;
+  return wrap;
 }
+
+document.addEventListener("click", (e) => {
+  if (e.target.closest && e.target.closest("button")) Sound.play("click");
+}, true);
