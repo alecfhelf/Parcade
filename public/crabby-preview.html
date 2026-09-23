@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Crabby preview</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; align-content: center; gap: 16px;
+      background: #060A1A; color: #8A9BC4; font-family: system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="stage"></div>
+  <p>Crabby preview. Not linked from the app.</p>
+  <script src="crabby.js"></script>
+  <script>document.getElementById("stage").append(crabbyEl(220));</script>
+</body>
+</html>

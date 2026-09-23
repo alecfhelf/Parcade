@@ -36,7 +36,7 @@ function accountPrompt(box, msg) {
 
 async function loadSeasonList() {
   const box = pageShell("Seasons", "Keep score across the whole trip");
-  box.append(backBtn("/", "Back to home"));
+  box.append(backBtn("/", "Back to home"), infoLink("How seasons work", () => showRulesModal("Seasons", ["seasons"])));
   await ensureUser();
   const acct = await currentAccount();
   if (!acct) { accountPrompt(box, "Seasons need an account so your points follow you from round to round."); return; }
@@ -81,17 +81,40 @@ async function joinSeasonByCode() {
   if (vals) location.href = "/?s=" + vals[0].toUpperCase();
 }
 
-function roundStandings(round, rp, rs, rr) {
+function roundStandings(round, rp, rs, rr, wp, cpr, cmu) {
+  if (round.mode === "caddy") {
+    const cp = caddyTotals(cpr || [], cmu || []);
+    const cad = rp.filter(p => p.role === "caddy").map(pl => ({ pl, v: cp[pl.id] || 0 })).sort((a, b) => b.v - a.v);
+    let cplace = 0;
+    cad.forEach((r, i) => {
+      if (i === 0 || r.v !== cad[i - 1].v) cplace = i;
+      r.place = cplace;
+      r.pts = [5, 3, 1][cplace] || 0;
+    });
+    return cad.concat(roundStandings({ ...round, mode: "stroke" }, rp.filter(p => p.role !== "caddy"), rs, rr, wp));
+  }
   const played = rs.filter(x => x.strokes);
+  const allow = holeAllowances(round, rp);
+  const wolfTot = round.mode === "wolf" ? wolfTotals(round, rp, rs, wp || []) : {};
+  const skinTot = round.mode === "skins" ? skinsState(round, rp, rs).totals : {};
+  const matchWon = round.mode === "match" ? matchTotals(round, rp, rs) : {};
+  const bestTot = round.mode === "bestball" ? bestBallTotals(round, rp, rs) : {};
+  const vegasTot = round.mode === "vegas" ? vegasTotals(round, rp, rs) : {};
   const rows = rp.map(pl => {
     const mine = played.filter(x => x.player_id === pl.id);
     if (!mine.length) return null;
+    if (round.mode === "wolf") return { pl, v: wolfTot[pl.id] || 0 };
+    if (round.mode === "skins") return { pl, v: skinTot[pl.id] || 0 };
+    if (round.mode === "match") return { pl, v: matchWon[pl.id] || 0 };
+    if (round.mode === "bestball") return { pl, v: bestTot[pl.id] || 0 };
+    if (round.mode === "vegas") return { pl, v: vegasTot[pl.id] || 0 };
+    if (round.mode === "bbb") return { pl, v: rr.filter(x => x.award && x.winner_id === pl.id).length };
     if (round.mode === "stroke") {
       const total = mine.reduce((a, x) => a + x.strokes, 0);
-      return { pl, v: -(total / mine.length) };
+      return { pl, v: -((total - (allow[pl.id] || 0) * mine.length) / mine.length) };
     }
     let pts = 0;
-    mine.forEach(m => { pts += 1 + played.filter(o => o.hole === m.hole && o.strokes > m.strokes).length; });
+    mine.forEach(m => { pts += 1 + played.filter(o => o.hole === m.hole && netOf(o, allow) > netOf(m, allow)).length; });
     rr.filter(r => r.winner_id === pl.id).forEach(r => { pts += r.points; });
     return { pl, v: pts };
   }).filter(Boolean);
@@ -130,10 +153,11 @@ async function loadSeason(code) {
 
   const joinArea = el("div");
   const standings = el("ul", { className: "player-list" });
+  const moneyArea = el("div");
   const roundsList = el("ul", { className: "player-list" });
   const addArea = el("div");
-  box.append(backBtn("/?seasons", "All seasons"), linkRow, joinArea,
-    h3el("Standings"), standings, h3el("Rounds"), roundsList, addArea);
+  box.append(backBtn("/?seasons", "All seasons"), infoLink("How seasons work", () => showRulesModal("Seasons", ["seasons"])), linkRow, joinArea,
+    h3el("Standings"), standings, moneyArea, h3el("Rounds"), roundsList, addArea);
 
   async function refresh() {
     const [{ data: members }, { data: sr }] = await Promise.all([
@@ -141,18 +165,23 @@ async function loadSeason(code) {
       db.from("season_rounds").select("round_id").eq("season_id", season.id),
     ]);
     const ids = (sr || []).map(x => x.round_id);
-    let rounds = [], players = [], scores = [], results = [];
+    let rounds = [], players = [], scores = [], results = [], picks = [], cpreds = [], cmulls = [], sbets = [];
     if (ids.length) {
       const res = await Promise.all([
         db.from("rounds").select("*").in("id", ids).order("created_at"),
         db.from("players").select("*").in("round_id", ids),
         db.from("scores").select("*").in("round_id", ids),
         db.from("challenge_results").select("*").in("round_id", ids),
+        db.from("wolf_picks").select("*").in("round_id", ids),
+        db.from("predictions").select("*").in("round_id", ids),
+        db.from("mulligans").select("*").in("round_id", ids),
+        db.from("bets").select("*").in("round_id", ids),
       ]);
-      [rounds, players, scores, results] = res.map(r => r.data || []);
+      [rounds, players, scores, results, picks, cpreds, cmulls, sbets] = res.map(r => r.data || []);
     }
     renderJoin(members || []);
-    renderStandings(members || [], rounds, players, scores, results);
+    renderStandings(members || [], rounds, players, scores, results, picks, cpreds, cmulls);
+    renderMoneyStats(members || [], rounds, players, scores, results, picks, cpreds, cmulls, sbets);
     renderRounds(rounds);
     if (isOwner) renderAdd(ids);
   }
@@ -173,7 +202,7 @@ async function loadSeason(code) {
     joinArea.append(b);
   }
 
-  function renderStandings(members, rounds, players, scores, results) {
+  function renderStandings(members, rounds, players, scores, results, picks, cpreds, cmulls) {
     const memberById = new Map(members.map(m => [m.user_id, m]));
     const totals = new Map();
     members.forEach(m => totals.set("u:" + m.user_id, { name: m.name, pts: 0, wins: 0, rounds: 0 }));
@@ -181,7 +210,10 @@ async function loadSeason(code) {
       const rows = roundStandings(round,
         players.filter(p => p.round_id === round.id),
         scores.filter(x => x.round_id === round.id),
-        results.filter(x => x.round_id === round.id));
+        results.filter(x => x.round_id === round.id),
+        picks.filter(x => x.round_id === round.id),
+        cpreds.filter(x => x.round_id === round.id),
+        cmulls.filter(x => x.round_id === round.id));
       rows.forEach(r => {
         const m = memberById.get(r.pl.user_id);
         const key = m ? "u:" + r.pl.user_id : "n:" + r.pl.name.trim().toLowerCase();
@@ -202,6 +234,73 @@ async function loadSeason(code) {
     });
   }
 
+  function renderMoneyStats(members, rounds, players, scores, results, picks, cpreds, cmulls, sbets) {
+    moneyArea.innerHTML = "";
+    const staked = r => r.stakes === "pot" || r.stakes === "point";
+    const moneyRounds = rounds.filter(r => staked(r) || sbets.some(b => b.round_id === r.id));
+    if (!moneyRounds.length) return;
+    const memberById = new Map(members.map(m => [m.user_id, m]));
+    const keyOf = pl => (memberById.has(pl.user_id) ? "u:" + pl.user_id : "n:" + pl.name.trim().toLowerCase());
+    const nameOf = pl => (memberById.has(pl.user_id) ? memberById.get(pl.user_id).name : pl.name);
+    const stats = new Map();
+    const get = pl => {
+      const k = keyOf(pl);
+      if (!stats.has(k)) stats.set(k, { name: nameOf(pl), net: 0, best: null, worst: null, won: 0, lost: 0, push: 0 });
+      return stats.get(k);
+    };
+
+    moneyRounds.forEach(round => {
+      const of = arr => arr.filter(x => x.round_id === round.id);
+      const rp = of(players), rs = of(scores), rr = of(results), wp = of(picks), cpr = of(cpreds), cmu = of(cmulls), rb = of(sbets);
+      let entries;
+      if (round.mode === "caddy") {
+        const cp = caddyTotals(cpr, cmu);
+        entries = rp.filter(p => p.role === "caddy").map(pl => ({ pl, v: cp[pl.id] || 0 }));
+      } else if (round.mode === "stroke") {
+        const allow = holeAllowances(round, rp);
+        entries = rp.map(pl => {
+          const mine = rs.filter(x => x.player_id === pl.id && x.strokes);
+          if (!mine.length) return null;
+          const total = mine.reduce((a, x) => a + x.strokes, 0);
+          return { pl, v: -(total - (allow[pl.id] || 0) * mine.length) };
+        }).filter(Boolean);
+      } else {
+        entries = roundStandings(round, rp, rs, rr, wp, cpr, cmu).map(r => ({ pl: r.pl, v: r.v }));
+      }
+      const { net } = moneyNet(round, entries, rp, rb);
+      rp.forEach(pl => {
+        const inRound = staked(round) && entries.some(e => e.pl.id === pl.id);
+        const inBets = rb.some(b => b.creator_id === pl.id || b.taker_id === pl.id);
+        if (!inRound && !inBets) return;
+        const s = get(pl), t = net[pl.id].total;
+        s.net += t;
+        s.best = s.best == null ? t : Math.max(s.best, t);
+        s.worst = s.worst == null ? t : Math.min(s.worst, t);
+      });
+      rb.forEach(b => {
+        if (!b.taker_id || !b.outcome) return;
+        const cr = rp.find(p => p.id === b.creator_id), tk = rp.find(p => p.id === b.taker_id);
+        if (b.outcome === "push") { if (cr) get(cr).push++; if (tk) get(tk).push++; return; }
+        const w = b.outcome === "creator" ? cr : tk, l = b.outcome === "creator" ? tk : cr;
+        if (w) get(w).won++;
+        if (l) get(l).lost++;
+      });
+    });
+
+    moneyArea.append(h3el("💵 Money"));
+    const ul = el("ul", { className: "player-list" });
+    [...stats.values()].sort((a, b) => b.net - a.net).forEach(s => {
+      const parts = [];
+      if (s.best != null && s.best > 0) parts.push("Biggest win " + moneySigned(s.best));
+      if (s.worst != null && s.worst < 0) parts.push("biggest loss " + moneySigned(s.worst));
+      const decided = s.won + s.lost;
+      if (decided || s.push) parts.push("side bets " + s.won + "-" + s.lost + (s.push ? "-" + s.push : "") + (decided ? " (" + Math.round(s.won / decided * 100) + "%)" : ""));
+      const left = el("div", {}, el("span", { textContent: s.name }), el("span", { className: "detail", textContent: parts.join(", ") || "No money moved yet" }));
+      ul.append(el("li", {}, left, el("span", { className: s.net > 0 ? "money-pos" : s.net < 0 ? "money-neg" : "", textContent: moneySigned(s.net) })));
+    });
+    moneyArea.append(ul);
+  }
+
   function renderRounds(rounds) {
     roundsList.innerHTML = "";
     if (!rounds.length) {
@@ -209,7 +308,7 @@ async function loadSeason(code) {
       return;
     }
     rounds.forEach(r => {
-      const mode = r.mode === "stroke" ? "Stroke Play" : r.mode === "party" ? "Party Mode" : "Not started";
+      const mode = MODES[r.mode] ? MODES[r.mode].name : "Not started";
       const name = el("span", { textContent: r.name + " (" + mode + ")" });
       name.style.cursor = "pointer";
       name.onclick = () => (location.href = "/?r=" + r.code);
