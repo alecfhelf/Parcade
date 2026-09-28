@@ -155,17 +155,20 @@ function crabbyDesk(line) {
 
 const CRABBY_SEASON = {
   tour: [
-    "Oh good, a Seasons guy. A season strings your rounds together so you can keep beating the same friends all year long.",
-    "Tap Start a season, then send the code to your buddies so they can join. They need accounts. Guests don't get to hold grudges.",
-    "Whoever starts it is the commissioner. Only the commissioner adds rounds, and only rounds they actually played in.",
-    "Every round pays out season points: 5 for 1st, 3 for 2nd, 1 for 3rd. Everybody else gets character development.",
-    "Playing for money? I track who's up, who's down, the biggest win, the biggest loss, and everybody's side bet record. Try not to cry.",
-    "That's it. Tap Start a season, or Join with a code if somebody already did the hard part.",
+    "Oh good, a Seasons guy. A season lets your crew compete all year, whether you play together or sneak out alone.",
+    "Pick a format. Everybody counts the same number of rounds, or pick dates and your best rounds count.",
+    "Join with the code and tell me your handicap. Don't know it? Tell me what you usually shoot. Lie and I'll know.",
+    "Finish a round, open the season, tap Add a round. You add your own. No waiting on the commissioner.",
+    "Points come from beating your own handicap, so the 20 can beat the scratch guy. Tough course? I adjust for it.",
+    "Play the same round as other members and it counts toward your head-to-head record. Bragging rights only, no points. Tap Start a season or Join with a code.",
   ],
   tourGuest: [
-    "Oh good, a Seasons guy. A season strings your rounds together so you can keep beating the same friends all year long.",
-    "Seasons need an account so your points follow you around. Hit Create account or Sign in below. I'll wait. Again.",
+    "Oh good, a Seasons guy. A season lets your crew compete all year, whether you play together or sneak out alone.",
+    "Seasons need an account so your rounds follow you around. Hit Create account or Sign in below. I'll wait. Again.",
   ],
+  v2owner: "Your season, boss. Share the link. Everybody adds their own rounds and I do the math. Fix handicaps at the bottom.",
+  v2member: "Finish a round, then tap Add a round. Beat your handicap, get points. Simple enough, even for you.",
+  v2join: "Hit Join this season and tell me your handicap. Ten seconds. Even you can manage that.",
   owner: "This is your season, commissioner. Share the link, then add rounds from the list at the bottom. Standings and money update themselves.",
   member: "Standings up top, money below if you play for cash. The commissioner adds the rounds, so complain to them, not me.",
   join: "Hit Join this season. Takes two seconds. Even you can manage that.",
@@ -173,21 +176,29 @@ const CRABBY_SEASON = {
 };
 
 function crabbyTour(desk, lines) {
-  desk.reserve(lines);
+  if (desk.reserve) desk.reserve(lines);
   let i = 0;
   const ctl = document.createElement("div");
   ctl.className = "cd-ctl";
   const count = document.createElement("span");
   count.className = "cd-count";
+  const btns = document.createElement("div");
+  btns.className = "cd-btns";
+  const back = document.createElement("button");
+  back.className = "link-btn cd-back";
+  back.textContent = "Back";
   const next = document.createElement("button");
   next.className = "link-btn";
-  ctl.append(count, next);
+  btns.append(back, next);
+  ctl.append(count, btns);
   desk.querySelector(".cd-bubble").append(ctl);
   const show = () => {
     desk.say(lines[i]);
     count.textContent = (i + 1) + " / " + lines.length;
+    back.style.visibility = i > 0 ? "visible" : "hidden";
     next.textContent = i < lines.length - 1 ? "Next" : "Got it";
   };
+  back.onclick = () => { if (i > 0) { i--; show(); } };
   next.onclick = () => {
     if (i < lines.length - 1) { i++; show(); } else ctl.remove();
   };

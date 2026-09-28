@@ -116,6 +116,10 @@
     .account-line { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: center; color: var(--muted); font-size: 0.95rem; }
     .link-btn { background: none; color: var(--glow); padding: 4px 2px; font-size: 0.95rem; font-weight: 600; clip-path: none; text-decoration: underline; text-underline-offset: 3px; }
     .link-btn:hover { background: none; color: var(--ink); }
+    .danger, .link-btn.danger { color: #FF7A90; }
+    .link-btn.danger:hover { color: #FF5C7A; }
+    .danger-row { text-align: center; margin: 22px 0 8px; }
+    .gone-note { text-align: center; margin: 24px 0 14px; }
     .lobby > button.link-btn { display: inline-block; width: auto; margin: 0 0 8px; }
     .modal-note { color: var(--muted); margin: -8px 0 16px; }
     .pick-list { margin-bottom: 10px; }
@@ -575,6 +579,19 @@
     .hcp-opt:disabled { opacity: 0.2; cursor: default; background: var(--bg); }
     .hole-info { color: var(--muted); font-size: 0.9rem; margin: -4px 0 10px; letter-spacing: 0.02em; }
     .sc-meta td { color: var(--muted); font-size: 0.8rem; }
+    .cd-btns { display: flex; gap: 16px; }
+    .diff-badge { display: inline-block; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em; padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(92,225,255,0.45); color: var(--glow); white-space: nowrap; }
+    .diff-badge.warn { border-color: rgba(255,216,77,0.55); color: #FFD84D; border-style: dashed; }
+    .season-banner { margin: 12px 0 4px; padding: 12px 14px; border-radius: 12px; border: 1px solid #FFD84D; color: #FFD84D; text-align: center; font-weight: 700; box-shadow: 0 0 14px rgba(255,216,77,0.25); }
+    .season-status { color: var(--glow); font-weight: 600; }
+    .player-list li.sv2-row { flex-wrap: wrap; cursor: pointer; }
+    .sv2-rounds { width: 100%; margin: 8px 0 2px; padding: 0 0 0 10px; list-style: none; border-left: 2px solid rgba(92,225,255,0.3); }
+    .sv2-rounds li { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 0.9rem; }
+    .sv2-rounds li:last-child { border-bottom: none; }
+    .sv2-pts { text-align: right; white-space: nowrap; }
+    .sv2-uncounted { opacity: 0.55; }
+    .fmt-pick { display: flex; gap: 8px; }
+    .modal-panel input[type="date"] { color-scheme: dark; }
   </style>
 </head>
 <body>
@@ -652,6 +669,7 @@
   <script src="teams.js"></script>
   <script src="money.js"></script>
   <script src="wad.js"></script>
+  <script src="seasonscore.js"></script>
   <script src="app.js"></script>
   <script src="seasons.js"></script>
 </body>

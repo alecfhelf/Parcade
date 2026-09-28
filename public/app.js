@@ -61,10 +61,11 @@ function strokeHolesText(a) {
   return allOne ? "Strokes on every hole" : "Strokes on holes " + list.join(", ");
 }
 const validHcp = (v) => { const n = parseFloat(v); return !isNaN(n) && n >= -10 && n <= 54; };
-async function askHandicap(name, current) {
+async function askHandicap(name, current, prefill) {
   const cur = current || {};
   const v = await ask(name ? "Handicap for " + name : "What's your handicap?", [
-    { label: "Type in your handicap", type: "number", decimal: true, max: 5, placeholder: cur.hcp != null ? String(cur.hcp) : "e.g. 14.2" }
+    { label: "Type in your handicap", type: "number", decimal: true, max: 5, placeholder: cur.hcp != null ? String(cur.hcp) : "e.g. 14.2",
+      value: prefill && cur.hcp != null ? String(cur.hcp) : "" }
   ], "Lock it in", "Plus handicap? Use a minus sign, like -2.",
   async ([x]) => (validHcp(x) ? null : "Enter a handicap between -10 and 54."), null,
   name ? "They don't know their handicap" : "I don't know my handicap");
@@ -676,8 +677,7 @@ async function loadRound(code) {
         } else if (out.tees && out.tees.length) tee = out.tees[0];
         const m = await parsModal({ name: out.name, location: out.location, tee_name: tee ? teeLabel(tee) : "", pars: out.pars, hcp_index: out.hcp_index });
         if (!m) return;
-        saveCourse({ ...m, source: "photo",
-          rating: (tee && tee.course_rating) || null, slope: (tee && tee.slope) || null });
+        saveCourse({ ...m, source: "photo", ...teeDifficulty(tee, out.tees) });
       } catch (e) {
         toast(e.message || "Couldn't read that one. Try a clearer photo.");
       } finally {
@@ -767,12 +767,12 @@ async function loadRound(code) {
       }
       const tee_name = tee ? teeLabel(tee) : null;
       const { data: have } = await db.from("courses").select("*").eq("source", "api").eq("external_id", c.id);
-      const matches = (have || []).filter(x => (x.tee_name || null) === tee_name && x.pars.join() === pars.join());
+      const matches = (have || []).filter(x => (x.tee_name || null) === tee_name && x.pars.join() === pars.join()
+        && (x.created_by === user.id || !x.hcp_index));
       const match = matches.find(x => x.hcp_index) || matches[0];
       const base = match || {
         name: d.name || c.name, location, tee_name, pars, hcp_index,
-        rating: tee && tee.course_rating ? tee.course_rating : null,
-        slope: tee && tee.slope ? tee.slope : null,
+        ...teeDifficulty(tee, d.tees),
         source: "api", external_id: c.id
       };
       if (!base.hcp_index) {
@@ -784,7 +784,7 @@ async function loadRound(code) {
         if (pick === "add") {
           const m = await parsModal({ name: base.name, location: base.location, tee_name: base.tee_name, pars: base.pars, showHcp: true });
           if (m) {
-            saveCourse({ ...m, rating: base.rating, slope: base.slope, source: "api", external_id: c.id });
+            saveCourse({ ...m, ...teeDifficulty(tee, d.tees), source: "api", external_id: c.id });
             return;
           }
         }
@@ -801,7 +801,7 @@ async function loadRound(code) {
         if (q.length < 3) return;
         cResults.append(note("Searching..."));
         const [own, ext] = await Promise.all([
-          db.from("courses").select("*").neq("source", "api").ilike("name", "%" + q.replace(/[%_\\]/g, "") + "%")
+          db.from("courses").select("*").neq("source", "api").eq("created_by", user.id).ilike("name", "%" + q.replace(/[%_\\]/g, "") + "%")
             .order("created_at", { ascending: false }).limit(5),
           apiSearch(q)
         ]);
@@ -1388,7 +1388,9 @@ async function loadRound(code) {
   const scoreArea = document.createElement("div");
   scoreArea.style.display = "none";
   scoreArea.className = "results";
-  box.append(lobby, game, scoreArea);
+  const deleteArea = document.createElement("div");
+  deleteArea.className = "danger-row";
+  box.append(lobby, game, scoreArea, deleteArea);
 
   const copyTop = document.createElement("button");
   copyTop.className = "copy-top";
@@ -1673,7 +1675,9 @@ async function loadRound(code) {
   }
 
   // ---------- Data + render ----------
+  let gone = false;
   async function refresh() {
+    if (gone) return;
     const [r, p, sc, c, wp, cp, pr, mu, bt, wd] = await Promise.all([
       fetchRound(),
       db.from("players").select("*").eq("round_id", round.id).order("created_at"),
@@ -1686,6 +1690,8 @@ async function loadRound(code) {
       db.from("bets").select("*").eq("round_id", round.id).order("created_at"),
       db.from("wads").select("*").eq("round_id", round.id).order("created_at"),
     ]);
+    if (gone) return;
+    if (!r.error && !r.data) { gone = true; showDeleted(box, "round"); return; }
     if (r.data) round = r.data;
     if (round.course_id && (!course || course.id !== round.course_id)) {
       const { data: cd } = await db.from("courses").select("*").eq("id", round.course_id).maybeSingle();
@@ -1744,6 +1750,30 @@ async function loadRound(code) {
     join.style.display = me ? "none" : "block";
     rejoinBtn.style.display = !me && players.length ? "inline-block" : "none";
     if (playing) renderGame();
+    renderDelete();
+  }
+
+  function renderDelete() {
+    deleteArea.innerHTML = "";
+    if (round.host_id !== user.id || round.status === "playing") return;
+    const del = document.createElement("button");
+    del.className = "link-btn danger";
+    del.textContent = "Delete this round";
+    del.onclick = deleteRound;
+    deleteArea.append(del);
+  }
+
+  async function deleteRound() {
+    const { data: n } = await db.rpc("round_season_count", { p_round: round.id });
+    const note = "Scores, chat and bets are gone for everyone. This can't be undone." +
+      (n > 0 ? " It's counted in " + n + (n === 1 ? " season" : " seasons") + ", so those standings will change." : "");
+    const ok = await ask("Delete " + round.name + "?", [], "Delete round", note, async () => {
+      const { error } = await db.rpc("delete_round", { p_round: round.id });
+      return error ? error.message : null;
+    });
+    if (!ok) return;
+    gone = true;
+    location.href = "/";
   }
 
   function renderGame() {
@@ -2734,7 +2764,7 @@ async function loadRound(code) {
     .on("postgres_changes", { ...live, event: "INSERT", table: "messages", filter: "round_id=eq." + round.id }, (payload) => onMessage(payload.new))
     .subscribe();
   setInterval(async () => {
-    if (document.hidden) return;
+    if (document.hidden || gone) return;
     const { data } = await db.from("messages").select("*").eq("round_id", round.id).order("created_at").limit(300);
     (data || []).forEach(m => onMessage(m));
   }, 8000);
@@ -2889,6 +2919,24 @@ function toast(msg, ok) {
   setTimeout(() => t.remove(), 3600);
 }
 
+// Someone deleted the round or season we're looking at: swap the page for a note and a Home button
+function showDeleted(box, what) {
+  document.querySelectorAll(".modal").forEach(m => m.remove());
+  document.querySelectorAll(".top-actions").forEach(b => b.remove());
+  document.body.classList.remove("has-rail", "has-copy");
+  document.body.style.paddingTop = "";
+  document.querySelector("h1 + p").textContent = "";
+  box.innerHTML = "";
+  const home = document.createElement("button");
+  home.textContent = "Home";
+  home.style.width = "100%";
+  home.onclick = () => { location.href = "/"; };
+  const p = document.createElement("p");
+  p.className = "gone-note";
+  p.textContent = "This " + what + " was deleted.";
+  box.append(p, home);
+}
+
 function openRound(code) {
   document.querySelectorAll(".season-box").forEach(b => b.remove());
   history.pushState({}, "", "/?r=" + code);
@@ -2924,10 +2972,10 @@ async function showRecentRounds() {
   const { data: mine } = await db.from("players").select("round_id").eq("user_id", uid);
   const ids = [...new Set((mine || []).map(x => x.round_id))];
   if (!ids.length) { toast("No rounds yet. Go play one."); return; }
-  const { data: rounds } = await db.from("rounds").select("id, name, code, status, created_at").in("id", ids).order("created_at", { ascending: false }).limit(15);
+  const { data: rounds } = await db.from("rounds").select("id, name, code, status, created_at").in("id", ids).order("created_at", { ascending: false }).limit(5);
   const label = r => r.name + " (" + (r.status === "finished" ? "finished" : r.status === "playing" ? "in progress" : "not started") +
     ", " + new Date(r.created_at).toLocaleDateString() + ")";
-  const choice = await pickFrom("Your recent rounds", (rounds || []).map(r => ({ label: label(r), value: r })));
+  const choice = await pickFrom("Your 5 most recent rounds", (rounds || []).map(r => ({ label: label(r), value: r })));
   if (choice) openRound(choice.code);
 }
 const recentBtn = $("recent-btn");
@@ -3166,6 +3214,29 @@ function parsModal(prefill) {
 function teeLabel(t) {
   return t.tee_name + (t.gender === "Female" ? " (Women's)" : "");
 }
+// Course columns for a chosen tee. No rating on this tee? Borrow a sibling tee's official
+// numbers, shifted by the yardage formula. No ratings anywhere? Leave them null and let
+// seasons estimate from yardage live.
+function teeDifficulty(tee, tees) {
+  if (!tee) return { rating: null, slope: null, yardage: null, tee_gender: null, rating_source: null };
+  const g = t => (t.gender === "Female" ? "F" : "M");
+  const yards = t => (Number(t.yardage) > 0 ? Math.round(Number(t.yardage)) : null);
+  const out = { yardage: yards(tee), tee_gender: g(tee) };
+  if (Number(tee.course_rating) > 0 && Number(tee.slope) > 0) {
+    return { ...out, rating: Number(tee.course_rating), slope: Math.round(Number(tee.slope)), rating_source: "official" };
+  }
+  const refs = (tees || []).filter(t => t !== tee && Number(t.course_rating) > 0 && Number(t.slope) > 0 && yards(t));
+  if (out.yardage && refs.length) {
+    const ref = refs.slice().sort((a, b) => (g(a) !== g(tee)) - (g(b) !== g(tee))
+      || Math.abs(yards(a) - out.yardage) - Math.abs(yards(b) - out.yardage))[0];
+    const fT = yardageEstimate(out.yardage, g(tee)), fR = yardageEstimate(yards(ref), g(ref));
+    return { ...out,
+      rating: Math.round((Number(ref.course_rating) + fT.rating - fR.rating) * 10) / 10,
+      slope: Math.round(Number(ref.slope) + fT.slope - fR.slope),
+      rating_source: "tee_estimate" };
+  }
+  return { ...out, rating: null, slope: null, rating_source: out.yardage ? "yardage" : null };
+}
 function teeModal(name, tees) {
   return new Promise(resolve => {
     const wrap = document.createElement("div");
@@ -3254,3 +3325,15 @@ function endRoundLoading() {
     if (el.tagName !== "SCRIPT" && el.animate) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: "ease-out" });
   });
 }
+
+// modalScrollTop: popups always open scrolled to the top
+new MutationObserver(muts => {
+  muts.forEach(m => m.addedNodes.forEach(n => {
+    if (n.nodeType !== 1 || !n.classList.contains("modal")) return;
+    const reset = () => {
+      n.scrollTop = 0;
+      n.querySelectorAll("*").forEach(el => { if (el.scrollTop) el.scrollTop = 0; });
+    };
+    requestAnimationFrame(() => { reset(); setTimeout(reset, 60); });
+  }));
+}).observe(document.body, { childList: true });

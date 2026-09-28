@@ -357,8 +357,8 @@ function renderAddToSeason(wrap, round, players) {
       acct.append(mk("Create account", createAccount), mk("Sign in", signIn));
       return;
     }
-    const { data: seasons } = await db.from("seasons").select("id, name").eq("owner_id", u.id).order("created_at", { ascending: false });
-    if (!seasons || !seasons.length) { note.textContent = "You don't run any seasons yet. Start one from Seasons on the home screen."; return; }
+    const { data: seasons } = await db.from("seasons").select("id, name").eq("owner_id", u.id).eq("format", "legacy").order("created_at", { ascending: false });
+    if (!seasons || !seasons.length) { note.textContent = "Newer seasons let each player add their own rounds. Open the season from Seasons on the home screen and tap Add a round."; return; }
     const { data: already } = await db.from("season_rounds").select("season_id").eq("round_id", round.id);
     const added = new Set((already || []).map(x => x.season_id));
     const choice = await pickFrom("Add to season", seasons.map(s => ({
