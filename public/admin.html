@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Admin | Parcade</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg:#060A1A; --panel:#0E1630; --ink:#EAF2FF; --muted:#8A9BC4; --blue:#2E6BFF; --glow:#5CE1FF; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Chakra Petch", system-ui, sans-serif; }
+    main { max-width: 960px; margin: 0 auto; padding: 32px 20px 80px; }
+    h1 { font-family: "Bungee", sans-serif; font-weight: 400; margin: 0; text-shadow: 0 0 12px rgba(92,225,255,0.5); }
+    h2 { font-size: 1.05rem; color: var(--glow); margin: 28px 0 10px; }
+    .muted { color: var(--muted); }
+    .bad { color: #FF7A90; font-weight: 600; }
+    .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    button { font: inherit; font-weight: 700; color: #fff; background: var(--blue); border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+    .card { background: var(--panel); border-radius: 10px; padding: 14px; }
+    .card b { display: block; font-size: 1.6rem; }
+    .card span { color: var(--muted); font-size: 0.85rem; }
+    .bar { display: grid; grid-template-columns: 150px 1fr 48px; align-items: center; gap: 10px; margin: 6px 0; }
+    .bar i { display: block; height: 12px; border-radius: 6px; background: var(--glow); box-shadow: 0 0 6px var(--glow); }
+    .bar em { font-style: normal; text-align: right; color: var(--muted); }
+    .chart { background: var(--panel); border-radius: 10px; padding: 14px; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    th { color: var(--muted); font-weight: 600; }
+    .wrap { overflow-x: auto; }
+    a { color: var(--glow); }
+  </style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div><h1>Parcade Admin</h1><p id="who" class="muted"></p></div>
+    <div><a href="/">Back to Parcade</a> &nbsp; <button id="refresh">Refresh</button></div>
+  </div>
+  <div id="out"></div>
+</main>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const db = supabase.createClient(PARFUL_CONFIG.SUPABASE_URL, PARFUL_CONFIG.SUPABASE_KEY);
+  const out = document.getElementById("out");
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const MODE_NAMES = { party: "Party Mode", stroke: "Stroke Play", skins: "Skins", match: "Match Play", wolf: "Wolf", bbb: "Bingo Bango Bongo",
+    bestball: "Best Ball", vegas: "Vegas", wad: "Wad", caddy: "Cart Caddy", none: "Not started yet" };
+  const STATUS_NAMES = { lobby: "In the lobby", playing: "In progress", finished: "Finished" };
+  const money = n => "$" + Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+  function bars(title, obj, names) {
+    out.append(el("h2", null, title));
+    const entries = Object.entries(obj || {}).sort((a, b) => b[1] - a[1]);
+    if (!entries.length) { out.append(el("p", "muted", "Nothing yet.")); return; }
+    const max = Math.max(...entries.map(e => e[1]));
+    entries.forEach(([k, v]) => {
+      const row = el("div", "bar");
+      const fill = el("i");
+      fill.style.width = Math.max(4, (v / max) * 100) + "%";
+      const track = el("div");
+      track.append(fill);
+      row.append(el("span", null, (names && names[k]) || k), track, el("em", null, String(v)));
+      out.append(row);
+    });
+  }
+
+  function daily(list) {
+    out.append(el("h2", null, "Rounds per day (last 30 days)"));
+    const counts = {};
+    (list || []).forEach(d => (counts[d.day] = d.n));
+    const days = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      days.push([d, counts[d] || 0]);
+    }
+    const max = Math.max(1, ...days.map(d => d[1]));
+    const w = 900, h = 160, bw = w / days.length;
+    let svg = '<svg viewBox="0 0 ' + w + ' ' + (h + 24) + '" width="100%" style="min-width:600px" role="img" aria-label="Rounds per day">';
+    days.forEach(([d, n], i) => {
+      const bh = (n / max) * h;
+      svg += '<rect x="' + (i * bw + 3) + '" y="' + (h - bh) + '" width="' + (bw - 6) + '" height="' + bh + '" rx="3" fill="#5CE1FF"><title>' + d + ": " + n + '</title></rect>';
+      if (i % 5 === 0) svg += '<text x="' + (i * bw + bw / 2) + '" y="' + (h + 18) + '" fill="#8A9BC4" font-size="12" text-anchor="middle">' + d.slice(5) + '</text>';
+    });
+    svg += "</svg>";
+    const box = el("div", "chart");
+    box.innerHTML = svg;
+    out.append(box);
+  }
+
+  function render(d) {
+    out.innerHTML = "";
+    const cards = el("div", "cards");
+    [["Accounts", d.accounts], ["Guests", d.guests], ["New accounts (7 days)", d.accounts_7d], ["Rounds", d.rounds],
+     ["Rounds (7 days)", d.rounds_7d], ["Avg players per round", d.avg_players ?? 0], ["Scores entered", d.scores],
+     ["Chat messages", d.messages], ["Seasons", d.seasons], ["Money rounds", d.money_rounds], ["Side bets", d.bets],
+     ["Settled bet dollars", money(d.bet_dollars)]].forEach(([label, v]) => {
+      const c = el("div", "card");
+      c.append(el("b", null, String(v)), el("span", null, label));
+      cards.append(c);
+    });
+    out.append(cards);
+    daily(d.daily);
+    bars("Game modes", d.by_mode, MODE_NAMES);
+    bars("Round status", d.by_status, STATUS_NAMES);
+    out.append(el("h2", null, "Recent rounds"));
+    const wrap = el("div", "wrap");
+    const t = el("table");
+    const head = el("tr");
+    ["Round", "Mode", "Status", "Players", "Created"].forEach(x => head.append(el("th", null, x)));
+    t.append(head);
+    (d.recent || []).forEach(r => {
+      const tr = el("tr");
+      [r.name, MODE_NAMES[r.mode || "none"] || r.mode, STATUS_NAMES[r.status] || r.status, String(r.players),
+       new Date(r.created_at).toLocaleString()].forEach(x => tr.append(el("td", null, x)));
+      t.append(tr);
+    });
+    wrap.append(t);
+    out.append(wrap);
+  }
+
+  async function load() {
+    out.innerHTML = "";
+    const { data: { session } } = await db.auth.getSession();
+    const u = session && session.user;
+    if (!u || u.is_anonymous) { out.append(el("p", "muted", "Sign in on the Parcade home page with your admin account, then come back here.")); return; }
+    document.getElementById("who").textContent = "Signed in as " + u.email;
+    await db.auth.refreshSession();
+    const { data, error } = await db.rpc("admin_stats");
+    if (error) { out.append(el("p", "bad", /not authorized/i.test(error.message) ? "This account isn't an admin." : error.message)); return; }
+    render(data);
+  }
+  document.getElementById("refresh").onclick = load;
+  load();
+</script>
+</body>
+</html>

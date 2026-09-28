@@ -1,4 +1,4 @@
-// ---------- Crabby, the Parful mascot ----------
+// ---------- Crabby, the Parcade mascot ----------
 (function injectCrabbyCSS() {
   if (document.getElementById("crabby-css")) return;
   const st = document.createElement("style");
@@ -79,7 +79,7 @@ function crabbyEl(size = 120) {
   const w = document.createElement("span");
   w.className = "crabby";
   w.setAttribute("role", "img");
-  w.setAttribute("aria-label", "Crabby, the Parful mascot");
+  w.setAttribute("aria-label", "Crabby, the Parcade mascot");
   w.innerHTML = crabbySVG(size);
   return w;
 }
@@ -94,7 +94,7 @@ const CRABBY_LINES = {
   teams: "Split everybody into Team A and Team B. Can't decide? Hit Randomize. You can't decide.",
   caddy: "Mark who's golfing and who's caddying, then who caddies for who. Try to keep up.",
   ready: "Everybody's here. Hit Start game. Slow play is a crime.",
-  joiner: "Your party leader's still setting things up. Don't touch anything.",
+  joiner: "Tap Join this round and type in your name. It's two steps. Try not to mess it up.",
   joined: "You're in. Now we wait on the slowpoke running this thing.",
 };
 

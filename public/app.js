@@ -35,10 +35,38 @@ function holeAllowances(round, players) {
   const vals = players.map(p => p.usual_score).filter(v => v);
   if (!vals.length) return map;
   const best = Math.min(...vals);
-  players.forEach(p => { map[p.id] = p.usual_score ? (p.usual_score - best) / 18 : 0; });
+  players.forEach(p => { map[p.id] = p.usual_score ? Math.round(p.usual_score - best) / 18 : 0; });
   return map;
 }
-const netOf = (x, allow) => x.strokes - (allow[x.player_id] || 0);
+const strokesOn = (a, hole) => Math.floor(hole * a + 1e-9) - Math.floor((hole - 1) * a + 1e-9);
+const netOf = (x, allow) => x.strokes - strokesOn(allow[x.player_id] || 0, x.hole);
+function strokeHolesText(a) {
+  const list = [];
+  let allOne = true;
+  for (let h = 1; h <= 18; h++) {
+    const s = strokesOn(a, h);
+    if (s) list.push(s > 1 ? h + " (x" + s + ")" : String(h));
+    if (s !== 1) allOne = false;
+  }
+  if (!list.length) return "Plays straight up";
+  return allOne ? "Strokes on every hole" : "Strokes on holes " + list.join(", ");
+}
+const validHcp = (v) => { const n = parseFloat(v); return !isNaN(n) && n >= -10 && n <= 54; };
+async function askHandicap(name, current) {
+  const cur = current || {};
+  const v = await ask(name ? "Handicap for " + name : "What's your handicap?", [
+    { label: "Type in your handicap", type: "number", decimal: true, max: 5, placeholder: cur.hcp != null ? String(cur.hcp) : "e.g. 14.2" }
+  ], "Lock it in", "Plus handicap? Use a minus sign, like -2.",
+  async ([x]) => (validHcp(x) ? null : "Enter a handicap between -10 and 54."), null,
+  name ? "They don't know their handicap" : "I don't know my handicap");
+  if (v === "ALT") {
+    const u = await askUsual(name ? "What does " + name + " usually shoot?" : null, cur.usual);
+    return u == null ? null : { usual: u, hcp: null };
+  }
+  if (!v) return null;
+  const h = Math.round(parseFloat(v[0]) * 10) / 10;
+  return { usual: Math.round(72 + h), hcp: h };
+}
 const validUsual = (v) => { const n = parseInt(v, 10); return n >= 40 && n <= 200; };
 
 function askUsual(title, current) {
@@ -108,7 +136,7 @@ function colorField(f, panel) {
   return input;
 }
 
-function ask(title, fields, confirmText, note, onSubmit, guide) {
+function ask(title, fields, confirmText, note, onSubmit, guide, alt) {
   return new Promise(resolve => {
     const wrap = document.createElement("div");
     wrap.className = "modal";
@@ -126,6 +154,21 @@ function ask(title, fields, confirmText, note, onSubmit, guide) {
     const inputs = fields.map(f => {
       if (f.type === "colors") return colorField(f, panel);
       if (f.type === "toggle") return toggleField(f, panel);
+      if (f.type === "check") {
+        const row = document.createElement("label");
+        row.className = "check-row";
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        const txt = document.createElement("span");
+        txt.innerHTML = f.html;
+        const hidden = document.createElement("input");
+        hidden.type = "hidden";
+        hidden.value = "no";
+        box.onchange = () => (hidden.value = box.checked ? "yes" : "no");
+        row.append(box, txt, hidden);
+        panel.append(row);
+        return hidden;
+      }
       const label = document.createElement("label");
       const span = document.createElement("span");
       span.textContent = f.label;
@@ -135,7 +178,7 @@ function ask(title, fields, confirmText, note, onSubmit, guide) {
       input.maxLength = f.max || 40;
       input.autocomplete = "off";
       if (f.type) input.type = f.type;
-      if (f.type === "number") input.inputMode = "numeric";
+      if (f.type === "number") { input.inputMode = f.decimal ? "decimal" : "numeric"; if (f.decimal) input.step = "any"; }
       if (f.upper) input.style.textTransform = "uppercase";
       label.append(span, input);
       panel.append(label);
@@ -151,6 +194,15 @@ function ask(title, fields, confirmText, note, onSubmit, guide) {
     ok.type = "submit";
     ok.textContent = confirmText;
     row.append(cancel, ok);
+    if (alt) {
+      const a = document.createElement("button");
+      a.type = "button";
+      a.className = "link-btn";
+      a.style.margin = "0 0 12px";
+      a.textContent = alt;
+      a.onclick = () => close("ALT");
+      panel.append(a);
+    }
     const err = document.createElement("p");
     err.className = "modal-error";
     err.setAttribute("role", "alert");
@@ -263,18 +315,19 @@ function challengeFor(code, hole) {
   return { text, pts, multi: !!multi };
 }
 
+// Check the live session on every call: a phone left in the background can lose
+// its session (expired token that failed to refresh), and a cached user would let
+// writes go out as the anon role and fail RLS. userPromise only dedupes sign-ins.
 let userPromise = null;
-function ensureUser() {
+async function ensureUser() {
+  const { data: { session } } = await db.auth.getSession();
+  if (session) return session.user;
   if (!userPromise) {
     userPromise = (async () => {
-      let { data: { session } } = await db.auth.getSession();
-      if (!session) {
-        const { data, error } = await db.auth.signInAnonymously();
-        if (error) throw error;
-        session = data.session;
-      }
-      return session.user;
-    })().catch(err => { userPromise = null; throw err; });
+      const { data, error } = await db.auth.signInAnonymously();
+      if (error) throw error;
+      return data.session.user;
+    })().finally(() => { userPromise = null; });
   }
   return userPromise;
 }
@@ -290,10 +343,12 @@ $("create-round").addEventListener("click", async () => {
   if (!vals) return;
   const [roundName, playerName, color, hcpVal] = vals;
   const hcp = hcpVal === "on";
-  let usual = null;
+  let usual = null, hcpNum = null;
   if (hcp) {
-    usual = await askUsual();
-    if (usual == null) return;
+    const hc = await askHandicap();
+    if (!hc) return;
+    usual = hc.usual;
+    hcpNum = hc.hcp;
   }
   try {
     await ensureUser();
@@ -301,7 +356,7 @@ $("create-round").addEventListener("click", async () => {
       .insert({ name: roundName.trim(), handicap: hcp }).select().single();
     if (e1) throw e1;
     const { error: e2 } = await db.from("players")
-      .insert({ round_id: round.id, name: playerName.trim(), color: color === "-" ? null : color, usual_score: usual });
+      .insert({ round_id: round.id, name: playerName.trim(), color: color === "-" ? null : color, usual_score: usual, hcp: hcpNum });
     if (e2) throw e2;
     openRound(round.code);
   } catch (err) {
@@ -433,10 +488,11 @@ async function loadRound(code) {
     startBtn.textContent = "Pick a mode to start";
     startBtn.disabled = true;
     startBtn.style.width = "100%";
-    const SIZES = [["2", "2 players"], ["3", "3 players"], ["4", "4 players"], ["5", "5 or more"]];
-    const sizeFits = { "2": n => n === 2, "3": n => n === 3, "4": n => n === 4, "5": n => n >= 5 };
-    const MODES_FOR = { "2": ["party", "stroke", "skins", "match", "wad", "caddy"], "3": ["party", "stroke", "skins", "match", "wolf", "bbb", "wad", "caddy"], "4": ["party", "stroke", "skins", "match", "wolf", "bbb", "bestball", "vegas", "wad", "caddy"], "5": ["party", "stroke", "skins", "match", "wolf", "bbb", "bestball", "vegas", "wad", "caddy"] };
+    const SIZES = [["1", "1 player"], ["2", "2 players"], ["3", "3 players"], ["4", "4 players"], ["5", "5 or more"]];
+    const sizeFits = { "1": n => n === 1, "2": n => n === 2, "3": n => n === 3, "4": n => n === 4, "5": n => n >= 5 };
+    const MODES_FOR = { "1": ["stroke", "party"], "2": ["party", "stroke", "skins", "match", "wad", "caddy"], "3": ["party", "stroke", "skins", "match", "wolf", "bbb", "wad", "caddy"], "4": ["party", "stroke", "skins", "match", "wolf", "bbb", "bestball", "vegas", "wad", "caddy"], "5": ["party", "stroke", "skins", "match", "wolf", "bbb", "bestball", "vegas", "wad", "caddy"] };
     const SIZE_NOTES = {
+      "1": "Just you and the course. Kinda sad, but great for keeping score.",
       "2": "Head to head. Nowhere to hide.",
       "3": "A threesome. Every hole is a three-way grudge match.",
       "4": "The classic foursome. Wolf plays best here.",
@@ -485,6 +541,41 @@ async function loadRound(code) {
     odRow.classList.add("room-only");
     odNote.classList.add("room-only");
     hostArea.append(odRow, odNote);
+    const hcRow = document.createElement("div");
+    hcRow.className = "toggle-row od-row room-only";
+    const hcTxt = document.createElement("div");
+    const hcLabel = document.createElement("span");
+    hcLabel.className = "field-label";
+    hcLabel.textContent = "Handicaps";
+    const hcHint = document.createElement("small");
+    hcHint.textContent = "Levels the field. Everyone enters what they usually shoot for 18.";
+    hcTxt.append(hcLabel, hcHint);
+    const hcSwitch = document.createElement("button");
+    hcSwitch.type = "button";
+    hcSwitch.className = "switch";
+    hcSwitch.setAttribute("role", "switch");
+    hcSwitch.setAttribute("aria-label", "Handicaps");
+    const syncHc = () => {
+      const on = !!round.handicap;
+      hcSwitch.textContent = on ? "On" : "Off";
+      hcSwitch.classList.toggle("on", on);
+      hcSwitch.setAttribute("aria-checked", String(on));
+    };
+    hcSwitch.onclick = async () => {
+      const on = !round.handicap;
+      const { error } = await db.from("rounds").update({ handicap: on }).eq("id", round.id);
+      if (error) { toast(error.message); return; }
+      round.handicap = on;
+      syncHc();
+      if (on && me && !me.usual_score) {
+        const hc = await askHandicap();
+        if (hc) await db.from("players").update({ usual_score: hc.usual, hcp: hc.hcp }).eq("id", me.id);
+      }
+      refresh();
+    };
+    hcRow.append(hcTxt, hcSwitch);
+    hostArea.append(hcRow);
+    syncHc();
     syncOd();
 
     const sizeTitle = h3("How many players?");
@@ -508,7 +599,7 @@ async function loadRound(code) {
       b.textContent = label;
       const d = document.createElement("span");
       const list = MODES_FOR[key];
-      d.textContent = list.length <= 3 ? list.map(k => MODES[k].name).join(", ") : list.length + " game modes";
+      d.textContent = key === "1" ? "Kinda sad... but best for helping keep score" : list.length <= 3 ? list.map(k => MODES[k].name).join(", ") : list.length + " game modes";
       tile.append(b, d);
       tile.onclick = () => {
         pickedSize = key;
@@ -594,6 +685,7 @@ async function loadRound(code) {
     function updateStart() {
       const n = players.length;
       if ($("money-switch")) syncMoney();
+      syncHc();
       odNote.style.display = oneDevice && new Set(players.map(p => p.group_no)).size > 1 ? "block" : "none";
       startBtn.disabled = true;
       if (!pickedSize) { startBtn.textContent = "Pick how many are playing"; return; }
@@ -633,8 +725,10 @@ async function loadRound(code) {
     }
 
     let firstStep = true;
-    function setStep(st) {
+    function setStep(st, fromHistory) {
       lobby.dataset.step = st;
+      if (!fromHistory) { if (firstStep) history.replaceState({ step: st }, ""); else history.pushState({ step: st }, ""); }
+      window.__lobbyStep = setStep;
       guide.say(guideLine());
       if (st === "room" && pickedMode && pickedSize) {
         stepSummary.textContent = MODES[pickedMode].name + ", " + SIZES.find(([k]) => k === pickedSize)[1].toLowerCase();
@@ -650,6 +744,10 @@ async function loadRound(code) {
 
     startBtn.onclick = async () => {
       if (!pickedMode) return;
+      if (round.handicap) {
+        const missing = players.filter(pl => !pl.usual_score && pl.role !== "caddy");
+        if (missing.length) { toast("Handicaps are on. Add a usual score for " + missing.map(pl => pl.name).join(", ") + "."); return; }
+      }
       if (pickedMode === "wolf") {
         const sizes = {};
         players.forEach(pl => (sizes[pl.group_no] = (sizes[pl.group_no] || 0) + 1));
@@ -702,7 +800,7 @@ async function loadRound(code) {
     money.className = "room-only money-box";
     money.innerHTML = `
       <div class="toggle-row">
-        <div><span class="field-label">Play for money</span><small>Parful keeps track. You settle up yourselves.</small></div>
+        <div><span class="field-label">Play for money</span><small>Parcade keeps track. You settle up yourselves.</small></div>
         <button type="button" class="switch" id="money-switch" role="switch" aria-label="Play for money"></button>
       </div>
       <div id="money-opts" style="display:none">
@@ -875,7 +973,9 @@ async function loadRound(code) {
   const stakesLine = document.createElement("p");
   stakesLine.className = "waiting";
   stakesLine.style.cssText = "display:none;margin:0 0 8px";
-  panels.board.append(stakesLine, board);
+  const hcInfo = document.createElement("div");
+  const cardsInfo = document.createElement("div");
+  panels.board.append(stakesLine, board, cardsInfo, hcInfo);
 
   const betForm = document.createElement("form");
   betForm.className = "bet-form";
@@ -1036,7 +1136,10 @@ async function loadRound(code) {
   keeperTip.textContent = "Enter scores for everyone in your group from this phone. Handy when only one phone is out.";
   keeperTop.setAttribute("aria-describedby", "keeper-tip");
   keeperWrap.append(keeperTop, keeperTip);
-  topBar.append(homeTop, copyTop, keeperWrap, soundButton());
+  topBar.append(homeTop, copyTop, keeperWrap);
+  const roundSound = soundButton();
+  roundSound.classList.add("sound-home");
+  document.body.append(roundSound);
   document.body.append(topBar);
 
   function renderLobbyList() {
@@ -1076,7 +1179,7 @@ async function loadRound(code) {
         name.prepend(figureEl(pl.color));
         li.append(name);
         if (round.handicap) {
-          const txt = "Shoots " + (pl.usual_score || "?");
+          const txt = pl.hcp != null ? "Handicap " + pl.hcp : pl.usual_score ? "Shoots " + pl.usual_score : "Handicap ?";
           if (isLeader) {
             const eb = document.createElement("button");
             eb.className = "mini";
@@ -1089,6 +1192,13 @@ async function loadRound(code) {
             sp.textContent = txt;
             li.append(sp);
           }
+        }
+        if (round.handicap && pl.usual_score) {
+          const st = document.createElement("span");
+          st.className = "detail";
+          st.style.width = "100%";
+          st.textContent = strokeHolesText(holeAllowances(round, players)[pl.id] || 0);
+          li.append(st);
         }
         if (isLeader && TEAM_MODES.includes(pickedMode)) {
           const tctl = document.createElement("div");
@@ -1201,14 +1311,16 @@ async function loadRound(code) {
   async function addOfflinePlayer() {
     const vals = await ask("Add a player", [
       { label: "Their name", placeholder: "What the boys call them", max: 20 },
-      { label: "Pick their stick figure", type: "colors", taken: players.map(p => p.color) },
-      ...(round.handicap ? [{ label: "What do they usually shoot for 18?", type: "number", placeholder: "e.g. 95", max: 3 }] : [])
-    ], "Add", null, async (v) => (round.handicap && !validUsual(v[2]) ? "Enter their usual score for 18 holes (40 to 200)." : null));
+      { label: "Pick their stick figure", type: "colors", taken: players.map(p => p.color) }
+    ], "Add");
     if (!vals) return;
+    let hc = { usual: null, hcp: null };
+    if (round.handicap) { hc = await askHandicap(vals[0]); if (!hc) return; }
     const { error } = await db.from("players").insert({
       round_id: round.id, user_id: null, name: vals[0],
       color: vals[1] === "-" ? null : vals[1],
-      usual_score: round.handicap ? parseInt(vals[2], 10) : null,
+      usual_score: hc.usual,
+      hcp: hc.hcp,
     });
     if (error) { toast(error.code === "23505" ? "That color's taken. Pick another." : error.message); return; }
     refresh();
@@ -1223,9 +1335,9 @@ async function loadRound(code) {
   }
 
   async function editUsual(pl) {
-    const v = await askUsual("Edit " + pl.name + "'s usual score", pl.usual_score);
-    if (v == null) return;
-    const { error } = await db.from("players").update({ usual_score: v }).eq("id", pl.id);
+    const hc = await askHandicap(pl.name, { hcp: pl.hcp, usual: pl.usual_score });
+    if (!hc) return;
+    const { error } = await db.from("players").update({ usual_score: hc.usual, hcp: hc.hcp }).eq("id", pl.id);
     if (error) { toast(error.message); return; }
     refresh();
   }
@@ -1314,6 +1426,7 @@ async function loadRound(code) {
       }
     }
     document.body.classList.add("has-copy");
+    requestAnimationFrame(() => { document.body.style.paddingTop = "calc(" + (topBar.offsetHeight + 20) + "px + env(safe-area-inset-top, 0px))"; });
     scoreArea.style.display = finished ? "block" : "none";
     if (finished) renderScorecard(scoreArea, { round, players, scores, results, user, picks, preds, mulls, bets, wads });
     sub.textContent = finished ? "Final results" : playing
@@ -1351,7 +1464,7 @@ async function loadRound(code) {
       if (isBest()) pts = bestTot[pl.id] || 0;
       if (isVegas()) pts = vegasTot[pl.id] || 0;
       if (isWad()) pts = wads.filter(w => w.player_id === pl.id).length;
-      return { pl, pts, total, net: total - (allow[pl.id] || 0) * mine.length, thru: mine.length };
+      return { pl, pts, total, net: total - Math.floor(mine.length * (allow[pl.id] || 0) + 1e-9), thru: mine.length };
     });
     if (isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas() || isWad()) rows.sort((a, b) => b.pts - a.pts);
     else { const avg = r => (r.thru ? r.net / r.thru : Infinity); rows.sort((a, b) => avg(a) - avg(b)); }
@@ -1377,6 +1490,75 @@ async function loadRound(code) {
       board.appendChild(li);
     });
 
+    cardsInfo.innerHTML = "";
+    const gnums = [...new Set(players.map(p => p.group_no))].sort((a, b) => a - b);
+    const ch3 = document.createElement("h3");
+    ch3.textContent = "Scorecards";
+    cardsInfo.append(ch3);
+    gnums.forEach(g => {
+      const gp = players.filter(p => p.group_no === g && p.role !== "caddy");
+      if (!gp.length) return;
+      const sc = scores.filter(x => x.strokes && gp.some(p => p.id === x.player_id));
+      const maxH = sc.length ? Math.max(...sc.map(x => x.hole)) : 0;
+      let cur = 1;
+      while (cur < 18 && gp.every(p => sc.some(x => x.player_id === p.id && x.hole === cur))) cur++;
+      const lbl = document.createElement("p");
+      lbl.className = "waiting";
+      lbl.style.margin = "8px 0 4px";
+      lbl.textContent = (gnums.length > 1 ? "Group " + g + ", " : "") + (maxH ? "on hole " + cur : "hasn't teed off yet");
+      cardsInfo.append(lbl);
+      if (!maxH) return;
+      const wrap = document.createElement("div");
+      wrap.className = "sc-wrap";
+      const table = document.createElement("table");
+      table.className = "sc-table";
+      const head = document.createElement("tr");
+      const cell = (tag, text, cls) => { const c = document.createElement(tag); c.textContent = text; if (cls) c.className = cls; return c; };
+      head.append(cell("th", ""));
+      for (let hn = 1; hn <= maxH; hn++) head.append(cell("th", String(hn)));
+      head.append(cell("th", "Tot"));
+      table.append(head);
+      gp.forEach(pl => {
+        const tr = document.createElement("tr");
+        const nameTd = document.createElement("td");
+        nameTd.append(figureEl(pl.color, 16), pl.name);
+        tr.append(nameTd);
+        let tot = 0;
+        for (let hn = 1; hn <= maxH; hn++) {
+          const x = sc.find(s => s.player_id === pl.id && s.hole === hn);
+          if (x) tot += x.strokes;
+          tr.append(cell("td", x ? (x.strokes >= 11 ? "11+" : String(x.strokes)) : "-"));
+        }
+        tr.append(cell("td", tot ? String(tot) : "-", "tot"));
+        table.append(tr);
+      });
+      wrap.append(table);
+      cardsInfo.append(wrap);
+    });
+    hcInfo.innerHTML = "";
+    if (round.handicap) {
+      const allowAll = holeAllowances(round, players);
+      const hh = document.createElement("h3");
+      hh.textContent = "Handicap strokes";
+      const ul = document.createElement("ul");
+      ul.className = "player-list";
+      players.filter(p => p.role !== "caddy").forEach(pl => {
+        const li = document.createElement("li");
+        const left = document.createElement("div");
+        const nm = document.createElement("span");
+        nm.append(figureEl(pl.color), pl.name + (pl.user_id === user.id ? " (you)" : ""));
+        const d = document.createElement("span");
+        d.className = "detail";
+        d.textContent = strokeHolesText(allowAll[pl.id] || 0);
+        left.append(nm, d);
+        const v = document.createElement("span");
+        v.className = "sub-score";
+        v.textContent = pl.hcp != null ? "HCP " + pl.hcp : pl.usual_score ? "Shoots " + pl.usual_score : "";
+        li.append(left, v);
+        ul.append(li);
+      });
+      hcInfo.append(hh, ul);
+    }
     if (isCaddy()) renderCaddyBoard();
     card.style.display = me ? "block" : "none";
     lateWrap.style.display = me ? "none" : "block";
@@ -1463,6 +1645,10 @@ async function loadRound(code) {
     tabBtns.hole.textContent = "Hole " + hole;
     $("hole-label").textContent = "Hole " + hole;
     $("hole-mine").textContent = mine[hole] ? "You: " + (mine[hole] >= 11 ? "11+" : mine[hole]) : "No score yet";
+    if (round.handicap && me) {
+      const got = strokesOn(holeAllowances(round, players)[me.id] || 0, hole);
+      if (got > 0) $("hole-mine").textContent += ", you get " + (got === 1 ? "a stroke" : got + " strokes");
+    }
 
     const strip = $("hole-strip");
     if (!strip.childElementCount) {
@@ -1476,6 +1662,7 @@ async function loadRound(code) {
       }
     }
     const progNow = groupProgressHole();
+    const allowMe = round.handicap && me ? (holeAllowances(round, players)[me.id] || 0) : 0;
     strip.querySelectorAll(".hole-chip").forEach(b => {
       const n = +b.dataset.h;
       const locked = n > progNow;
@@ -1484,6 +1671,7 @@ async function loadRound(code) {
       b.querySelector("small").textContent = locked ? "🔒" : (mine[n] >= 11 ? "11+" : (mine[n] || ""));
       b.classList.toggle("done", mine[n] != null);
       b.classList.toggle("active", n === hole);
+      b.classList.toggle("stroke", allowMe > 0 && strokesOn(allowMe, n) > 0);
     });
     if (stripHole !== hole) {
       stripHole = hole;
@@ -1726,7 +1914,7 @@ async function loadRound(code) {
     players.filter(p => p.role !== "caddy").map(pl => {
       const mine = scores.filter(x => x.player_id === pl.id && x.strokes);
       const total = mine.reduce((a, x) => a + x.strokes, 0);
-      return { pl, total, net: total - (allow[pl.id] || 0) * mine.length, thru: mine.length };
+      return { pl, total, net: total - Math.floor(mine.length * (allow[pl.id] || 0) + 1e-9), thru: mine.length };
     }).sort((a, b) => (a.thru ? a.net / a.thru : Infinity) - (b.thru ? b.net / b.thru : Infinity))
       .forEach((r, i) => row(r.pl, r.thru ? r.total + " strokes" + (round.handicap ? ", net " + Math.round(r.net) : "") + " (thru " + r.thru + ")" : "-", i));
   }
@@ -2123,7 +2311,15 @@ async function loadRound(code) {
     const choice = await pickFrom("Which one is you?", players.map(pl => ({ label: pl.name, value: pl, color: pl.color })));
     if (!choice) return;
     const { error } = await db.rpc("claim_player", { p_player_id: choice.id });
-    if (error) { toast(error.message); return; }
+    if (error) {
+      if (/account/i.test(error.message)) {
+        const go = await ask("Sign in to get your spot back", [], "Sign in", "That spot belongs to an account. Sign in with it and you're right back in the round.");
+        if (go && (await signIn())) location.reload();
+        return;
+      }
+      toast(error.message);
+      return;
+    }
     cardReady = false;
     refresh();
   }
@@ -2132,13 +2328,14 @@ async function loadRound(code) {
     const joinName = await accountName();
     const vals = await ask("Join " + round.name, [
       { label: "Your name", placeholder: "What the boys call you", max: 20, value: joinName },
-      { label: "Pick your stick figure", type: "colors", taken: players.map(p => p.color) },
-      ...(round.handicap ? [{ label: "What do you usually shoot for 18?", type: "number", placeholder: "e.g. 95", max: 3 }] : [])
-    ], "I'm in", null, async (v) => (round.handicap && !validUsual(v[2]) ? "Enter your usual score for 18 holes (40 to 200)." : null));
+      { label: "Pick your stick figure", type: "colors", taken: players.map(p => p.color) }
+    ], "I'm in");
     if (!vals) return;
-    const { data: { session } } = await db.auth.getSession();
-    if (!session) { userPromise = null; await ensureUser(); }
-    const { error } = await db.from("players").insert({ round_id: round.id, name: vals[0], color: vals[1] === "-" ? null : vals[1], usual_score: round.handicap ? parseInt(vals[2], 10) : null });
+    let hc = { usual: null, hcp: null };
+    if (round.handicap) { hc = await askHandicap(); if (!hc) return; }
+    if (!vals) return;
+    await ensureUser();
+    const { error } = await db.from("players").insert({ round_id: round.id, name: vals[0], color: vals[1] === "-" ? null : vals[1], usual_score: hc.usual, hcp: hc.hcp });
     if (error && error.code === "23505") { toast("Someone just grabbed that color. Pick another."); refresh(); return; }
     if (error) { toast("Error: " + error.message); return; }
     refresh();
@@ -2162,6 +2359,17 @@ async function loadRound(code) {
     .on("postgres_changes", { ...live, event: "*", table: "wolf_picks", filter: "round_id=eq." + round.id }, refresh)
     .on("postgres_changes", { ...live, event: "INSERT", table: "messages", filter: "round_id=eq." + round.id }, (payload) => onMessage(payload.new))
     .subscribe();
+  setInterval(async () => {
+    if (document.hidden) return;
+    const { data } = await db.from("messages").select("*").eq("round_id", round.id).order("created_at").limit(300);
+    (data || []).forEach(m => onMessage(m));
+  }, 8000);
+  let pollTick = 0;
+  setInterval(() => {
+    pollTick++;
+    if (!document.hidden && (round.status === "lobby" || pollTick % 5 === 0)) refresh();
+  }, 4000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
 }
 
 const roundCode = new URLSearchParams(location.search).get("r");
@@ -2169,6 +2377,28 @@ if (!roundCode) {
   const sb = soundButton();
   sb.classList.add("sound-home", "home-only");
   document.body.append(sb);
+  let hintSeen = false;
+  try { hintSeen = sessionStorage.getItem("parcade-sound-hint") === "1"; } catch (e) {}
+  if (Sound.muted && !hintSeen) {
+    const hint = document.createElement("div");
+    hint.className = "sound-hint home-only";
+    hint.setAttribute("role", "status");
+    hint.textContent = "🔊 Tap the speaker for music and sound.";
+    const x = document.createElement("button");
+    x.className = "sound-hint-x";
+    x.setAttribute("aria-label", "Dismiss");
+    x.textContent = "×";
+    const hide = () => {
+      hint.remove();
+      sb.classList.remove("pulse");
+      try { sessionStorage.setItem("parcade-sound-hint", "1"); } catch (e) {}
+    };
+    x.onclick = hide;
+    sb.addEventListener("click", hide);
+    hint.append(x);
+    document.body.append(hint);
+    sb.classList.add("pulse");
+  }
   Sound.music(true);
 }
 if (roundCode) loadRound(roundCode);
@@ -2227,6 +2457,8 @@ const authFields = [
 
 function friendlyAuthError(err) {
   const m = ((err && err.message) || "").toLowerCase();
+  if (m.includes("not confirmed")) return "Confirm your email first. Check your inbox for the link.";
+  if (m.includes("rate limit")) return "Too many emails sent. Wait a minute and try again.";
   if (m.includes("invalid login")) return "That email and password don't match. Try again.";
   if (m.includes("already")) return "That email already has an account. Sign in instead.";
   if (m.includes("password")) return "Password needs at least 6 characters.";
@@ -2235,28 +2467,31 @@ function friendlyAuthError(err) {
 }
 
 async function createAccount() {
-  const vals = await ask("Create your account", [{ label: "First name", placeholder: "What should we call you?", max: 30 }, ...authFields], "Create account", null, async ([first, email, password]) => {
-    if (password.length < 6) return "Password needs at least 6 characters.";
+  const vals = await ask("Create your account", [
+    { label: "First name", placeholder: "What should we call you?", max: 30 },
+    { label: "Email", type: "email", placeholder: "you@example.com", max: 120 },
+    { type: "check", html: 'I\'m 13 or older and agree to the <a href="/terms.html" target="_blank" rel="noopener">Terms</a> and <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.' },
+  ], "Send confirmation", "We'll email you a link. Tap it, then pick a password.", async ([first, email, agree]) => {
+    if (agree !== "yes") return "Please check the box to agree to the Terms and Privacy Policy.";
     try {
       await ensureUser();
-      const r1 = await db.auth.updateUser({ email });
-      if (r1.error) throw r1.error;
-      const r2 = await db.auth.updateUser({ password });
-      if (r2.error) throw r2.error;
-      const r3 = await db.auth.updateUser({ data: { first_name: first } });
-      if (r3.error) throw r3.error;
+      const { error } = await db.auth.updateUser(
+        { email, data: { first_name: first, needs_password: true, terms_accepted_at: new Date().toISOString(), terms_version: "2026-09-26" } },
+        { emailRedirectTo: location.origin + "/" });
+      if (error) throw error;
       return null;
     } catch (e) { return friendlyAuthError(e); }
   });
-  if (vals) renderAccount();
-  return !!vals;
+  if (vals) toast("Check your email and tap the link to confirm your account.", true);
+  return false;
 }
 
 async function signIn() {
   const vals = await ask("Sign in", authFields, "Sign in", null, async ([email, password]) => {
     const { error } = await db.auth.signInWithPassword({ email, password });
     return error ? friendlyAuthError(error) : null;
-  });
+  }, null, "Forgot password?");
+  if (vals === "ALT") { await forgotPassword(); return false; }
   if (!vals) return false;
   userPromise = null;
   if (!(await accountName())) await askFirstName();
@@ -2270,9 +2505,9 @@ async function signOut() {
   renderAccount();
 }
 
-function toast(msg) {
+function toast(msg, ok) {
   const t = document.createElement("div");
-  t.className = "toast";
+  t.className = "toast" + (ok ? " ok" : "");
   t.setAttribute("role", "alert");
   t.textContent = String(msg).replace(/^Error: /, "");
   document.body.append(t);
@@ -2285,7 +2520,8 @@ function openRound(code) {
   history.pushState({}, "", "/?r=" + code);
   loadRound(code);
 }
-window.addEventListener("popstate", () => {
+window.addEventListener("popstate", (e) => {
+  if (e.state && e.state.step && window.__lobbyStep && document.querySelector(".top-actions")) return window.__lobbyStep(e.state.step, true);
   const sp = new URLSearchParams(location.search);
   if (sp.get("r") || document.querySelector(".top-actions")) return location.reload();
   if (sp.has("seasons") || sp.get("s")) return seasonsRoute();
@@ -2305,3 +2541,73 @@ async function askFirstName() {
   if (error) { toast(error.message); return false; }
   return true;
 }
+
+async function showRecentRounds() {
+  await ensureUser();
+  const { data: { session } } = await db.auth.getSession();
+  const uid = session && session.user && session.user.id;
+  if (!uid) return;
+  const { data: mine } = await db.from("players").select("round_id").eq("user_id", uid);
+  const ids = [...new Set((mine || []).map(x => x.round_id))];
+  if (!ids.length) { toast("No rounds yet. Go play one."); return; }
+  const { data: rounds } = await db.from("rounds").select("id, name, code, status, created_at").in("id", ids).order("created_at", { ascending: false }).limit(15);
+  const label = r => r.name + " (" + (r.status === "finished" ? "finished" : r.status === "playing" ? "in progress" : "not started") +
+    ", " + new Date(r.created_at).toLocaleDateString() + ")";
+  const choice = await pickFrom("Your recent rounds", (rounds || []).map(r => ({ label: label(r), value: r })));
+  if (choice) openRound(choice.code);
+}
+const recentBtn = $("recent-btn");
+if (recentBtn) recentBtn.onclick = showRecentRounds;
+
+async function forgotPassword() {
+  const v = await ask("Reset your password", [{ label: "Email", type: "email", placeholder: "you@example.com", max: 120 }],
+    "Send reset link", "We'll email you a link to set a new password.", async ([email]) => {
+      const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: location.origin + "/" });
+      return error ? friendlyAuthError(error) : null;
+    });
+  if (v) toast("Check your email for a reset link.", true);
+}
+
+let recoveryShown = false;
+async function setNewPassword() {
+  if (recoveryShown) return;
+  recoveryShown = true;
+  const v = await ask("Set a new password", [{ label: "New password", type: "password", placeholder: "At least 6 characters", max: 72 }],
+    "Save password", null, async ([pw]) => {
+      if (pw.length < 6) return "Password needs at least 6 characters.";
+      const { error } = await db.auth.updateUser({ password: pw });
+      return error ? friendlyAuthError(error) : null;
+    });
+  history.replaceState({}, "", location.pathname + location.search);
+  if (v) {
+    toast("Password updated. You're signed in.", true);
+    userPromise = null;
+    renderAccount();
+  }
+}
+const cameFromReset = location.hash.includes("type=recovery");
+db.auth.onAuthStateChange((event) => { if (event === "PASSWORD_RECOVERY") setTimeout(setNewPassword, 300); });
+if (cameFromReset) setTimeout(setNewPassword, 1200);
+
+let finishing = false;
+async function maybeFinishAccount() {
+  if (finishing) return;
+  const { data: { session } } = await db.auth.getSession();
+  const u = session && session.user;
+  if (!u || u.is_anonymous || !u.user_metadata || !u.user_metadata.needs_password) return;
+  finishing = true;
+  const v = await ask("Almost done. Pick a password", [{ label: "Password", type: "password", placeholder: "At least 6 characters", max: 72 }],
+    "Save password", "Your email's confirmed. This is what you'll use to sign in.", async ([pw]) => {
+      if (pw.length < 6) return "Password needs at least 6 characters.";
+      const { error } = await db.auth.updateUser({ password: pw, data: { needs_password: false } });
+      return error ? friendlyAuthError(error) : null;
+    });
+  finishing = false;
+  if (v) {
+    toast("You're all set. Welcome to Parcade.", true);
+    userPromise = null;
+    renderAccount();
+  }
+}
+setTimeout(maybeFinishAccount, 1500);
+db.auth.onAuthStateChange((event) => { if (event === "USER_UPDATED" || event === "SIGNED_IN") setTimeout(maybeFinishAccount, 300); });

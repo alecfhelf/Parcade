@@ -120,7 +120,7 @@ function roundStandings(round, rp, rs, rr, wp, cpr, cmu, wd) {
     if (round.mode === "bbb") return { pl, v: rr.filter(x => x.award && x.winner_id === pl.id).length };
     if (round.mode === "stroke") {
       const total = mine.reduce((a, x) => a + x.strokes, 0);
-      return { pl, v: -((total - (allow[pl.id] || 0) * mine.length) / mine.length) };
+      return { pl, v: -((total - Math.floor(mine.length * (allow[pl.id] || 0) + 1e-9)) / mine.length) };
     }
     let pts = 0;
     mine.forEach(m => { pts += 1 + played.filter(o => o.hole === m.hole && netOf(o, allow) > netOf(m, allow)).length; });
@@ -165,16 +165,20 @@ async function loadSeason(code) {
   const joinArea = el("div");
   const standings = el("ul", { className: "player-list" });
   const moneyArea = el("div");
+  const aliasArea = el("div");
+  let aliasMap = new Map(), lastPlayers = [];
   const roundsList = el("ul", { className: "player-list" });
   const addArea = el("div");
   box.append(backBtn("/?seasons", "All seasons"), infoLink("How seasons work", () => showRulesModal("Seasons", ["seasons"])), seasonDesk, linkRow, joinArea,
-    h3el("Standings"), standings, moneyArea, h3el("Rounds"), roundsList, addArea);
+    h3el("Standings"), standings, aliasArea, moneyArea, h3el("Rounds"), roundsList, addArea);
 
   async function refresh() {
-    const [{ data: members }, { data: sr }] = await Promise.all([
+    const [{ data: members }, { data: sr }, { data: al }] = await Promise.all([
       db.from("season_members").select("*").eq("season_id", season.id).order("created_at"),
       db.from("season_rounds").select("round_id").eq("season_id", season.id),
+      db.from("season_aliases").select("*").eq("season_id", season.id),
     ]);
+    aliasMap = new Map((al || []).map(a => [a.alias, a.user_id]));
     const ids = (sr || []).map(x => x.round_id);
     let rounds = [], players = [], scores = [], results = [], picks = [], cpreds = [], cmulls = [], sbets = [], swads = [];
     if (ids.length) {
@@ -194,6 +198,8 @@ async function loadSeason(code) {
     renderJoin(members || []);
     renderStandings(members || [], rounds, players, scores, results, picks, cpreds, cmulls, swads);
     renderMoneyStats(members || [], rounds, players, scores, results, picks, cpreds, cmulls, sbets, swads);
+    lastPlayers = players;
+    renderAliases(members || [], players);
     renderRounds(rounds);
     if (isOwner) renderAdd(ids);
   }
@@ -212,6 +218,7 @@ async function loadSeason(code) {
       if (!vals) return;
       const { error } = await db.from("season_members").insert({ season_id: season.id, name: vals[0] });
       if (error) { toast("Error: " + error.message); return; }
+      await claimNamesFlow(vals[0], members);
       refresh();
     };
     joinArea.append(b);
@@ -231,9 +238,9 @@ async function loadSeason(code) {
         cmulls.filter(x => x.round_id === round.id),
         swads.filter(x => x.round_id === round.id));
       rows.forEach(r => {
-        const m = memberById.get(r.pl.user_id);
-        const key = m ? "u:" + r.pl.user_id : "n:" + r.pl.name.trim().toLowerCase();
-        if (!totals.has(key)) totals.set(key, { name: r.pl.name, pts: 0, wins: 0, rounds: 0 });
+        const uid = memberById.has(r.pl.user_id) ? r.pl.user_id : aliasMap.get(r.pl.name.trim().toLowerCase());
+        const key = uid ? "u:" + uid : "n:" + r.pl.name.trim().toLowerCase();
+        if (!totals.has(key)) totals.set(key, { name: uid && memberById.has(uid) ? memberById.get(uid).name : r.pl.name, pts: 0, wins: 0, rounds: 0 });
         const t = totals.get(key);
         t.pts += r.pts;
         t.rounds += 1;
@@ -256,8 +263,9 @@ async function loadSeason(code) {
     const moneyRounds = rounds.filter(r => staked(r) || sbets.some(b => b.round_id === r.id));
     if (!moneyRounds.length) return;
     const memberById = new Map(members.map(m => [m.user_id, m]));
-    const keyOf = pl => (memberById.has(pl.user_id) ? "u:" + pl.user_id : "n:" + pl.name.trim().toLowerCase());
-    const nameOf = pl => (memberById.has(pl.user_id) ? memberById.get(pl.user_id).name : pl.name);
+    const uidOf = pl => (memberById.has(pl.user_id) ? pl.user_id : aliasMap.get(pl.name.trim().toLowerCase()));
+    const keyOf = pl => (uidOf(pl) ? "u:" + uidOf(pl) : "n:" + pl.name.trim().toLowerCase());
+    const nameOf = pl => (uidOf(pl) && memberById.has(uidOf(pl)) ? memberById.get(uidOf(pl)).name : pl.name);
     const stats = new Map();
     const get = pl => {
       const k = keyOf(pl);
@@ -278,7 +286,7 @@ async function loadSeason(code) {
           const mine = rs.filter(x => x.player_id === pl.id && x.strokes);
           if (!mine.length) return null;
           const total = mine.reduce((a, x) => a + x.strokes, 0);
-          return { pl, v: -(total - (allow[pl.id] || 0) * mine.length) };
+          return { pl, v: -(total - Math.floor(mine.length * (allow[pl.id] || 0) + 1e-9)) };
         }).filter(Boolean);
       } else {
         entries = roundStandings(round, rp, rs, rr, wp, cpr, cmu, of(swads)).map(r => ({ pl: r.pl, v: r.v }));
@@ -315,6 +323,72 @@ async function loadSeason(code) {
       ul.append(el("li", {}, left, el("span", { className: s.net > 0 ? "money-pos" : s.net < 0 ? "money-neg" : "", textContent: moneySigned(s.net) })));
     });
     moneyArea.append(ul);
+  }
+
+  function candidateNames(members, extraIds) {
+    const memberIds = new Set(members.map(m => m.user_id).concat(extraIds || []));
+    const names = new Map();
+    lastPlayers.forEach(p => {
+      if (memberIds.has(p.user_id)) return;
+      const k = p.name.trim().toLowerCase();
+      if (!names.has(k)) names.set(k, p.name.trim());
+    });
+    return names;
+  }
+
+  async function claimNamesFlow(typed, members) {
+    const names = candidateNames(members, [acct.id]);
+    if (!names.size) return;
+    const t = typed.trim().toLowerCase();
+    const opts = [...names].map(([k, label]) => ({ key: k, label, checked: k === t && !aliasMap.has(k), disabled: aliasMap.has(k) }));
+    const picked = await pickNames("Which of these are you?",
+      "Tap every name you've played under in this season's rounds. Your points get combined.", opts);
+    if (!picked || !picked.length) return;
+    const { error } = await db.from("season_aliases").insert(picked.map(k => ({ season_id: season.id, alias: k, user_id: acct.id })));
+    if (error) toast(error.code === "23505" ? "One of those names was already claimed." : error.message);
+  }
+
+  function renderAliases(members, players) {
+    aliasArea.innerHTML = "";
+    if (!acct) return;
+    const names = candidateNames(members);
+    if (!names.size) return;
+    const isMember = members.some(m => m.user_id === acct.id);
+    if (!isOwner && !isMember) return;
+    aliasArea.append(h3el("Who's who"), el("p", { className: "waiting",
+      textContent: isOwner ? "Tap the names each person played under. Their rounds get combined." : "Tap every name you've played under. Your rounds get combined." }));
+    (isOwner ? members : members.filter(m => m.user_id === acct.id)).forEach(m => {
+      const block = el("div", { className: "alias-block" });
+      block.append(el("div", { className: "alias-name", textContent: m.name + (m.user_id === acct.id ? " (you)" : "") }));
+      const row = el("div", { className: "chip-row" });
+      names.forEach((display, k) => {
+        const owner = aliasMap.get(k);
+        const mine = owner === m.user_id;
+        const b = el("button", { textContent: display });
+        b.classList.toggle("selected", mine);
+        b.disabled = !!owner && !mine && !isOwner;
+        if (owner && !mine) b.title = "Claimed by " + ((members.find(x => x.user_id === owner) || {}).name || "someone");
+        b.onclick = () => toggleAlias(k, m.user_id, mine, owner);
+        row.append(b);
+      });
+      block.append(row);
+      aliasArea.append(block);
+    });
+  }
+
+  async function toggleAlias(k, uid, mine, owner) {
+    let error;
+    if (mine) {
+      ({ error } = await db.from("season_aliases").delete().eq("season_id", season.id).eq("alias", k));
+    } else {
+      if (owner) {
+        const d = await db.from("season_aliases").delete().eq("season_id", season.id).eq("alias", k);
+        if (d.error) { toast(d.error.message); return; }
+      }
+      ({ error } = await db.from("season_aliases").insert({ season_id: season.id, alias: k, user_id: uid }));
+    }
+    if (error) { toast(error.code === "23505" ? "Someone already claimed that name." : error.message); return; }
+    refresh();
   }
 
   function renderRounds(rounds) {
@@ -391,3 +465,33 @@ function navTo(url) {
 }
 
 seasonsRoute();
+
+function pickNames(title, note, options) {
+  return new Promise(resolve => {
+    const wrap = el("div", { className: "modal" });
+    const panel = el("div", { className: "modal-panel" });
+    panel.append(el("h2", { textContent: title }), el("p", { className: "modal-note", textContent: note }));
+    const row = el("div", { className: "chip-row" });
+    const chosen = new Set(options.filter(o => o.checked).map(o => o.key));
+    options.forEach(o => {
+      const b = el("button", { type: "button", textContent: o.label + (o.disabled ? " (claimed)" : "") });
+      b.disabled = !!o.disabled;
+      b.classList.toggle("selected", chosen.has(o.key));
+      b.onclick = () => {
+        if (chosen.has(o.key)) chosen.delete(o.key); else chosen.add(o.key);
+        b.classList.toggle("selected", chosen.has(o.key));
+      };
+      row.append(b);
+    });
+    const close = (val) => { wrap.remove(); resolve(val); };
+    const done = el("button", { type: "button", textContent: "That's me" });
+    done.style.cssText = "width:100%;margin-top:14px";
+    done.onclick = () => close([...chosen]);
+    const skip = el("button", { type: "button", className: "link-btn", textContent: "None of these are me" });
+    skip.style.marginTop = "10px";
+    skip.onclick = () => close([]);
+    panel.append(row, done, skip);
+    wrap.append(panel);
+    document.body.append(wrap);
+  });
+}

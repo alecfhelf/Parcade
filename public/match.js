@@ -38,7 +38,7 @@ function matchState(round, players, scores, groupNo) {
   };
   let played = 0;
   for (let h = 1; h <= 18; h++) {
-    out.holes[h] = { before: out.clinched ? out.status : statusNow(played, false), result: null };
+    out.holes[h] = { before: statusNow(played, false), result: null };
     const hs = grp.map(p => scoreOf(p, h));
     if (hs.some(x => !x)) continue;
     const nets = hs.map(x => netOf(x, allow));
@@ -49,7 +49,7 @@ function matchState(round, players, scores, groupNo) {
     played++;
     if (!out.clinched) {
       const w = grp.map(p => out.won[p.id]).sort((a, b) => b - a);
-      if (w[0] - w[1] > 18 - played || played === 18) { out.clinched = true; out.status = statusNow(played, true); }
+      if (played === 18) { out.clinched = true; out.status = statusNow(played, true); }
     }
   }
   if (!out.clinched) out.status = statusNow(played, false);
