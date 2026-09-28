@@ -30,6 +30,7 @@ function figureEl(color, size = 18, cheer = false) {
 }
 
 function holeAllowances(round, players) {
+  ACTIVE_RANKS = ROUND_RANKS[round.id] || null;
   const map = {};
   if (!round.handicap) return map;
   const vals = players.map(p => p.usual_score).filter(v => v);
@@ -38,7 +39,15 @@ function holeAllowances(round, players) {
   players.forEach(p => { map[p.id] = p.usual_score ? Math.round(p.usual_score - best) / 18 : 0; });
   return map;
 }
-const strokesOn = (a, hole) => Math.floor(hole * a + 1e-9) - Math.floor((hole - 1) * a + 1e-9);
+const ROUND_RANKS = {};
+let ACTIVE_RANKS = null;
+const strokesOn = (a, hole) => {
+  if (ACTIVE_RANKS) {
+    const total = Math.round(a * 18), rank = ACTIVE_RANKS[hole - 1];
+    return total >= rank ? Math.floor((total - rank) / 18) + 1 : 0;
+  }
+  return Math.floor(hole * a + 1e-9) - Math.floor((hole - 1) * a + 1e-9);
+};
 const netOf = (x, allow) => x.strokes - strokesOn(allow[x.player_id] || 0, x.hole);
 function strokeHolesText(a) {
   const list = [];
@@ -264,6 +273,36 @@ const CHALLENGES = [
 ];
 
 const LINES = {
+  birdie: [
+    "🐦 Birdie for {name} on hole {hole}! Somebody check his bag for a magnet.",
+    "{name} birdied hole {hole}. Enjoy it, it won't happen again. 🐦",
+    "Birdie on {hole} for {name}. Who is this guy? 👀",
+    "{name} with a birdie on hole {hole}. Buy this man a drink. 🍺",
+    "{name} just birdied {hole}. The group chat is shook. 🐦🔥",
+  ],
+  eagle: [
+    "🦅 EAGLE for {name} on hole {hole}!! Somebody drug test him. 🧪",
+    "{name} made an eagle on hole {hole}. Frame this scorecard. 🖼️",
+    "{name} eagled hole {hole}. Everyone else, just go home. 🦅",
+  ],
+  albatross: [
+    "{name} made an ALBATROSS on hole {hole}. {n} on a par {par}. Somebody call the news. 📰🤯",
+    "ALBATROSS for {name} on hole {hole}. That's not golf, that's witchcraft. 🧙",
+  ],
+  triple: [
+    "{name} made a triple bogey on hole {hole}. Someone check on him. 😬",
+    "Triple on {hole} for {name}. The course is filing a complaint. 📝",
+    "{name}: {n} on a par {par}. Bowling is the other sport, buddy. 🎳",
+    "{name} took the scenic route on hole {hole}. Triple bogey. 🗺️",
+    "{name} triple-bogeyed {hole}. Legally we have to call that cardio. 🏃",
+  ],
+  blowup: [
+    "{name} shot {n} on a par {par}. We stopped counting out of respect. 🪦",
+    "{name} went +{over} on hole {hole}. The groundskeeper wants his grass back. 🌱",
+    "{n} on a par {par}? {name}, blink twice if you need help. 👀",
+    "{name} made a {n} on hole {hole}. Somewhere, a golf instructor just felt a chill. 🥶",
+    "{name} gave the ball a full tour of hole {hole}. +{over}. The cart guy looked away.",
+  ],
   ace: [
     "HOLE IN ONE for {name} on hole {hole}!! 🤯🏆 Drinks are on {name}.",
     "{name} aced hole {hole}. Frame this scorecard. 🖼️🔥",
@@ -295,11 +334,19 @@ const LINES = {
   ],
 };
 
-function scoreLine(name, n, hole) {
-  const pool = n === 1 ? LINES.ace : n === 2 ? LINES.two : n >= 11 ? LINES.disaster : n >= 8 ? LINES.bad : null;
+function scoreLine(name, n, hole, par) {
+  let pool;
+  if (par >= 3) {
+    const d = n - par;
+    pool = n === 1 ? LINES.ace : d <= -3 ? LINES.albatross : d === -2 ? LINES.eagle : d === -1 ? LINES.birdie
+      : d === 3 ? LINES.triple : d >= 4 ? LINES.blowup : null;
+  } else {
+    pool = n === 1 ? LINES.ace : n === 2 ? LINES.two : n >= 11 ? LINES.disaster : n >= 8 ? LINES.bad : null;
+  }
   if (!pool) return null;
   return pool[Math.floor(Math.random() * pool.length)]
-    .replaceAll("{name}", name).replaceAll("{n}", String(n)).replaceAll("{hole}", String(hole));
+    .replaceAll("{name}", name).replaceAll("{n}", n >= 11 ? "11+" : String(n)).replaceAll("{hole}", String(hole))
+    .replaceAll("{par}", String(par)).replaceAll("{over}", String(n - par));
 }
 
 function challengeFor(code, hole) {
@@ -378,6 +425,7 @@ const MODES = {
 };
 
 async function loadRound(code) {
+  startRoundLoading();
   $("create-round").style.display = "none";
   document.querySelectorAll(".home-only").forEach(el => (el.style.display = "none"));
   document.body.classList.add("in-round");
@@ -388,13 +436,13 @@ async function loadRound(code) {
   const user = await ensureUser();
   const fetchRound = () => db.from("rounds").select("*").eq("code", code.toUpperCase()).maybeSingle();
   let { data: round } = await fetchRound();
-  if (!round) { box.textContent = "Round not found. Check the code or ask for a new link."; return; }
+  if (!round) { endRoundLoading(); box.textContent = "Round not found. Check the code or ask for a new link."; return; }
 
   document.querySelector("h1").textContent = round.name;
   const sub = document.querySelector("h1 + p");
   const link = location.origin + "/?r=" + round.code;
 
-  let me = null, players = [], scores = [], results = [], picks = [], pairs = [], preds = [], mulls = [], bets = [], wads = [];
+  let me = null, players = [], scores = [], results = [], picks = [], pairs = [], preds = [], mulls = [], bets = [], wads = [], course = null, pmulls = [];
   let hole = 1, strokes = 4, cardReady = false, pickedMode = null;
   const isParty = () => !round.mode || round.mode === "party";
   const isSkins = () => round.mode === "skins";
@@ -578,6 +626,246 @@ async function loadRound(code) {
     syncHc();
     syncOd();
 
+    const courseArea = document.createElement("div");
+    courseArea.className = "course-only";
+    const cCurrent = document.createElement("div");
+    const cSearch = document.createElement("input");
+    cSearch.type = "search";
+    cSearch.placeholder = "Search courses";
+    cSearch.className = "course-search";
+    cSearch.autocomplete = "off";
+    const cResults = document.createElement("ul");
+    cResults.className = "player-list course-results";
+    const cManual = document.createElement("button");
+    cManual.className = "btn-ghost";
+    cManual.textContent = "Enter the pars myself";
+    cManual.style.cssText = "width:100%;margin-top:10px";
+    const cSkip = document.createElement("button");
+    cSkip.className = "link-btn";
+    cSkip.textContent = "Skip, no course";
+    cSkip.style.marginTop = "10px";
+    const cFile = document.createElement("input");
+    cFile.type = "file";
+    cFile.accept = "image/*";
+    cFile.hidden = true;
+    const cScan = document.createElement("button");
+    cScan.className = "btn-ghost";
+    cScan.textContent = "Scan a scorecard photo";
+    cScan.style.cssText = "width:100%;margin-top:10px";
+    cScan.onclick = () => cFile.click();
+    cFile.onchange = async () => {
+      const file = cFile.files[0];
+      cFile.value = "";
+      if (!file) return;
+      cScan.disabled = true;
+      cScan.textContent = "Reading scorecard...";
+      try {
+        const image = await shrinkImage(file);
+        const { data: { session } } = await db.auth.getSession();
+        const r = await fetch("/.netlify/functions/scan", {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: "Bearer " + (session ? session.access_token : "") },
+          body: JSON.stringify({ image })
+        });
+        const out = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(out.error || "Couldn't read that one. Try a clearer photo.");
+        let tee = null;
+        if (out.tees && out.tees.length > 1) {
+          tee = await teeModal(out.name || "Your scorecard", out.tees);
+          if (tee === undefined) return;
+        } else if (out.tees && out.tees.length) tee = out.tees[0];
+        const m = await parsModal({ name: out.name, location: out.location, tee_name: tee ? teeLabel(tee) : "", pars: out.pars, hcp_index: out.hcp_index });
+        if (!m) return;
+        saveCourse({ ...m, source: "photo",
+          rating: (tee && tee.course_rating) || null, slope: (tee && tee.slope) || null });
+      } catch (e) {
+        toast(e.message || "Couldn't read that one. Try a clearer photo.");
+      } finally {
+        cScan.disabled = false;
+        cScan.textContent = "Scan a scorecard photo";
+      }
+    };
+    courseArea.append(h3("What course are you playing?"), cCurrent, cSearch, cResults, cManual, cScan, cFile, cSkip);
+    hostArea.append(courseArea);
+    const parTotal = c => c.pars.reduce((a, b) => a + b, 0);
+    const courseLabel = c => c.name + (c.tee_name ? " (" + c.tee_name + " tees)" : "");
+    function renderCourseCurrent() {
+      cCurrent.innerHTML = "";
+      if (!course) return;
+      const p = document.createElement("p");
+      p.className = "waiting";
+      p.textContent = "Playing " + courseLabel(course) + ", par " + parTotal(course) + ".";
+      const keep = document.createElement("button");
+      keep.textContent = "Keep this course";
+      keep.style.cssText = "width:100%;margin-bottom:12px";
+      keep.onclick = () => setStep("size");
+      cCurrent.append(p, keep);
+    }
+    async function selectCourse(c) {
+      const { error } = await db.from("rounds").update({ course_id: c.id }).eq("id", round.id);
+      if (error) { toast(error.message); return; }
+      round.course_id = c.id;
+      course = c;
+      ROUND_RANKS[round.id] = Array.isArray(c.hcp_index) && c.hcp_index.length === 18 ? c.hcp_index : null;
+      renderCourseCurrent();
+      setStep("size");
+    }
+    let searchTimer = null, searchSeq = 0;
+    const courseRow = (title, detail, onclick) => {
+      const li = document.createElement("li");
+      li.style.cursor = "pointer";
+      const left = document.createElement("div");
+      const nm = document.createElement("span");
+      nm.textContent = title;
+      const d = document.createElement("span");
+      d.className = "detail";
+      d.textContent = detail;
+      left.append(nm, d);
+      li.append(left);
+      li.onclick = onclick;
+      return li;
+    };
+    const note = (text, cls) => {
+      const li = document.createElement("li");
+      li.className = cls || "waiting";
+      li.textContent = text;
+      return li;
+    };
+    async function apiSearch(q) {
+      try {
+        const r = await fetch("/.netlify/functions/courses?q=" + encodeURIComponent(q));
+        return r.ok ? ((await r.json()).courses || []) : [];
+      } catch (e) { return []; }
+    }
+    async function saveCourse(row) {
+      const { data, error } = await db.from("courses").insert(row).select().single();
+      if (error) { toast(error.message); return; }
+      selectCourse(data);
+    }
+    async function pickApiCourse(c) {
+      toast("Grabbing the scorecard...");
+      let d = null;
+      try {
+        const r = await fetch("/.netlify/functions/courses?id=" + encodeURIComponent(c.id));
+        if (r.ok) d = await r.json();
+      } catch (e) {}
+      const location = [(c.city || "").trim(), c.state].filter(Boolean).join(", ") || null;
+      const card = d && Array.isArray(d.scorecard) ? d.scorecard.slice().sort((a, b) => a.hole - b.hole) : [];
+      const pars = card.length === 18 ? card.map(h => Number(h.par)) : null;
+      if (!pars || pars.some(p => !(p >= 3 && p <= 6))) {
+        toast("No scorecard for that one yet. Punch in the pars.");
+        const m = await parsModal(c.name);
+        if (m) saveCourse({ ...m, location: m.location || location });
+        return;
+      }
+      const hcps = card.map(h => Number(h.handicap ?? h.hcp));
+      const hcp_index = hcps.every(n => n >= 1 && n <= 18) && new Set(hcps).size === 18 ? hcps : null;
+      let tee = null;
+      if (d.tees && d.tees.length) {
+        tee = await teeModal(d.name || c.name, d.tees);
+        if (tee === undefined) return;
+      }
+      const tee_name = tee ? teeLabel(tee) : null;
+      const { data: have } = await db.from("courses").select("*").eq("source", "api").eq("external_id", c.id);
+      const matches = (have || []).filter(x => (x.tee_name || null) === tee_name && x.pars.join() === pars.join());
+      const match = matches.find(x => x.hcp_index) || matches[0];
+      const base = match || {
+        name: d.name || c.name, location, tee_name, pars, hcp_index,
+        rating: tee && tee.course_rating ? tee.course_rating : null,
+        slope: tee && tee.slope ? tee.slope : null,
+        source: "api", external_id: c.id
+      };
+      if (!base.hcp_index) {
+        const pick = await pickFrom("This scorecard doesn't list hole handicaps. Add them so handicap strokes land on the right holes?", [
+          { label: "Add hole handicaps", value: "add" },
+          { label: "Skip, spread strokes evenly", value: "skip" }
+        ]);
+        if (pick == null) return;
+        if (pick === "add") {
+          const m = await parsModal({ name: base.name, location: base.location, tee_name: base.tee_name, pars: base.pars, showHcp: true });
+          if (m) {
+            saveCourse({ ...m, rating: base.rating, slope: base.slope, source: "api", external_id: c.id });
+            return;
+          }
+        }
+      }
+      if (match) { selectCourse(match); return; }
+      saveCourse(base);
+    }
+    cSearch.oninput = () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(async () => {
+        const q = cSearch.value.trim();
+        const seq = ++searchSeq;
+        cResults.innerHTML = "";
+        if (q.length < 3) return;
+        cResults.append(note("Searching..."));
+        const [own, ext] = await Promise.all([
+          db.from("courses").select("*").neq("source", "api").ilike("name", "%" + q.replace(/[%_\\]/g, "") + "%")
+            .order("created_at", { ascending: false }).limit(5),
+          apiSearch(q)
+        ]);
+        if (seq !== searchSeq) return;
+        cResults.innerHTML = "";
+        const mine = own.data || [];
+        mine.forEach(c => cResults.append(courseRow(courseLabel(c),
+          [c.location, "Par " + parTotal(c)].filter(Boolean).join(", "), () => selectCourse(c))));
+        ext.forEach(c => cResults.append(courseRow(c.name,
+          [[(c.city || "").trim(), c.state].filter(Boolean).join(", "), c.par ? "Par " + c.par : ""].filter(Boolean).join(", "),
+          () => pickApiCourse(c))));
+        if (!mine.length && !ext.length) cResults.append(note("No courses found. Enter the pars yourself below."));
+        if (ext.length) cResults.append(note("Course data © OpenStreetMap contributors via OpenGolfAPI", "course-attrib"));
+      }, 300);
+    };
+    cManual.onclick = async () => {
+      const c = await parsModal(cSearch.value.trim());
+      if (!c) return;
+      const { data, error } = await db.from("courses").insert(c).select().single();
+      if (error) { toast(error.message); return; }
+      selectCourse(data);
+    };
+    cSkip.onclick = () => setStep("size");
+
+    const mullArea = document.createElement("div");
+    mullArea.className = "room-only toggle-row";
+    const mullTxt = document.createElement("div");
+    const mullLbl = document.createElement("span");
+    mullLbl.className = "field-label";
+    mullLbl.textContent = "Mulligans per player";
+    const mullHint = document.createElement("small");
+    mullHint.textContent = "Free do-overs. Players tap Use a mulligan on the hole.";
+    mullTxt.append(mullLbl, mullHint);
+    const mullStep = document.createElement("div");
+    mullStep.className = "stepper";
+    const mullDown = document.createElement("button");
+    mullDown.className = "mini";
+    mullDown.textContent = "\u2212";
+    mullDown.setAttribute("aria-label", "Fewer mulligans");
+    const mullVal = document.createElement("b");
+    const mullUp = document.createElement("button");
+    mullUp.className = "mini";
+    mullUp.textContent = "+";
+    mullUp.setAttribute("aria-label", "More mulligans");
+    mullStep.append(mullDown, mullVal, mullUp);
+    mullArea.append(mullTxt, mullStep);
+    const drawMull = () => {
+      const v = round.mulligans || 0;
+      mullVal.textContent = v;
+      mullDown.disabled = v <= 0;
+      mullUp.disabled = v >= 9;
+      mullArea.style.display = round.mode === "caddy" ? "none" : "";
+    };
+    const setMull = async (d) => {
+      const v = Math.max(0, Math.min(9, (round.mulligans || 0) + d));
+      if (v === (round.mulligans || 0)) return;
+      round.mulligans = v;
+      drawMull();
+      const { error } = await db.from("rounds").update({ mulligans: v }).eq("id", round.id);
+      if (error) toast(error.message);
+    };
+    mullDown.onclick = () => setMull(-1);
+    mullUp.onclick = () => setMull(1);
+
     const sizeTitle = h3("How many players?");
     hostArea.append(sizeTitle, sizeArea, modeArea);
     sizeTitle.classList.add("size-only");
@@ -710,6 +998,7 @@ async function loadRound(code) {
     lobby.prepend(stepBar);
     function guideLine() {
       const st = lobby.dataset.step;
+      if (st === "course") return CRABBY_LINES.course;
       if (st === "size") return CRABBY_LINES.size;
       if (st === "mode") return pickedMode ? CRABBY_LINES.modePicked : CRABBY_LINES.mode;
       if (startBtn.disabled) {
@@ -726,20 +1015,27 @@ async function loadRound(code) {
 
     let firstStep = true;
     function setStep(st, fromHistory) {
+      const stepChanged = lobby.dataset.step !== st;
       lobby.dataset.step = st;
+      if (stepChanged && lobby.isConnected) {
+        window.scrollTo(0, 0);
+        lobby.animate([{ opacity: 0, transform: "translateY(8px)" }, { opacity: 1, transform: "none" }], { duration: 200, easing: "ease-out" });
+      }
       if (!fromHistory) { if (firstStep) history.replaceState({ step: st }, ""); else history.pushState({ step: st }, ""); }
       window.__lobbyStep = setStep;
+      if (st === "size") { sizeTitle.style.display = ""; sizeArea.style.display = ""; }
+      if (st === "course") renderCourseCurrent();
       guide.say(guideLine());
       if (st === "room" && pickedMode && pickedSize) {
-        stepSummary.textContent = MODES[pickedMode].name + ", " + SIZES.find(([k]) => k === pickedSize)[1].toLowerCase();
+        stepSummary.textContent = MODES[pickedMode].name + ", " + SIZES.find(([k]) => k === pickedSize)[1].toLowerCase() + (course ? ", " + course.name : "");
       }
       renderLobbyList();
       if (!firstStep) { slideIn(lobby); window.scrollTo(0, 0); }
       firstStep = false;
     }
-    setStep("size");
+    setStep("course");
 
-    lobbyUpdateStart = () => { updateStart(); guide.say(guideLine()); };
+    lobbyUpdateStart = () => { updateStart(); guide.say(guideLine()); if (lobby.dataset.step === "course") renderCourseCurrent(); if (startBtn.parentNode && mullArea.nextElementSibling !== startBtn) startBtn.before(mullArea); drawMull(); };
     updateStart();
 
     startBtn.onclick = async () => {
@@ -882,6 +1178,7 @@ async function loadRound(code) {
   card.innerHTML = `
     <div id="hole-strip" class="hole-strip"></div>
     <div class="hole-head"><b id="hole-label"></b><span id="hole-mine"></span></div>
+    <div id="hole-info" class="hole-info"></div>
     <div id="ch-box" class="ch-box">
       <div class="ch-kicker">Challenge</div>
       <div id="ch-text" class="ch-text"></div>
@@ -895,6 +1192,7 @@ async function loadRound(code) {
       <div id="wolf-teams" class="ch-winner" style="margin-top:6px"></div>
       <div id="wolf-pick" class="chip-row"></div>
     </div>
+    <div id="mull-box" class="mull-box"></div>
     <div id="keeper-row" class="chip-row keeper-row"></div>
     <div id="wad-box" class="ch-box" style="display:none">
       <div class="ch-kicker">Wad</div>
@@ -1389,6 +1687,14 @@ async function loadRound(code) {
       db.from("wads").select("*").eq("round_id", round.id).order("created_at"),
     ]);
     if (r.data) round = r.data;
+    if (round.course_id && (!course || course.id !== round.course_id)) {
+      const { data: cd } = await db.from("courses").select("*").eq("id", round.course_id).maybeSingle();
+      course = cd || null;
+    }
+    ROUND_RANKS[round.id] = course && course.id === round.course_id && Array.isArray(course.hcp_index)
+      && course.hcp_index.length === 18 ? course.hcp_index : null;
+    const { data: pmData } = await db.from("player_mulligans").select("*").eq("round_id", round.id);
+    pmulls = pmData || [];
     players = p.data || [];
     scores = sc.data || [];
     results = c.data || [];
@@ -1430,7 +1736,7 @@ async function loadRound(code) {
     scoreArea.style.display = finished ? "block" : "none";
     if (finished) renderScorecard(scoreArea, { round, players, scores, results, user, picks, preds, mulls, bets, wads });
     sub.textContent = finished ? "Final results" : playing
-      ? (MODES[round.mode] || MODES.party).name + (round.handicap ? " with handicaps" : "")
+      ? (MODES[round.mode] || MODES.party).name + (round.handicap ? " with handicaps" : "") + (course ? " at " + course.name : "")
       : "Round code: " + round.code + (round.handicap ? ", handicaps on" : "");
     renderLobbyList();
     if (lobbyUpdateStart) lobbyUpdateStart();
@@ -1518,6 +1824,20 @@ async function loadRound(code) {
       for (let hn = 1; hn <= maxH; hn++) head.append(cell("th", String(hn)));
       head.append(cell("th", "Tot"));
       table.append(head);
+      if (course && Array.isArray(course.pars)) {
+        const metaRow = (label, vals, total) => {
+          const tr = document.createElement("tr");
+          tr.className = "sc-meta";
+          tr.append(cell("td", label));
+          for (let hn = 1; hn <= maxH; hn++) tr.append(cell("td", vals[hn - 1] != null ? String(vals[hn - 1]) : "-"));
+          tr.append(cell("td", total, "tot"));
+          table.append(tr);
+        };
+        const sumTo = (arr) => String(arr.slice(0, maxH).reduce((a, b) => a + (b || 0), 0));
+        metaRow("Par", course.pars, sumTo(course.pars));
+        if (Array.isArray(course.yardages) && course.yardages.length === 18) metaRow("Yds", course.yardages, sumTo(course.yardages));
+        if (Array.isArray(course.hcp_index) && course.hcp_index.length === 18) metaRow("Hdcp", course.hcp_index, "");
+      }
       gp.forEach(pl => {
         const tr = document.createElement("tr");
         const nameTd = document.createElement("td");
@@ -1527,7 +1847,7 @@ async function loadRound(code) {
         for (let hn = 1; hn <= maxH; hn++) {
           const x = sc.find(s => s.player_id === pl.id && s.hole === hn);
           if (x) tot += x.strokes;
-          tr.append(cell("td", x ? (x.strokes >= 11 ? "11+" : String(x.strokes)) : "-"));
+          tr.append(cell("td", x ? (x.strokes >= 11 ? "11+" : String(x.strokes)) + (pmulls.some(m => m.player_id === pl.id && m.hole === hn) ? "*" : "") : "-"));
         }
         tr.append(cell("td", tot ? String(tot) : "-", "tot"));
         table.append(tr);
@@ -1644,6 +1964,15 @@ async function loadRound(code) {
     myScores().forEach(x => (mine[x.hole] = x.strokes));
     tabBtns.hole.textContent = "Hole " + hole;
     $("hole-label").textContent = "Hole " + hole;
+    const holeInfo = $("hole-info");
+    if (holeInfo) {
+      const bits = [];
+      if (course && Array.isArray(course.pars)) bits.push("Par " + course.pars[hole - 1]);
+      if (course && Array.isArray(course.yardages) && course.yardages[hole - 1]) bits.push(course.yardages[hole - 1] + " yds");
+      if (course && Array.isArray(course.hcp_index) && course.hcp_index.length === 18) bits.push("Handicap " + course.hcp_index[hole - 1]);
+      holeInfo.textContent = bits.join(" \u00B7 ");
+      holeInfo.style.display = bits.length ? "" : "none";
+    }
     $("hole-mine").textContent = mine[hole] ? "You: " + (mine[hole] >= 11 ? "11+" : mine[hole]) : "No score yet";
     if (round.handicap && me) {
       const got = strokesOn(holeAllowances(round, players)[me.id] || 0, hole);
@@ -1698,6 +2027,7 @@ async function loadRound(code) {
     const tScore = (scores.find(x => x.player_id === target.id && x.hole === hole) || {}).strokes;
     grid.querySelectorAll("button").forEach(b => b.classList.toggle("selected", +b.dataset.s === tScore));
     renderKeeperRow(myGroup, target);
+    renderMulligan(target);
     $("score-label").textContent = target.id === me.id ? "Your score" : target.name + "'s score";
     const missing = players.filter(p => p.group_no === myGroup && p.role !== "caddy")
       .filter(p => !scores.some(x => x.player_id === p.id && x.hole === hole && x.strokes));
@@ -2270,6 +2600,47 @@ async function loadRound(code) {
     });
   }
 
+  function renderMulligan(target) {
+    const box = $("mull-box");
+    if (!box) return;
+    box.innerHTML = "";
+    const allowed = round.mulligans || 0;
+    if (!allowed || !target || target.role === "caddy" || isCaddy()) { box.style.display = "none"; return; }
+    box.style.display = "";
+    const used = pmulls.filter(m => m.player_id === target.id);
+    const here = used.find(m => m.hole === hole);
+    const left = allowed - used.length;
+    const mine = !!me && target.id === me.id;
+    if (!here && left <= 0) {
+      const p = document.createElement("span");
+      p.className = "cp-note";
+      p.textContent = (mine ? "You're" : target.name + " is") + " out of mulligans. Play it where it lies.";
+      box.append(p);
+      return;
+    }
+    const b = document.createElement("button");
+    b.className = "mini" + (here ? " selected" : "");
+    b.textContent = here
+      ? "\u{1F501} Mulligan used on hole " + hole + ". Undo"
+      : "\u{1F501} " + (mine ? "Use a mulligan" : "Use " + target.name + "'s mulligan") + " (" + left + " left)";
+    b.onclick = () => setMulligan(target, !here);
+    box.append(b);
+  }
+
+  async function setMulligan(target, on) {
+    const h = hole;
+    const { error } = on
+      ? await db.from("player_mulligans").insert({ round_id: round.id, player_id: target.id, hole: h })
+      : await db.from("player_mulligans").delete().eq("player_id", target.id).eq("hole", h);
+    if (error) { toast(error.message); return; }
+    if (on) {
+      const left = (round.mulligans || 0) - pmulls.filter(m => m.player_id === target.id).length - 1;
+      db.from("messages").insert({ round_id: round.id, player_id: me.id, kind: "auto",
+        body: "\u{1F501} " + target.name + " took a mulligan on hole " + h + ". " + (left > 0 ? left + " left." : "That was the last one.") }).then(() => {});
+    }
+    refresh();
+  }
+
   async function saveScore(n) {
     const h = hole;
     const target = keeperTarget(me ? me.group_no : 1);
@@ -2278,9 +2649,10 @@ async function loadRound(code) {
       { round_id: round.id, player_id: target.id, hole: h, strokes: n },
       { onConflict: "player_id,hole" });
     if (error) { toast("Error: " + error.message); return; }
-    Sound.play(n === 1 ? "ace" : n >= 8 ? "sad" : "pop");
+    const parH = (course && course.pars ? course.pars[h - 1] : null);
+    Sound.play(n === 1 ? "ace" : parH ? (n - parH <= -1 ? "fanfare" : n - parH >= 3 ? "sad" : "pop") : n >= 8 ? "sad" : "pop");
     if (n !== prev) {
-      const line = scoreLine(target.name, n, h);
+      const line = scoreLine(target.name, n, h, (course && course.pars ? course.pars[h - 1] : null));
       if (line) db.from("messages").insert({ round_id: round.id, player_id: me.id, kind: "auto", body: line }).then(() => {});
     }
     if (keeperMode) scoringFor = null;
@@ -2344,6 +2716,7 @@ async function loadRound(code) {
   lateJoin.onclick = rejoin;
 
   await refresh();
+  endRoundLoading();
   loadMessages();
   const live = { schema: "public" };
   db.channel("round-" + round.id)
@@ -2357,6 +2730,7 @@ async function loadRound(code) {
     .on("postgres_changes", { ...live, event: "*", table: "predictions", filter: "round_id=eq." + round.id }, refresh)
     .on("postgres_changes", { ...live, event: "*", table: "mulligans", filter: "round_id=eq." + round.id }, refresh)
     .on("postgres_changes", { ...live, event: "*", table: "wolf_picks", filter: "round_id=eq." + round.id }, refresh)
+    .on("postgres_changes", { ...live, event: "*", table: "player_mulligans", filter: "round_id=eq." + round.id }, refresh)
     .on("postgres_changes", { ...live, event: "INSERT", table: "messages", filter: "round_id=eq." + round.id }, (payload) => onMessage(payload.new))
     .subscribe();
   setInterval(async () => {
@@ -2611,3 +2985,272 @@ async function maybeFinishAccount() {
 }
 setTimeout(maybeFinishAccount, 1500);
 db.auth.onAuthStateChange((event) => { if (event === "USER_UPDATED" || event === "SIGNED_IN") setTimeout(maybeFinishAccount, 300); });
+
+function parsModal(prefill) {
+  return new Promise(resolve => {
+    const pre = prefill && typeof prefill === "object" ? prefill : { name: prefill || "" };
+    const pars = pre.pars && pre.pars.length === 18 ? pre.pars.slice() : Array(18).fill(4);
+    const wrap = document.createElement("div");
+    wrap.className = "modal";
+    const stack = document.createElement("div");
+    stack.className = "modal-stack";
+    const panel = document.createElement("form");
+    panel.className = "modal-panel";
+    const h = document.createElement("h2");
+    h.textContent = pre.pars ? "Check the scorecard" : "Enter the course";
+    panel.append(h);
+    const field = (label, ph, max) => {
+      const l = document.createElement("label");
+      const sp = document.createElement("span");
+      sp.textContent = label;
+      const i = document.createElement("input");
+      i.placeholder = ph;
+      i.maxLength = max;
+      i.autocomplete = "off";
+      l.append(sp, i);
+      panel.append(l);
+      return i;
+    };
+    const nameI = field("Course name", "e.g. Pine Valley", 80);
+    nameI.value = pre.name || "";
+    const locI = field("City and state (optional)", "e.g. Austin, TX", 60);
+    const teeI = field("Tees (optional)", "e.g. White", 30);
+    locI.value = pre.location || "";
+    teeI.value = pre.tee_name || "";
+    const lbl = document.createElement("div");
+    lbl.className = "field-label";
+    lbl.textContent = "Pars (tap a hole to change it)";
+    const grid = document.createElement("div");
+    grid.className = "par-grid";
+    const total = document.createElement("p");
+    total.className = "par-total";
+    const sync = () => {
+      const out = pars.slice(0, 9).reduce((a, b) => a + b, 0), inn = pars.slice(9).reduce((a, b) => a + b, 0);
+      total.textContent = "Out " + out + ", In " + inn + ", Total " + (out + inn);
+    };
+    const sels = [];
+    const hcpPre = Array.isArray(pre.hcp_index) && pre.hcp_index.length === 18 ? pre.hcp_index : null;
+    const refreshHcp = () => sels.forEach(s => {
+      s.btn.textContent = s.value || "\u2013";
+      s.btn.classList.toggle("set", !!s.value);
+    });
+    let pickerEl = null, pickerFor = null;
+    const closePicker = () => {
+      if (pickerEl) pickerEl.remove();
+      if (pickerFor) pickerFor.btn.classList.remove("active");
+      pickerEl = null;
+      pickerFor = null;
+    };
+    const openPicker = (s, i) => {
+      const same = pickerFor === s;
+      closePicker();
+      if (same) return;
+      pickerFor = s;
+      s.btn.classList.add("active");
+      pickerEl = document.createElement("div");
+      pickerEl.className = "hcp-picker";
+      const title = document.createElement("div");
+      title.className = "hcp-picker-title";
+      title.textContent = "Hole " + (i + 1) + " handicap (1 = hardest)";
+      const g = document.createElement("div");
+      g.className = "hcp-picker-grid";
+      const used = new Set(sels.filter(o => o !== s).map(o => o.value).filter(Boolean));
+      for (let n = 1; n <= 18; n++) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "hcp-opt" + (s.value === String(n) ? " selected" : "");
+        b.textContent = n;
+        b.disabled = used.has(String(n));
+        b.onclick = () => {
+          s.value = String(n);
+          refreshHcp();
+          const nextI = sels.findIndex((o, k) => k > i && !o.value);
+          if (nextI >= 0) openPicker(sels[nextI], nextI); else closePicker();
+        };
+        g.append(b);
+      }
+      const clear = document.createElement("button");
+      clear.type = "button";
+      clear.className = "link-btn";
+      clear.textContent = "Clear this hole";
+      clear.style.marginTop = "8px";
+      clear.onclick = () => { s.value = ""; refreshHcp(); closePicker(); };
+      pickerEl.append(title, g, clear);
+      grid.after(pickerEl);
+      const first = pickerEl.querySelector(".hcp-opt:not(:disabled)");
+      if (first) first.focus({ preventScroll: true });
+    };
+    pars.forEach((_, i) => {
+      const cell = document.createElement("div");
+      cell.className = "par-cell";
+      const num = document.createElement("small");
+      num.textContent = i + 1;
+      const arrow = (txt, label) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "par-arrow";
+        b.textContent = txt;
+        b.setAttribute("aria-label", label + " hole " + (i + 1) + " par");
+        return b;
+      };
+      const up = arrow("\u25B2", "Raise"), down = arrow("\u25BC", "Lower");
+      const val = document.createElement("span");
+      val.className = "par-val";
+      const draw = () => { val.textContent = pars[i]; up.disabled = pars[i] >= 6; down.disabled = pars[i] <= 3; };
+      up.onclick = () => { if (pars[i] < 6) { pars[i]++; draw(); sync(); } };
+      down.onclick = () => { if (pars[i] > 3) { pars[i]--; draw(); sync(); } };
+      const s = { value: hcpPre ? String(hcpPre[i]) : "", btn: document.createElement("button") };
+      s.btn.type = "button";
+      s.btn.className = "par-hcp";
+      s.btn.setAttribute("aria-label", "Hole " + (i + 1) + " handicap");
+      s.btn.onclick = () => openPicker(s, i);
+      const sel = s.btn;
+      sels.push(s);
+      draw();
+      cell.append(num, up, val, down, sel);
+      grid.append(cell);
+    });
+    refreshHcp();
+    const hcpToggle = document.createElement("button");
+    hcpToggle.type = "button";
+    hcpToggle.className = "link-btn";
+    hcpToggle.style.marginBottom = "10px";
+    const drawToggle = () => {
+      const on = grid.classList.contains("show-hcp");
+      hcpToggle.textContent = on ? "Remove hole handicaps" : "Add hole handicaps (optional)";
+      lbl.textContent = on ? "Pars, then hole handicap (1 = hardest hole)" : "Pars";
+    };
+    hcpToggle.onclick = () => { closePicker(); grid.classList.toggle("show-hcp"); drawToggle(); };
+    if (hcpPre || pre.showHcp) grid.classList.add("show-hcp");
+    drawToggle();
+    const err = document.createElement("p");
+    err.className = "modal-error";
+    err.setAttribute("role", "alert");
+    const row = document.createElement("div");
+    row.className = "modal-actions";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "btn-ghost";
+    cancel.textContent = "Cancel";
+    const ok = document.createElement("button");
+    ok.type = "submit";
+    ok.textContent = "Save course";
+    row.append(cancel, ok);
+    panel.append(lbl, grid, total, hcpToggle, err, row);
+    stack.append(panel);
+    wrap.append(stack);
+    document.body.append(wrap);
+    sync();
+    const close = (v) => { wrap.remove(); resolve(v); };
+    cancel.onclick = () => close(null);
+    panel.onsubmit = (e) => {
+      e.preventDefault();
+      const name = nameI.value.trim();
+      if (name.length < 2) { err.textContent = "Give the course a name."; nameI.focus(); return; }
+      let hcp_index = null;
+      if (grid.classList.contains("show-hcp")) {
+        const v = sels.map(s => Number(s.value));
+        if (v.some(n => n)) {
+          if (v.some(n => !n) || new Set(v).size !== 18) {
+            err.textContent = "Give every hole a different handicap from 1 to 18, or remove them.";
+            return;
+          }
+          hcp_index = v;
+        }
+      }
+      close({ name, location: locI.value.trim() || null, tee_name: teeI.value.trim() || null, pars: pars.slice(), hcp_index, source: "manual" });
+    };
+  });
+}
+
+function teeLabel(t) {
+  return t.tee_name + (t.gender === "Female" ? " (Women's)" : "");
+}
+function teeModal(name, tees) {
+  return new Promise(resolve => {
+    const wrap = document.createElement("div");
+    wrap.className = "modal";
+    const stack = document.createElement("div");
+    stack.className = "modal-stack";
+    const panel = document.createElement("div");
+    panel.className = "modal-panel";
+    const h = document.createElement("h2");
+    h.textContent = "Which tees?";
+    const sub = document.createElement("p");
+    sub.className = "waiting";
+    sub.textContent = name;
+    const list = document.createElement("ul");
+    list.className = "player-list tee-list";
+    const close = (v) => { wrap.remove(); resolve(v); };
+    tees.slice().sort((a, b) => (b.yardage || 0) - (a.yardage || 0)).forEach(t => {
+      const li = document.createElement("li");
+      li.style.cursor = "pointer";
+      const left = document.createElement("div");
+      const nm = document.createElement("span");
+      nm.textContent = teeLabel(t);
+      const d = document.createElement("span");
+      d.className = "detail";
+      d.textContent = [t.yardage ? t.yardage.toLocaleString() + " yds" : "",
+        t.course_rating && t.slope ? t.course_rating + " / " + t.slope : ""].filter(Boolean).join(", ");
+      left.append(nm, d);
+      li.append(left);
+      li.onclick = () => close(t);
+      list.append(li);
+    });
+    const cancel = document.createElement("button");
+    cancel.className = "btn-ghost";
+    cancel.textContent = "Cancel";
+    cancel.style.cssText = "width:100%;margin-top:12px";
+    cancel.onclick = () => close(undefined);
+    panel.append(h, sub, list, cancel);
+    stack.append(panel);
+    wrap.append(stack);
+    document.body.append(wrap);
+  });
+}
+
+async function shrinkImage(file) {
+  let img;
+  try { img = await createImageBitmap(file); }
+  catch (e) { throw new Error("Couldn't open that photo. Try a JPG or PNG."); }
+  const k = Math.min(1, 1568 / Math.max(img.width, img.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(img.width * k);
+  c.height = Math.round(img.height * k);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", 0.85).split(",")[1];
+}
+
+async function loadRoundRanks(roundIds) {
+  const ids = [...new Set((roundIds || []).filter(id => id && !(id in ROUND_RANKS)))];
+  if (!ids.length) return;
+  const { data: rs } = await db.from("rounds").select("id, course_id").in("id", ids);
+  const cids = [...new Set((rs || []).map(r => r.course_id).filter(Boolean))];
+  const { data: cs } = cids.length ? await db.from("courses").select("id, hcp_index").in("id", cids) : { data: [] };
+  (rs || []).forEach(r => {
+    const c = (cs || []).find(x => x.id === r.course_id);
+    ROUND_RANKS[r.id] = c && Array.isArray(c.hcp_index) && c.hcp_index.length === 18 ? c.hcp_index : null;
+  });
+}
+
+function startRoundLoading() {
+  if (document.body.classList.contains("round-loading")) return;
+  document.body.classList.add("round-loading");
+  const ld = document.createElement("div");
+  ld.id = "round-loader";
+  ld.setAttribute("role", "status");
+  ld.setAttribute("aria-label", "Loading round");
+  document.body.append(ld);
+  clearTimeout(window.__roundLoadTimer);
+  window.__roundLoadTimer = setTimeout(endRoundLoading, 5000);
+}
+function endRoundLoading() {
+  clearTimeout(window.__roundLoadTimer);
+  const ld = document.getElementById("round-loader");
+  if (ld) ld.remove();
+  if (!document.body.classList.contains("round-loading")) return;
+  document.body.classList.remove("round-loading");
+  [...document.body.children].forEach(el => {
+    if (el.tagName !== "SCRIPT" && el.animate) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: "ease-out" });
+  });
+}

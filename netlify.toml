@@ -15,3 +15,6 @@
   from = "/privacy"
   to = "/privacy.html"
   status = 200
+
+[functions]
+  directory = "netlify/functions"

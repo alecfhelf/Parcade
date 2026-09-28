@@ -423,6 +423,7 @@ async function loadSeason(code) {
     addArea.append(list);
     if (!myIds.length) { list.append(el("li", { textContent: "Play a round and it shows up here." })); return; }
     const { data: rounds } = await db.from("rounds").select("*").in("id", myIds).order("created_at", { ascending: false });
+    await loadRoundRanks((rounds || []).map(r => r.id));
     (rounds || []).forEach(r => {
       list.append(el("li", {},
         el("span", { textContent: r.name }),

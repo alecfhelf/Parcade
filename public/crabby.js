@@ -86,6 +86,7 @@ function crabbyEl(size = 120) {
 
 const CRABBY_LINES = {
   welcome: "Welcome to the course, I'm Crabby. Nice shoes. Your mom pick 'em out? Name your round, type your name, pick a color, then hit Tee it up.",
+  course: "What course are you on? Search for it, or punch in the pars yourself. I'm not a mind reader.",
   size: "How many of you are playing? Tap a number. Counting's the easy part, trust me.",
   mode: "Pick a game. Tap the little i if you need the rules explained like you're five.",
   modePicked: "Fine. Now hit Next before I change my mind.",

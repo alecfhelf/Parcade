@@ -522,6 +522,59 @@
     .alias-block { margin: 10px 0 14px; text-align: left; }
     .alias-name { font-weight: 700; margin-bottom: 4px; }
     .chip-row button:disabled { opacity: 0.35; }
+    .lobby[data-step="course"] .size-only, .lobby[data-step="course"] .mode-only, .lobby[data-step="course"] .room-only,
+    .lobby:not([data-step="course"]) .course-only { display: none !important; }
+    .course-search { width: 100%; padding: 12px; border-radius: 10px; font-size: 16px; }
+    .course-results { margin-top: 8px; }
+    .par-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; margin-bottom: 6px; }
+    .par-cell { display: flex; flex-direction: column; align-items: center; padding: 6px 0; line-height: 1.15; font-size: 1rem;
+      background: var(--bg); color: var(--ink); clip-path: none; border-radius: 6px; }
+    .par-cell:hover { background: rgba(46,107,255,0.25); }
+    .par-cell small { font-size: 0.65rem; color: var(--muted); font-weight: 400; }
+    .par-total { margin: 4px 0 10px; color: var(--muted); font-size: 0.9rem; }
+    .course-attrib { font-size: 0.72rem; color: var(--muted); list-style: none; padding-top: 6px; }
+    .tee-list { max-height: 55vh; overflow-y: auto; }
+    /* pickable-row: highlight tappable list rows */
+    .player-list li[style*="cursor: pointer"] { transition: background 0.12s ease; border-radius: 8px; }
+    @media (hover: hover) {
+      .player-list li[style*="cursor: pointer"]:hover { background: rgba(46,107,255,0.18); }
+    }
+    .player-list li[style*="cursor: pointer"]:active { background: rgba(46,107,255,0.3); }
+    .par-cell { gap: 2px; padding: 5px 0; }
+    .par-cell:hover { background: var(--bg); }
+    .par-arrow { background: none; border: none; clip-path: none; box-shadow: none; color: var(--muted);
+      width: 100%; padding: 3px 0; min-height: 22px; font-size: 0.7rem; line-height: 1; cursor: pointer; }
+    .par-arrow:hover { color: var(--ink); background: rgba(46,107,255,0.18); }
+    .par-arrow:disabled { opacity: 0.2; cursor: default; background: none; }
+    .par-val { font-weight: 700; font-size: 1.05rem; }
+    .par-hcp { display: none; width: 100%; margin-top: 4px; padding: 3px 0; font-size: 16px; text-align: center; text-align-last: center;
+      -webkit-appearance: none; appearance: none; background: transparent; color: var(--ink);
+      border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; }
+    .par-grid.show-hcp .par-hcp { display: block; }
+    .mull-box { margin: 0 0 12px; }
+    .stepper { display: flex; align-items: center; gap: 10px; }
+    .stepper b { min-width: 1.5em; text-align: center; font-size: 1.1rem; }
+    body.round-loading > *:not(#round-loader):not(script) { visibility: hidden; }
+    #round-loader { position: fixed; left: 50%; top: 45%; width: 34px; height: 34px; margin: -17px 0 0 -17px; z-index: 50;
+      border: 3px solid rgba(92,225,255,0.2); border-top-color: rgba(92,225,255,0.9); border-radius: 50%;
+      opacity: 0; animation: rl-show 0s 0.3s forwards, rl-spin 0.8s linear infinite; }
+    @keyframes rl-show { to { opacity: 1; } }
+    @keyframes rl-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { #round-loader { animation: rl-show 0s 0.3s forwards; } }
+    .par-hcp { clip-path: none; box-shadow: none; min-height: 28px; font-weight: 700; font-size: 0.95rem; color: var(--muted);
+      background: transparent; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; cursor: pointer; }
+    .par-hcp.set { color: var(--ink); border-color: rgba(92,225,255,0.45); }
+    .par-hcp:hover { background: rgba(46,107,255,0.18); }
+    .par-hcp.active { border-color: rgba(92,225,255,0.95); box-shadow: 0 0 8px rgba(92,225,255,0.5); }
+    .hcp-picker { margin: 8px 0 4px; padding: 12px; background: var(--panel); border: 1px solid rgba(92,225,255,0.35); border-radius: 10px; }
+    .hcp-picker-title { font-size: 0.85rem; color: var(--muted); margin-bottom: 8px; }
+    .hcp-picker-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+    .hcp-opt { padding: 9px 0; clip-path: none; box-shadow: none; border-radius: 6px; background: var(--bg); color: var(--ink); font-size: 1rem; }
+    .hcp-opt:hover { background: rgba(46,107,255,0.25); }
+    .hcp-opt.selected, .hcp-opt.selected:hover { background: var(--blue); color: #fff; }
+    .hcp-opt:disabled { opacity: 0.2; cursor: default; background: var(--bg); }
+    .hole-info { color: var(--muted); font-size: 0.9rem; margin: -4px 0 10px; letter-spacing: 0.02em; }
+    .sc-meta td { color: var(--muted); font-size: 0.8rem; }
   </style>
 </head>
 <body>
