@@ -62,3 +62,5 @@ function vegasTotals(round, players, scores) {
   [...new Set(players.map(p => p.group_no))].forEach(g => Object.assign(totals, vegasState(round, players, scores, g).totals));
   return totals;
 }
+
+if (typeof module !== "undefined") module.exports = { vegasNumber };

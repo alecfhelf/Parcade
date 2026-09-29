@@ -402,6 +402,13 @@
       text-align: center; line-height: 1.2; font-size: 0.95rem; font-weight: 700; background: var(--panel); color: var(--ink); }
     .game-tile:hover { background: rgba(46,107,255,0.2); }
     .game-tile.selected, .game-tile.selected:hover { background: rgba(46,107,255,0.35); box-shadow: inset 0 0 0 2px var(--glow); }
+    .game-tile { flex-direction: column; gap: 3px; }
+    .game-tile.off, .game-tile.off:hover { opacity: 0.45; background: var(--panel); cursor: not-allowed; }
+    .game-tile.off { padding-top: 22px; }
+    .game-why { font-size: 0.7rem; font-weight: 400; color: var(--muted); line-height: 1.2; }
+    .game-why:empty { display: none; }
+    .money-each { display: block; margin-top: 3px; font-size: 0.75rem; color: var(--muted); }
+    .money-each:empty { display: none; }
     .info-corner { position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; padding: 0; background: transparent; clip-path: none; }
     .info-corner:hover { background: transparent; color: var(--ink); }
     .info-corner .info-dot { width: 18px; height: 18px; font-size: 0.7rem; border-width: 1.5px; }
@@ -592,6 +599,64 @@
     .sv2-uncounted { opacity: 0.55; }
     .fmt-pick { display: flex; gap: 8px; }
     .modal-panel input[type="date"] { color-scheme: dark; }
+    /* ---------- Tournaments ---------- */
+    .bk-wrap { width: min(1400px, calc(100vw - 32px)); position: relative; left: 50%; transform: translateX(-50%); margin: 4px 0 14px; }
+    .bk-tools { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-bottom: 6px; }
+    .bk-tools .mini { min-width: 40px; color: var(--ink); }
+    .bk-tools .mini:first-child { margin-right: auto; color: var(--glow); }
+    .bk-zoom { font-size: 0.8rem; color: var(--muted); min-width: 3em; text-align: right; }
+    .bk-view { overflow: auto; max-height: 72vh; border-radius: 12px; background: rgba(255,255,255,0.03); -webkit-overflow-scrolling: touch; }
+    .bk-sizer { position: relative; }
+    .bk-canvas { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+    .bk-lines { position: absolute; top: 0; left: 0; pointer-events: none; }
+    .bk-lines path { fill: none; stroke: rgba(138,155,196,0.35); stroke-width: 1.5; }
+    .bk-lines path.done { stroke: rgba(234,242,255,0.55); }
+    .bk-lines path.mine { stroke: var(--glow); stroke-width: 3; filter: drop-shadow(0 0 3px rgba(92,225,255,0.7)); }
+    .bk-head { position: absolute; top: 8px; text-align: center; font-size: 13px; line-height: 1.25; color: var(--muted); }
+    .bk-head b { display: block; font-weight: 700; color: var(--ink); }
+    .bk-head span { display: block; font-size: 12px; }
+    .bk-head.mine b { color: var(--glow); }
+    .bk-third-head { font-weight: 700; color: var(--ink); }
+    .bk-card { position: absolute; width: 184px; height: 66px; margin: 0; padding: 4px 8px; display: flex; flex-direction: column; justify-content: center;
+      text-align: left; font-size: 14px; font-weight: 400; line-height: 1.2; background: var(--panel); color: var(--ink);
+      border-radius: 8px; clip-path: none; border: 1px solid rgba(255,255,255,0.12); transition: none; }
+    .bk-card:hover { background: #16224A; }
+    .bk-card:focus-visible { background: #16224A; color: var(--ink); box-shadow: 0 0 0 2px var(--glow); }
+    .bk-card.mine { border-color: var(--glow); box-shadow: 0 0 10px rgba(92,225,255,0.35); }
+    .bk-card.live { border-color: rgba(124,255,107,0.6); }
+    .bk-card.picked { border-color: #FFD84D; box-shadow: 0 0 10px rgba(255,216,77,0.4); }
+    .bk-card.bye { background: transparent; border-style: dashed; }
+    .bk-row { display: flex; align-items: center; gap: 5px; height: 20px; }
+    .bk-seed { flex: 0 0 18px; text-align: right; font-size: 12px; font-weight: 700; color: var(--muted); }
+    .bk-dot { flex: 0 0 8px; height: 8px; border-radius: 50%; }
+    .bk-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bk-score { flex: 0 0 auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .bk-row.win { font-weight: 700; color: var(--glow); }
+    .bk-row.win .bk-score { color: var(--glow); }
+    .bk-row.lose { opacity: 0.45; }
+    .bk-row.me .bk-name { text-decoration: underline; text-decoration-color: var(--glow); text-underline-offset: 2px; }
+    .bk-row.bye, .bk-row.tbd { color: var(--muted); font-style: italic; }
+    .bk-meta { height: 14px; margin-top: 2px; padding-left: 23px; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bk-meta.tb-live { color: #7CFF6B; }
+    .tb-team { margin: 0 0 12px; padding: 10px 12px; text-align: left; background: var(--panel); border-radius: 10px; border-left: 4px solid var(--c, var(--glow)); }
+    .tb-team.mine { box-shadow: inset 0 0 0 1px var(--glow); }
+    .tb-team-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .tb-team-head b { font-size: 1.05rem; }
+    .tb-team .player-list { font-size: 1rem; margin: 4px 0 0; }
+    .tb-team .player-list li { padding: 6px 2px; }
+    .tb-summary { text-align: left; margin: 4px 0 8px; color: var(--muted); font-size: 0.95rem; line-height: 1.45; }
+    .tb-summary b { color: var(--ink); font-weight: 600; }
+    .tb-go { width: 100%; margin: 12px 0 4px; }
+    .tb-mc { font-size: 0.8rem; }
+    .tb-mc td.stroke-dot::after { content: "\2022"; color: #FFD84D; margin-left: 1px; }
+    .tb-mc tr.tb-teamrow td { font-weight: 700; color: var(--glow); }
+    .tb-score-line { font-family: "Bungee", sans-serif; font-size: 1.2rem; margin: 6px 0 2px; }
+    .tb-builder-hint { margin: 6px 0 10px; }
+    .modal-panel .mode-grid { width: auto; left: auto; transform: none; grid-template-columns: repeat(3, 1fr); margin-top: 6px; }
+    .modal-panel .mode-preview { margin: 10px 0 14px; font-size: 0.85rem; }
+    .modal-panel .game-tile { min-height: 70px; font-size: 0.85rem; padding: 16px 6px 8px; }
+    .modal-panel .money-field { margin-bottom: 0; }
+    .modal-panel .money-field input { padding: 10px; }
   </style>
 </head>
 <body>
@@ -610,6 +675,7 @@
     <button id="create-round">Start a new round</button>
     <button id="join-code" class="btn-ghost">Join with a code</button>
     <button id="seasons-btn" class="btn-ghost">Seasons</button>
+    <button id="tournaments-btn" class="btn-ghost">Tournaments</button>
     <button id="recent-btn" class="btn-ghost">Recent rounds</button>
   </div>
   <div class="account-line home-only" id="account"></div>
@@ -670,7 +736,9 @@
   <script src="money.js"></script>
   <script src="wad.js"></script>
   <script src="seasonscore.js"></script>
+  <script src="tournament-core.js"></script>
   <script src="app.js"></script>
+  <script src="tournaments.js"></script>
   <script src="seasons.js"></script>
 </body>
 </html>

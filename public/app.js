@@ -35,8 +35,9 @@ function holeAllowances(round, players) {
   if (!round.handicap) return map;
   const vals = players.map(p => p.usual_score).filter(v => v);
   if (!vals.length) return map;
-  const best = Math.min(...vals);
-  players.forEach(p => { map[p.id] = p.usual_score ? Math.round(p.usual_score - best) / 18 : 0; });
+  // Tournament rounds measure from the best player in the whole tournament, not just this round
+  const best = round.hcp_base != null ? Number(round.hcp_base) : Math.min(...vals);
+  players.forEach(p => { map[p.id] = p.usual_score ? Math.max(0, Math.round(p.usual_score - best)) / 18 : 0; });
   return map;
 }
 const ROUND_RANKS = {};
@@ -424,6 +425,79 @@ const MODES = {
   caddy: { name: "Cart Caddy", desc: "Non-golfers become caddies with ridiculous powers. Call the shot, earn points, fight for Best Caddy." },
   wolf: { name: "Wolf", desc: "Groups of 3 or 4. Pick a partner off the tee or go it alone. Loyalty is optional." },
 };
+
+// Game-mode tiles with the i button for the full rules and a description line underneath.
+// Used by round setup and tournaments. opts: { modes: [key], selected, off: { key: why not }, onPick(key) }
+function modeGrid(opts) {
+  let picked = opts.selected || null, off = opts.off || {};
+  const wrap = document.createElement("div");
+  const grid = document.createElement("div");
+  grid.className = "mode-grid";
+  const preview = document.createElement("p");
+  preview.className = "mode-preview";
+  preview.setAttribute("aria-live", "polite");
+  const showDesc = (key) => {
+    preview.textContent = !key ? "Hover over a game for a quick description. Tap the i for the full rules."
+      : off[key] ? MODES[key].name + " isn't available: " + off[key]
+      : MODES[key].name + ": " + MODES[key].desc;
+  };
+  const tiles = {};
+  opts.modes.forEach(key => {
+    const m = MODES[key];
+    const cell = document.createElement("div");
+    cell.className = "mode-cell";
+    const tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = "game-tile";
+    const name = document.createElement("span");
+    name.textContent = m.name;
+    const why = document.createElement("small");
+    why.className = "game-why";
+    tile.append(name, why);
+    tile.onmouseenter = () => showDesc(key);
+    tile.onfocus = () => showDesc(key);
+    tile.onmouseleave = () => showDesc(picked);
+    tile.onblur = () => showDesc(picked);
+    tile.onclick = () => {
+      showDesc(key);
+      if (off[key]) return;
+      picked = key;
+      draw();
+      if (opts.onPick) opts.onPick(key);
+    };
+    const info = infoBtn("How " + m.name + " works", () => showRulesModal(m.name, [key, "round"]));
+    info.type = "button";
+    info.classList.add("info-corner");
+    cell.append(tile, info);
+    grid.append(cell);
+    tiles[key] = { tile, why };
+  });
+  function draw() {
+    Object.entries(tiles).forEach(([key, x]) => {
+      x.tile.classList.toggle("selected", key === picked);
+      x.tile.classList.toggle("off", !!off[key]);
+      x.tile.setAttribute("aria-disabled", String(!!off[key]));
+      x.why.textContent = off[key] || "";
+    });
+  }
+  // Size the description line for the longest text so the page doesn't jump around
+  function fit() {
+    if (!preview.isConnected) return;
+    preview.style.minHeight = "";
+    let tallest = 0;
+    [null, ...opts.modes].forEach(k => { showDesc(k); tallest = Math.max(tallest, preview.offsetHeight); });
+    preview.style.minHeight = tallest + "px";
+    showDesc(picked);
+  }
+  wrap.append(grid, preview);
+  draw();
+  showDesc(picked);
+  return {
+    el: wrap, fit,
+    setOff(o) { off = o || {}; draw(); fit(); },
+    setPicked(key) { picked = key; draw(); showDesc(picked); },
+  };
+}
 
 async function loadRound(code) {
   startRoundLoading();
@@ -917,42 +991,15 @@ async function loadRound(code) {
       back.onclick = () => { pickedSize = null; pickedMode = null; renderModes(); updateStart(); setStep("size"); };
       modeArea.append(back, h3("Pick a game mode for " + label.toLowerCase()));
       slideIn(modeArea);
-      const grid = document.createElement("div");
-      grid.className = "mode-grid";
-      const preview = document.createElement("p");
-      preview.className = "mode-preview";
-      preview.setAttribute("aria-live", "polite");
-      const showDesc = (key) => {
-        preview.textContent = key ? MODES[key].name + ": " + MODES[key].desc
-          : "Hover over a game for a quick description. Tap the i for the full rules.";
-      };
-      MODES_FOR[pickedSize].forEach(key => {
-        const m = MODES[key];
-        const cell = document.createElement("div");
-        cell.className = "mode-cell";
-        const tile = document.createElement("button");
-        tile.className = "game-tile";
-        tile.textContent = m.name;
-        tile.onmouseenter = () => showDesc(key);
-        tile.onfocus = () => showDesc(key);
-        tile.onmouseleave = () => showDesc(pickedMode);
-        tile.onblur = () => showDesc(pickedMode);
-        tile.onclick = () => {
-          pickedMode = key;
-          grid.querySelectorAll(".game-tile").forEach(t => t.classList.toggle("selected", t === tile));
-          showDesc(key);
-          updateStart();
-          caddyNote.style.display = key === "caddy" ? "block" : "none";
-          nextBtn.disabled = false;
-          guide.say(guideLine());
-          renderLobbyList();
-        };
-        const info = infoBtn("How " + m.name + " works", () => showRulesModal(m.name, [key, "round"]));
-        info.classList.add("info-corner");
-        cell.append(tile, info);
-        grid.append(cell);
-      });
-      modeArea.append(grid, preview);
+      const picker = modeGrid({ modes: MODES_FOR[pickedSize], selected: pickedMode, onPick: key => {
+        pickedMode = key;
+        updateStart();
+        caddyNote.style.display = key === "caddy" ? "block" : "none";
+        nextBtn.disabled = false;
+        guide.say(guideLine());
+        renderLobbyList();
+      } });
+      modeArea.append(picker.el);
       const caddyNote = document.createElement("p");
       caddyNote.className = "waiting";
       caddyNote.style.display = pickedMode === "caddy" ? "block" : "none";
@@ -964,10 +1011,7 @@ async function loadRound(code) {
       nextBtn.disabled = !pickedMode;
       nextBtn.onclick = () => setStep("room");
       modeArea.append(nextBtn);
-      let tallest = 0;
-      [null, ...MODES_FOR[pickedSize]].forEach(k => { showDesc(k); tallest = Math.max(tallest, preview.offsetHeight); });
-      preview.style.minHeight = tallest + "px";
-      showDesc(pickedMode);
+      picker.fit();
     }
 
     function updateStart() {
@@ -1072,11 +1116,7 @@ async function loadRound(code) {
           return;
         }
       }
-      if (stakes === "pot") {
-        const pot = num("m-buyin") * payers(), sum = num("m-p1") + num("m-p2") + num("m-p3");
-        if (!pot) { toast("Enter a buy-in, or turn off Play for money."); return; }
-        if (Math.round((pot - sum) * 100) !== 0) { toast("Payouts need to add up to the " + moneyFmt(pot) + " pot."); return; }
-      }
+      if (stakes === "pot" && potBox.problem()) { toast(potBox.problem()); return; }
       if (pickedMode === "wad") {
         const sizes = {};
         players.forEach(pl => (sizes[pl.group_no] = (sizes[pl.group_no] || 0) + 1));
@@ -1104,17 +1144,7 @@ async function loadRound(code) {
           <button type="button" data-t="pot">Buy-in pot</button>
           <button type="button" data-t="point">Per point</button>
         </div>
-        <div id="money-pot">
-          <label class="money-field"><span>Buy-in per player ($)</span><input id="m-buyin" type="number" inputmode="decimal" min="0" step="1" placeholder="20"></label>
-          <p class="money-total" id="m-pot"></p>
-          <div class="money-places">
-            <label class="money-field"><span>1st ($)</span><input id="m-p1" type="number" inputmode="decimal" min="0"></label>
-            <label class="money-field"><span>2nd ($)</span><input id="m-p2" type="number" inputmode="decimal" min="0"></label>
-            <label class="money-field"><span>3rd ($)</span><input id="m-p3" type="number" inputmode="decimal" min="0"></label>
-          </div>
-          <button type="button" class="link-btn" id="m-split">Fill in a 60 / 30 / 10 split</button>
-          <p class="money-check" id="m-check"></p>
-        </div>
+        <div id="money-pot"></div>
         <div id="money-point" style="display:none">
           <label class="money-field"><span id="m-unit">Dollars per point</span><input id="m-per" type="number" inputmode="decimal" min="0" step="0.5" placeholder="1"></label>
           <p class="cp-note">At the end, everyone settles the point difference with everyone else.</p>
@@ -1124,6 +1154,9 @@ async function loadRound(code) {
     const mq = (id) => money.querySelector("#" + id);
     const num = id => { const v = parseFloat(mq(id).value); return isNaN(v) || v < 0 ? 0 : Math.round(v * 100) / 100; };
     const payers = () => (pickedMode === "caddy" ? players.filter(pl => pl.role === "caddy").length : players.length);
+    const potBox = potSetup({ payers, split: [60, 30, 10],
+      payerText: n => n + (pickedMode === "caddy" ? (n === 1 ? " caddy" : " caddies") : (n === 1 ? " player" : " players")) });
+    mq("money-pot").append(potBox.el);
     function syncMoney() {
       if (pickedMode === "wad" && stakes === "pot") stakes = "point";
       mq("money-type").querySelector('[data-t="pot"]').style.display = pickedMode === "wad" ? "none" : "";
@@ -1140,26 +1173,13 @@ async function loadRound(code) {
       mq("money-pot").style.display = stakes === "pot" ? "block" : "none";
       mq("money-point").style.display = stakes === "point" ? "block" : "none";
       mq("m-unit").textContent = pickedMode === "stroke" ? "Dollars per stroke" : pickedMode === "skins" ? "Dollars per skin" : pickedMode === "wad" ? "Dollars per Wad" : "Dollars per point";
-      const pot = num("m-buyin") * payers();
-      const np = payers();
-      mq("m-pot").textContent = "Pot: " + moneyFmt(pot) + " (" + np + (pickedMode === "caddy" ? (np === 1 ? " caddy)" : " caddies)") : (np === 1 ? " player)" : " players)"));
-      const diff = Math.round((pot - num("m-p1") - num("m-p2") - num("m-p3")) * 100) / 100;
-      const check = mq("m-check");
-      check.textContent = !pot ? "" : diff === 0 ? "Payouts match the pot." : diff > 0 ? moneyFmt(diff) + " left to hand out." : "Payouts are " + moneyFmt(-diff) + " over the pot.";
-      check.classList.toggle("bad", !!pot && diff !== 0);
+      potBox.sync();
     }
     mq("money-switch").onclick = () => { stakes = stakes === "none" ? "pot" : "none"; syncMoney(); };
     mq("money-type").querySelectorAll("button").forEach(b => (b.onclick = () => { stakes = b.dataset.t; syncMoney(); }));
-    ["m-buyin", "m-p1", "m-p2", "m-p3", "m-per"].forEach(id => (mq(id).oninput = syncMoney));
-    mq("m-split").onclick = () => {
-      const pot = num("m-buyin") * payers();
-      if (!pot) { toast("Enter a buy-in first."); return; }
-      const a = Math.round(pot * 0.6), b = Math.round(pot * 0.3);
-      mq("m-p1").value = a; mq("m-p2").value = b; mq("m-p3").value = Math.round((pot - a - b) * 100) / 100;
-      syncMoney();
-    };
+    mq("m-per").oninput = syncMoney;
     const moneyFields = () => stakes === "pot"
-      ? { stakes, buy_in: num("m-buyin"), payouts: [num("m-p1"), num("m-p2"), num("m-p3")], per_point: null }
+      ? { stakes, buy_in: potBox.buyIn(), payouts: potBox.payouts(), per_point: null }
       : stakes === "point" ? { stakes, per_point: num("m-per"), buy_in: null, payouts: null }
       : { stakes: "none", buy_in: null, payouts: null, per_point: null };
     syncMoney();
@@ -1437,6 +1457,24 @@ async function loadRound(code) {
   keeperTop.setAttribute("aria-describedby", "keeper-tip");
   keeperWrap.append(keeperTop, keeperTip);
   topBar.append(homeTop, copyTop, keeperWrap);
+  if (round.tournament_id) {
+    const { data: tourney } = await db.from("tournaments").select("code, schedule, holes_per_match").eq("id", round.tournament_id).maybeSingle();
+    if (tourney) {
+      const tourTop = document.createElement("button");
+      tourTop.className = "copy-top";
+      tourTop.textContent = "Bracket";
+      tourTop.onclick = () => (location.href = "/?t=" + tourney.code);
+      topBar.append(tourTop);
+      const tNote = document.createElement("p");
+      tNote.className = "waiting";
+      tNote.style.cssText = "margin:0 0 12px";
+      tNote.textContent = tourney.schedule === "one_day"
+        ? "Tournament round. Play all 18. Your matches are scored on the bracket, a chunk of holes at a time."
+        : tourney.holes_per_match === 9 ? "Tournament match, 9 holes. It's final after hole 9. The bracket has the team score."
+        : "Tournament match. The bracket has the team score.";
+      panels.hole.prepend(tNote);
+    }
+  }
   const roundSound = soundButton();
   roundSound.classList.add("sound-home");
   document.body.append(roundSound);
@@ -2946,7 +2984,7 @@ window.addEventListener("popstate", (e) => {
   if (e.state && e.state.step && window.__lobbyStep && document.querySelector(".top-actions")) return window.__lobbyStep(e.state.step, true);
   const sp = new URLSearchParams(location.search);
   if (sp.get("r") || document.querySelector(".top-actions")) return location.reload();
-  if (sp.has("seasons") || sp.get("s")) return seasonsRoute();
+  if (sp.has("seasons") || sp.get("s") || sp.has("tournaments") || sp.get("t")) return seasonsRoute();
   showHomeView();
 });
 

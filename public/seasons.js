@@ -16,6 +16,7 @@ function pageShell(title, subtitle) {
   document.querySelector("h1 + p").textContent = subtitle;
   document.querySelectorAll(".season-box").forEach(b => b.remove());
   dropSeasonChannel();
+  dropTournamentChannel();
   const box = el("div", { className: "lobby season-box" });
   box.style.cssText = "margin-top:16px;width:100%;max-width:360px";
   $("status").before(box);
@@ -933,11 +934,14 @@ function seasonsRoute() {
   const sp = new URLSearchParams(location.search);
   if (sp.has("seasons")) loadSeasonList();
   else if (sp.get("s")) loadSeason(sp.get("s"));
+  else if (sp.has("tournaments")) loadTournamentList();
+  else if (sp.get("t")) loadTournament(sp.get("t"));
 }
 
 function showHomeView() {
   document.querySelectorAll(".season-box").forEach(b => b.remove());
   dropSeasonChannel();
+  dropTournamentChannel();
   document.body.classList.remove("in-round");
   document.querySelector("h1").innerHTML = HOME_H1;
   document.querySelector("h1 + p").textContent = HOME_SUB;

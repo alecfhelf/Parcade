@@ -175,6 +175,28 @@ const CRABBY_SEASON = {
   guest: "You need an account to join a season. Create one or sign in. Guests don't get to hold grudges.",
 };
 
+const CRABBY_TOURNEY = {
+  tour: [
+    "A tournament? Look at you, Mr. Commissioner. Teams, a bracket, the whole March Madness thing. With golf.",
+    "Pick 4 to 64 teams and 1 to 4 players a team. Build them yourself, randomize them, or let me balance them by handicap.",
+    "One day: everybody plays one 18 and I chop it into chunks, one per bracket round. Over time: every match is its own round, whenever you get to it.",
+    "Handicaps work off the best player in the whole tournament, so strokes are the same in every match. Ties go to a card-off.",
+    "Everybody sees the whole bracket live. Tap any match for the scorecards. Tap Go score when it's your turn.",
+    "Play for money and I'll split the pot by place and tell you who owes who. Tap Start a tournament or Join with a code.",
+  ],
+  tourGuest: [
+    "A tournament? Look at you, Mr. Commissioner. Teams, a bracket, the whole March Madness thing. With golf.",
+    "Tournaments need an account so I know who's who. Hit Create account or Sign in below. Chop chop.",
+  ],
+  setupOwner: "Your tournament, boss. Set it up, build the teams, check the bracket, then hit Start. Nothing's locked till then.",
+  setupMember: "You're in. Now we wait on the commissioner to sort out teams. Could be a while. They seem slow.",
+  join: "Hit Join this tournament and tell me your handicap. Don't know it? Tell me what you usually shoot. Lie and I'll know.",
+  guest: "You need an account to join a tournament. Create one or sign in. Guests don't get brackets.",
+  active: "Games are on. Tap Go score when it's your match. Tap any match to spy on the competition.",
+  eliminated: "You're out. Tough break. Stick around and root against your friends, that's half the fun.",
+  finished: "That's a wrap. Somebody's buying drinks, and I've got the receipts right here.",
+};
+
 function crabbyTour(desk, lines) {
   if (desk.reserve) desk.reserve(lines);
   let i = 0;
