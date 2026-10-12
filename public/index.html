@@ -657,7 +657,63 @@
     .modal-panel .game-tile { min-height: 70px; font-size: 0.85rem; padding: 16px 6px 8px; }
     .modal-panel .money-field { margin-bottom: 0; }
     .modal-panel .money-field input { padding: 10px; }
+    .invite-code { display: flex; align-items: baseline; gap: 12px; margin-top: 12px; }
+    .invite-code b { font-family: Bungee, sans-serif; font-size: 1.6rem; letter-spacing: 0.12em; color: var(--ink);
+      text-shadow: 0 0 8px rgba(92,225,255,0.6); user-select: all; }
+    .lobby:not([data-step="setup"]) .setup-only { display: none !important; }
+    .lobby[data-step="setup"] .size-only, .lobby[data-step="setup"] .mode-only,
+    .lobby[data-step="setup"] .room-only, .lobby[data-step="setup"] .course-only { display: none !important; }
+    .recap { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; justify-content: center;
+      padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px)); background: rgba(3,6,18,0.45); }
+    .recap-card { width: 100%; max-width: 420px; padding: 16px 18px; border-radius: 14px; background: var(--panel);
+      border: 1px solid rgba(92,225,255,0.4); box-shadow: 0 0 24px rgba(92,225,255,0.18); animation: recap-up 0.28s ease-out; }
+    @keyframes recap-up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+    .recap-kicker { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+    .recap-title { font-size: 1.15rem; font-weight: 700; color: var(--ink); margin: 4px 0 10px; }
+    .recap-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 0;
+      border-top: 1px solid rgba(255,255,255,0.06); }
+    .recap-row span { display: inline-flex; align-items: center; gap: 6px; }
+    .recap-sub { font-size: 0.78rem; color: var(--muted); }
+    .recap-note { font-size: 0.8rem; color: var(--muted); margin-top: 10px; }
+    .recap-hint { font-size: 0.72rem; color: var(--muted); opacity: 0.7; margin-top: 6px; text-align: center; }
+    @media (prefers-reduced-motion: reduce) { .recap-card { animation: none; } }
+    .toggle-row .field-label { color: #fff; }
+    /* glow-fixed: keep the floor glow pinned to the bottom of the screen with the grid */
+    body { background: transparent; }
+    body::after { content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none;
+      background: radial-gradient(ellipse 80% 50% at 50% 100%, rgba(46,107,255,0.28), transparent 70%); }
+    .lobby:not([data-step="setup"]):not([data-step="room"]) .settings-only { display: none !important; }
+    .lobby[data-step="room"] h3.room-only { margin-top: 28px; }
+    body::after { inset: 0 0 auto 0; height: 100lvh; }
+    body::before { bottom: calc(100dvh - 100lvh); }
+    .recap-btn { width: 100%; margin-top: 14px; }
+    .recap-inline { text-align: left; }
+    .recap-inline .recap-title { font-size: 1rem; margin: 4px 0 8px; }
+    /* pick-list-outlined: choices in "pick one" popups look like buttons */
+    .pick-list { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
+    .pick-list .mode-tile { display: flex; align-items: center; gap: 8px; width: 100%; padding: 14px 16px; text-align: left;
+      clip-path: none; border-radius: 12px; background: var(--panel); color: var(--ink);
+      border: 1px solid rgba(92,225,255,0.35); transition: background 0.12s ease, border-color 0.12s ease; }
+    @media (hover: hover) { .pick-list .mode-tile:hover { background: rgba(46,107,255,0.18); border-color: rgba(92,225,255,0.7); } }
+    .pick-list .mode-tile:active { background: rgba(46,107,255,0.3); }
+    .pick-list .mode-tile:disabled { opacity: 0.4; }
   </style>
+  <meta name="description" content="Party games, side bets, seasons and tournaments for your golf crew.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Parcade">
+  <meta property="og:title" content="Parcade">
+  <meta property="og:description" content="Party games, side bets, seasons and tournaments for your golf crew.">
+  <meta property="og:url" content="https://parcade.golf/">
+  <meta property="og:image" content="https://parcade.golf/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Parcade: a neon P with a golf ball on a tee">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://parcade.golf/og-image.png">
+  <meta name="theme-color" content="#050817">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 </head>
 <body>
   <h1 aria-label="Parcade"><span class="L" aria-hidden="true">P</span><span class="L" aria-hidden="true">a</span><span class="L" aria-hidden="true">r</span><span class="L" aria-hidden="true">c</span><span class="L" aria-hidden="true">a</span><span class="L" aria-hidden="true">d</span><span class="L" aria-hidden="true">e</span><svg class="victim" viewBox="0 0 40 40" aria-hidden="true">
@@ -721,7 +777,17 @@
   <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
-    const db = supabase.createClient(PARFUL_CONFIG.SUPABASE_URL, PARFUL_CONFIG.SUPABASE_KEY);
+    // retryFetch: phones on the course drop requests ("Load failed"), so retry network errors twice
+    async function retryFetch(input, init) {
+      for (let i = 0; ; i++) {
+        try { return await fetch(input, init); }
+        catch (e) {
+          if (i >= 2 || (init && init.signal && init.signal.aborted)) throw e;
+          await new Promise(r => setTimeout(r, 500 * (i + 1)));
+        }
+      }
+    }
+    const db = supabase.createClient(PARFUL_CONFIG.SUPABASE_URL, PARFUL_CONFIG.SUPABASE_KEY, { global: { fetch: retryFetch } });
   </script>
   <script src="sfx.js"></script>
   <script src="scorecard.js"></script>

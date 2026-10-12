@@ -87,6 +87,7 @@ function crabbyEl(size = 120) {
 const CRABBY_LINES = {
   welcome: "Welcome to the course, I'm Crabby. Nice shoes. Your mom pick 'em out? Name your round, type your name, pick a color, then hit Tee it up.",
   course: "What course are you on? Search for it, or punch in the pars yourself. I'm not a mind reader.",
+  setup: "House rules time. One phone or many? Handicaps? Money on the line? Mulligans for the weak? Choose wisely.",
   size: "How many of you are playing? Tap a number. Counting's the easy part, trust me.",
   mode: "Pick a game. Tap the little i if you need the rules explained like you're five.",
   modePicked: "Fine. Now hit Next before I change my mind.",
@@ -155,15 +156,15 @@ function crabbyDesk(line) {
 
 const CRABBY_SEASON = {
   tour: [
-    "Oh good, a Seasons guy. A season lets your crew compete all year, whether you play together or sneak out alone.",
+    "Oh good, a Seasons fan. A season lets your crew compete all year, whether you play together or sneak out alone.",
     "Pick a format. Everybody counts the same number of rounds, or pick dates and your best rounds count.",
     "Join with the code and tell me your handicap. Don't know it? Tell me what you usually shoot. Lie and I'll know.",
     "Finish a round, open the season, tap Add a round. You add your own. No waiting on the commissioner.",
-    "Points come from beating your own handicap, so the 20 can beat the scratch guy. Tough course? I adjust for it.",
+    "Points come from beating your own handicap, so the 20 can beat the scratch golfer. Tough course? I adjust for it.",
     "Play the same round as other members and it counts toward your head-to-head record. Bragging rights only, no points. Tap Start a season or Join with a code.",
   ],
   tourGuest: [
-    "Oh good, a Seasons guy. A season lets your crew compete all year, whether you play together or sneak out alone.",
+    "Oh good, a Seasons fan. A season lets your crew compete all year, whether you play together or sneak out alone.",
     "Seasons need an account so your rounds follow you around. Hit Create account or Sign in below. I'll wait. Again.",
   ],
   v2owner: "Your season, boss. Share the link. Everybody adds their own rounds and I do the math. Fix handicaps at the bottom.",

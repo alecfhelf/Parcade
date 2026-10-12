@@ -292,3 +292,10 @@ function infoLink(text, onclick) {
   b.onclick = onclick;
   return b;
 }
+
+RULES.stableford = [{ h: "Stableford", p: [
+  "Every hole scores points based on how you did against par. Most points wins.",
+  "Double bogey or worse: 0. Bogey: 1. Par: 2. Birdie: 3. Eagle: 4. Albatross: 5.",
+  "A blow-up hole just scores 0, so one disaster can't sink your round. Pick it up and move on.",
+  "With handicaps on, points use your net score, so a bogey on a stroke hole counts like a par."
+] }];

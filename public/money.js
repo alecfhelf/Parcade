@@ -11,7 +11,7 @@ function moneySummary(round) {
     return "💵 " + moneyFmt(round.buy_in) + " buy-in. " + places;
   }
   if (round.stakes === "point") {
-    const unit = round.mode === "stroke" ? "stroke" : round.mode === "skins" ? "skin" : round.mode === "wad" ? "Wad" : "point";
+    const unit = (typeof MONEY_UNITS !== "undefined" && MONEY_UNITS[round.mode] ? MONEY_UNITS[round.mode].unit : "point");
     return "💵 " + moneyFmt(round.per_point) + " per " + unit;
   }
   return "";

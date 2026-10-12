@@ -44,8 +44,16 @@ function matchState(round, players, scores, groupNo) {
     const nets = hs.map(x => netOf(x, allow));
     const best = Math.min(...nets);
     const winners = grp.filter((p, i) => nets[i] === best);
-    if (winners.length === 1) { out.won[winners[0].id]++; out.holes[h].result = winners[0].name + " won the hole."; }
-    else out.holes[h].result = "Halved.";
+    const gross = hs.map(x => x.strokes);
+    const grossBest = Math.min(...gross);
+    const grossTie = gross.filter(g => g === grossBest).length > 1;
+    if (winners.length === 1) {
+      out.won[winners[0].id]++;
+      out.holes[h].result = winners[0].name + " won the hole." + (round.handicap && grossTie ? " A handicap stroke broke the tie." : "");
+    } else {
+      const grossWinners = grp.filter((p, i) => gross[i] === grossBest).length;
+      out.holes[h].result = "Halved." + (round.handicap && grossWinners === 1 ? " Handicap strokes evened it out." : "");
+    }
     played++;
     if (!out.clinched) {
       const w = grp.map(p => out.won[p.id]).sort((a, b) => b - a);

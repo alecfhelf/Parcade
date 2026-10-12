@@ -35,7 +35,7 @@ function accountPrompt(box, msg) {
   box.append(
     el("p", { className: "waiting", textContent: msg }),
     el("button", { textContent: "Create account", onclick: async () => { await createAccount(); seasonsRoute(); } }),
-    el("button", { className: "btn-ghost", textContent: "Sign in", onclick: async () => { await signIn(); seasonsRoute(); } })
+    el("button", { className: "btn-ghost", textContent: "Sign in", onclick: async () => { if (await signIn()) location.reload(); } })
   );
 }
 
@@ -108,18 +108,30 @@ async function joinSeasonByCode() {
 
 function inviteRow(season) {
   const link = location.origin + "/?s=" + season.code;
+  const message = "Join my Parcade season \u201C" + season.name + "\u201D here: " + link + "\nSeason code: " + season.code;
+  const codeBox = el("div", { className: "invite-code" },
+    el("span", { className: "field-label", textContent: "Season code" }),
+    el("b", { textContent: season.code }));
   const linkInput = el("input", { value: link, readOnly: true, onclick: () => linkInput.select() });
   linkInput.style.cssText = "flex:1;min-width:0;padding:12px;border-radius:10px;font-size:16px";
-  const copy = el("button", { textContent: "Copy" });
-  copy.style.cssText = "flex:0 0 112px;padding:12px 0;white-space:nowrap";
+  const canShare = !!navigator.share && matchMedia("(pointer: coarse)").matches;
+  const label = canShare ? "Share invite" : "Copy invite";
+  const copy = el("button", { textContent: label });
+  copy.style.cssText = "flex:0 0 128px;padding:12px 0;white-space:nowrap";
   copy.onclick = async () => {
-    try { await navigator.clipboard.writeText(link); } catch (e) { linkInput.select(); document.execCommand("copy"); }
+    if (canShare) {
+      try { await navigator.share({ title: "Parcade", text: "Join my Parcade season \u201C" + season.name + "\u201D. Season code: " + season.code, url: link }); }
+      catch (e) {}
+      return;
+    }
+    try { await navigator.clipboard.writeText(message); }
+    catch (e) { linkInput.select(); document.execCommand("copy"); }
     copy.textContent = "Copied!";
-    setTimeout(() => (copy.textContent = "Copy"), 1500);
+    setTimeout(() => (copy.textContent = label), 1500);
   };
   const linkRow = el("div", {}, linkInput, copy);
   linkRow.style.cssText = "display:flex;gap:8px;margin-top:8px";
-  return linkRow;
+  return el("div", {}, codeBox, linkRow);
 }
 
 function renderSeasonMoney(moneyArea, aliasMap, members, rounds, players, scores, results, picks, cpreds, cmulls, sbets, swads) {
@@ -309,7 +321,7 @@ async function loadSeason(code) {
     b.style.cssText = "width:100%;margin-top:10px";
     b.onclick = async () => {
       const joinName = await accountName();
-      const vals = await ask("Join " + season.name, [{ label: "Your name", placeholder: "What the boys call you", max: 20, value: joinName }], "I'm in");
+      const vals = await ask("Join " + season.name, [{ label: "Your name", placeholder: "What your crew calls you", max: 20, value: joinName }], "I'm in");
       if (!vals) return;
       const { error } = await db.from("season_members").insert({ season_id: season.id, name: vals[0] });
       if (error) { toast("Error: " + error.message); return; }
@@ -548,7 +560,7 @@ function seasonFormModal(myName) {
     const panel = el("form", { className: "modal-panel" });
     const field = (label, input) => el("label", {}, el("span", { textContent: label }), input);
     const nameI = el("input", { placeholder: "Scottsdale 2026", maxLength: 40, autocomplete: "off" });
-    const meI = el("input", { placeholder: "What the boys call you", maxLength: 20, autocomplete: "off", value: myName || "" });
+    const meI = el("input", { placeholder: "What your crew calls you", maxLength: 20, autocomplete: "off", value: myName || "" });
 
     let format = "rounds", count = 5;
     const fmtBtn = (key, text) => el("button", { type: "button", className: "switch", textContent: text, onclick: () => { format = key; draw(); } });
@@ -736,7 +748,7 @@ async function loadSeasonV2(box, season, acct) {
     const b = el("button", { textContent: "Join this season" });
     b.style.cssText = "width:100%;margin-top:10px";
     b.onclick = async () => {
-      const vals = await ask("Join " + season.name, [{ label: "Your name", placeholder: "What the boys call you", max: 20, value: await accountName() }], "Next");
+      const vals = await ask("Join " + season.name, [{ label: "Your name", placeholder: "What your crew calls you", max: 20, value: await accountName() }], "Next");
       if (!vals) return;
       const hcp = await askSeasonHandicap(null);
       if (hcp == null) return;

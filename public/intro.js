@@ -80,7 +80,7 @@ function slotSVG() {
     '</svg>';
 }
 
-function playHoleIntro({ hole, color, challenge, idx, message, wolfGrab, coins, cartRun, bbb, carry, slots, cashRain, items = CHALLENGES }) {
+function playHoleIntro({ hole, color, challenge, idx, message, wolfGrab, coins, cartRun, bbb, carry, slots, cashRain, tornado, items = CHALLENGES }) {
   return new Promise(resolve => {
     const c = PALETTE.some(p => p[0] === color) ? color : "#5CE1FF";
     const ov = document.createElement("div");
@@ -155,7 +155,73 @@ function playHoleIntro({ hole, color, challenge, idx, message, wolfGrab, coins, 
       if (done) return;
       if (!challenge) {
         if (message) {
-          if (wolfGrab) {
+          if (tornado) {
+            // Stableford: a tornado swirls Crabby around and carries him off
+            const wr = walker.getBoundingClientRect();
+            const fh = wr.height, ground = wr.bottom, cx = wr.left + wr.width / 2;
+            const tw = Math.min(W * 0.7, fh * 2.4), th = tw * 1.25;
+            const left = cx - tw / 2, top = ground - th;
+            let rings = "";
+            for (let k = 0; k < 9; k++) {
+              rings += '<ellipse class="tw-ring" cx="50" cy="' + (8 + k * 13.5) + '" rx="' + (46 - k * 4.6) + '" ry="' + (6 - k * 0.45) + '"/>';
+            }
+            const tor = document.createElement("div");
+            tor.className = "intro-tornado";
+            tor.innerHTML = '<svg viewBox="0 0 100 125" width="100%" height="100%" fill="none" stroke="#C9D3E8" stroke-width="2.6" ' +
+              'stroke-linecap="round" aria-hidden="true" style="overflow:visible;filter:drop-shadow(0 0 5px #9FB4FF)">' + rings +
+              '<path d="M14 20Q40 30 70 18M22 48Q48 58 72 46M32 76Q52 84 66 74" stroke-width="1.6" opacity="0.6"/></svg>';
+            Object.assign(tor.style, { position: "absolute", width: tw + "px", height: th + "px", left: left + "px", top: top + "px" });
+            ov.append(tor);
+            tor.querySelectorAll(".tw-ring").forEach((r, k) => r.animate(
+              [{ transform: "translateX(" + (-3 - k * 0.6) + "px)" }, { transform: "translateX(" + (3 + k * 0.6) + "px)" }],
+              { duration: 260 + k * 25, delay: k * 35, iterations: Infinity, direction: "alternate", easing: "ease-in-out" }));
+            Sound.play("whoosh");
+            await tor.animate([{ transform: "translateX(" + (W - left + 20) + "px)" }, { transform: "translateX(0)" }],
+              { duration: 1100, easing: "cubic-bezier(.2,.7,.4,1)", fill: "forwards" }).finished;
+            if (done) return;
+
+            // Debris caught in the swirl
+            const debris = ["\u{1F343}", "\u2B50", "\u{1F343}", "\u26F3"].map((t, k) => {
+              const d = document.createElement("div");
+              d.className = "intro-coin";
+              d.textContent = t;
+              Object.assign(d.style, { left: cx - 10 + "px", top: ground - th * (0.3 + k * 0.15) + "px" });
+              ov.append(d);
+              const kf = [];
+              for (let s = 0; s <= 12; s++) {
+                const a = s / 12 * Math.PI * 4 + k * 1.6;
+                kf.push({ transform: "translateX(" + Math.sin(a) * tw * (0.3 + k * 0.04) + "px) scale(" + (0.8 + 0.3 * Math.cos(a)) + ")" });
+              }
+              d.animate(kf, { duration: 1200, iterations: Infinity });
+              return d;
+            });
+
+            // Crabby gets sucked up and spun around
+            walker.classList.add("holding");
+            walker.style.transformOrigin = "50% 50%";
+            const kf = [];
+            let last = "none";
+            for (let s = 0; s <= 20; s++) {
+              const p = s / 20, a = p * Math.PI * 5;
+              last = "translate(" + (Math.sin(a) * tw * 0.3 * p) + "px," + (-p * th * 0.5) + "px) rotate(" + (p * 900) + "deg) scale(" + (1 - 0.25 * p + 0.1 * Math.cos(a) * p) + ")";
+              kf.push({ transform: last });
+            }
+            Sound.play("whoosh");
+            ov.animate([{ transform: "translate(0,0)" }, { transform: "translate(-4px,2px)" }, { transform: "translate(4px,-2px)" },
+              { transform: "translate(-3px,1px)" }, { transform: "translate(0,0)" }], { duration: 700 });
+            await walker.animate(kf, { duration: 1700, easing: "ease-in", fill: "forwards" }).finished;
+            if (done) return;
+
+            // Carried off screen
+            const out = -(left + tw + 80);
+            const exit = { duration: 1000, easing: "cubic-bezier(.5,0,.8,.6)", fill: "forwards" };
+            Sound.play("whoosh");
+            tor.animate([{ transform: "translateX(0)" }, { transform: "translateX(" + out + "px)" }], exit);
+            debris.forEach(d => d.animate([{ translate: "0 0" }, { translate: out + "px 0" }], exit));
+            await walker.animate([{ transform: last }, { transform: "translate(" + out + "px," + (-th * 0.55) + "px) rotate(1620deg) scale(.65)" }], exit).finished;
+            if (done) return;
+            debris.forEach(d => d.remove());
+          } else if (wolfGrab) {
           // Wolf runs in, grabs the walker, runs off
           const wr = walker.getBoundingClientRect();
           const wsz = Math.min(W * 0.62, Math.max(180, wr.height * 3.6));

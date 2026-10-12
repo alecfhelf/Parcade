@@ -64,18 +64,28 @@ function strokeHolesText(a) {
 const validHcp = (v) => { const n = parseFloat(v); return !isNaN(n) && n >= -10 && n <= 54; };
 async function askHandicap(name, current, prefill) {
   const cur = current || {};
+  const plusPrefill = prefill && cur.hcp != null && cur.hcp < 0;
   const v = await ask(name ? "Handicap for " + name : "What's your handicap?", [
-    { label: "Type in your handicap", type: "number", decimal: true, max: 5, placeholder: cur.hcp != null ? String(cur.hcp) : "e.g. 14.2",
-      value: prefill && cur.hcp != null ? String(cur.hcp) : "" }
-  ], "Lock it in", "Plus handicap? Use a minus sign, like -2.",
-  async ([x]) => (validHcp(x) ? null : "Enter a handicap between -10 and 54."), null,
+    { label: "Type in your handicap", type: "number", decimal: true, max: 5, placeholder: cur.hcp != null ? String(Math.abs(cur.hcp)) : "e.g. 14.2",
+      value: prefill && cur.hcp != null ? String(Math.abs(cur.hcp)) : "" },
+    { label: "Plus handicap", type: "toggle", hint: "Better than scratch? Flip this on and type the number, like 2 for +2." + (plusPrefill ? " (Currently a plus handicap.)" : "") }
+  ], "Lock it in", null,
+  async ([x, t]) => {
+    const n = parseFloat(x);
+    if (isNaN(n)) return "Enter a number, like 14.2.";
+    const plusOn = t === "on" || n < 0;
+    const h = plusOn ? -Math.abs(n) : n;
+    return h >= -10 && h <= 54 ? null : plusOn ? "Plus handicaps go up to 10." : "Enter a handicap between 0 and 54.";
+  }, null,
   name ? "They don't know their handicap" : "I don't know my handicap");
   if (v === "ALT") {
     const u = await askUsual(name ? "What does " + name + " usually shoot?" : null, cur.usual);
     return u == null ? null : { usual: u, hcp: null };
   }
   if (!v) return null;
-  const h = Math.round(parseFloat(v[0]) * 10) / 10;
+  const n = parseFloat(v[0]);
+  const plusOn = v[1] === "on" || n < 0;
+  const h = Math.round((plusOn ? -Math.abs(n) : n) * 10) / 10;
   return { usual: Math.round(72 + h), hcp: h };
 }
 const validUsual = (v) => { const n = parseInt(v, 10); return n >= 40 && n <= 200; };
@@ -276,14 +286,14 @@ const CHALLENGES = [
 
 const LINES = {
   birdie: [
-    "🐦 Birdie for {name} on hole {hole}! Somebody check his bag for a magnet.",
+    "🐦 Birdie for {name} on hole {hole}! Somebody check that bag for a magnet.",
     "{name} birdied hole {hole}. Enjoy it, it won't happen again. 🐦",
-    "Birdie on {hole} for {name}. Who is this guy? 👀",
-    "{name} with a birdie on hole {hole}. Buy this man a drink. 🍺",
+    "Birdie on {hole} for {name}. Who even is this? 👀",
+    "{name} with a birdie on hole {hole}. Somebody buy them a drink. 🍺",
     "{name} just birdied {hole}. The group chat is shook. 🐦🔥",
   ],
   eagle: [
-    "🦅 EAGLE for {name} on hole {hole}!! Somebody drug test him. 🧪",
+    "🦅 EAGLE for {name} on hole {hole}!! Somebody order a drug test. 🧪",
     "{name} made an eagle on hole {hole}. Frame this scorecard. 🖼️",
     "{name} eagled hole {hole}. Everyone else, just go home. 🦅",
   ],
@@ -292,18 +302,18 @@ const LINES = {
     "ALBATROSS for {name} on hole {hole}. That's not golf, that's witchcraft. 🧙",
   ],
   triple: [
-    "{name} made a triple bogey on hole {hole}. Someone check on him. 😬",
+    "{name} made a triple bogey on hole {hole}. Someone check on them. 😬",
     "Triple on {hole} for {name}. The course is filing a complaint. 📝",
-    "{name}: {n} on a par {par}. Bowling is the other sport, buddy. 🎳",
+    "{name}: {n} on a par {par}. Bowling is the other sport, friend. 🎳",
     "{name} took the scenic route on hole {hole}. Triple bogey. 🗺️",
     "{name} triple-bogeyed {hole}. Legally we have to call that cardio. 🏃",
   ],
   blowup: [
     "{name} shot {n} on a par {par}. We stopped counting out of respect. 🪦",
-    "{name} went +{over} on hole {hole}. The groundskeeper wants his grass back. 🌱",
+    "{name} went +{over} on hole {hole}. The groundskeeper wants that grass back. 🌱",
     "{n} on a par {par}? {name}, blink twice if you need help. 👀",
     "{name} made a {n} on hole {hole}. Somewhere, a golf instructor just felt a chill. 🥶",
-    "{name} gave the ball a full tour of hole {hole}. +{over}. The cart guy looked away.",
+    "{name} gave the ball a full tour of hole {hole}. +{over}. The cart attendant looked away.",
   ],
   ace: [
     "HOLE IN ONE for {name} on hole {hole}!! 🤯🏆 Drinks are on {name}.",
@@ -312,26 +322,26 @@ const LINES = {
   ],
   two: [
     "{name} shot a 2 on hole {hole}. Wow. 🔥",
-    "{name} with a 2 on hole {hole}. Who is this guy? 👀",
+    "{name} with a 2 on hole {hole}. Who even is this? 👀",
     "Dang, {name}. A 2 on hole {hole}. 🎯",
-    "{name} put up a 2 on hole {hole}. Somebody drug test him. 🧪",
+    "{name} put up a 2 on hole {hole}. Somebody order a drug test. 🧪",
   ],
   bad: [
     "{name} shot a {n} on hole {hole}... Yikes. 😬",
-    "{name} carded a {n} on hole {hole}. Someone check on him.",
+    "{name} carded a {n} on hole {hole}. Someone check on them.",
     "{name} took {n} swings on hole {hole}. The course is filing a complaint. 📝",
-    "{n} on hole {hole} for {name}. Bowling is the other sport, buddy. 🎳",
+    "{n} on hole {hole} for {name}. Bowling is the other sport, friend. 🎳",
     "Breaking news: {name} finally finished hole {hole}. Final count: {n}. 📺",
     "{name} put up a {n} on hole {hole}. The ball is asking for a new owner.",
     "{n} strokes on hole {hole}. {name}, blink twice if you need help. 👀",
     "{name} shot {n} on hole {hole}. Legally we have to call that cardio. 🏃",
     "{name} gave the ball a full tour of hole {hole}. {n} stops on the itinerary. 🗺️",
-    "{name}: {n} on hole {hole}. Even the cart guy looked away.",
+    "{name}: {n} on hole {hole}. Even the cart attendant looked away.",
   ],
   disaster: [
     "{name} went 11+ on hole {hole}. We stopped counting out of respect. 🪦",
     "{name}: 11+ on hole {hole}. Somewhere, a golf instructor just felt a chill. 🥶",
-    "{name} hit 11+ on hole {hole}. The groundskeeper wants his grass back. 🌱",
+    "{name} hit 11+ on hole {hole}. The groundskeeper wants that grass back. 🌱",
     "11+ on hole {hole}. {name} is now legally a landscaper. 🚜",
   ],
 };
@@ -385,20 +395,12 @@ $("create-round").addEventListener("click", async () => {
   const myName = await accountName();
   const vals = await ask("Start a new round", [
     { label: "Round name", placeholder: "Saturday Showdown" },
-    { label: "Your name", placeholder: "What the boys call you", max: 20, value: myName },
-    { label: "Pick your stick figure", type: "colors" },
-    { label: "Handicaps", type: "toggle", hint: "Levels the field so everyone has a shot" }
+    { label: "Your name", placeholder: "What your crew calls you", max: 20, value: myName },
+    { label: "Pick your stick figure", type: "colors" }
   ], "Tee it up", null, null, CRABBY_LINES.welcome);
   if (!vals) return;
-  const [roundName, playerName, color, hcpVal] = vals;
-  const hcp = hcpVal === "on";
-  let usual = null, hcpNum = null;
-  if (hcp) {
-    const hc = await askHandicap();
-    if (!hc) return;
-    usual = hc.usual;
-    hcpNum = hc.hcp;
-  }
+  const [roundName, playerName, color] = vals;
+  const hcp = false, usual = null, hcpNum = null;
   try {
     await ensureUser();
     const { data: round, error: e1 } = await db.from("rounds")
@@ -416,6 +418,7 @@ $("create-round").addEventListener("click", async () => {
 const MODES = {
   party: { name: "Party Mode", desc: "Points every hole plus a random challenge card. Bonuses, curses, and bragging rights." },
   stroke: { name: "Stroke Play", desc: "Regular golf rules, lowkey boring but so is your personality." },
+  stableford: { name: "Stableford", desc: "Points vs par every hole. Par is 2, birdie 3, blow-ups just score 0. Most points wins." },
   skins: { name: "Skins", desc: "Ties roll the prize into the next hole, so holes stack up. One clutch hole can win you a pile." },
   match: { name: "Match Play", desc: "Every hole is worth exactly 1 point. Ties just cancel out. Win the most holes, win the match." },
   wad: { name: "Wad", desc: "Drain your first putt from long range and the pot grows. Make the last one of the round and everybody pays you." },
@@ -528,6 +531,7 @@ async function loadRound(code) {
   const isVegas = () => round.mode === "vegas";
   const isWad = () => round.mode === "wad";
   const isWolf = () => round.mode === "wolf";
+  const isStab = () => round.mode === "stableford";
   const h3 = (text) => { const el = document.createElement("h3"); el.textContent = text; return el; };
 
   // ---------- Lobby ----------
@@ -613,7 +617,7 @@ async function loadRound(code) {
     startBtn.style.width = "100%";
     const SIZES = [["1", "1 player"], ["2", "2 players"], ["3", "3 players"], ["4", "4 players"], ["5", "5 or more"]];
     const sizeFits = { "1": n => n === 1, "2": n => n === 2, "3": n => n === 3, "4": n => n === 4, "5": n => n >= 5 };
-    const MODES_FOR = { "1": ["stroke", "party"], "2": ["party", "stroke", "skins", "match", "wad", "caddy"], "3": ["party", "stroke", "skins", "match", "wolf", "bbb", "wad", "caddy"], "4": ["party", "stroke", "skins", "match", "wolf", "bbb", "bestball", "vegas", "wad", "caddy"], "5": ["party", "stroke", "skins", "match", "wolf", "bbb", "bestball", "vegas", "wad", "caddy"] };
+    const MODES_FOR = { "1": ["stroke", "stableford", "party"], "2": ["party", "stroke", "stableford", "skins", "match", "wad", "caddy"], "3": ["party", "stroke", "stableford", "skins", "match", "wolf", "bbb", "wad", "caddy"], "4": ["party", "stroke", "stableford", "skins", "match", "wolf", "bbb", "bestball", "vegas", "wad", "caddy"], "5": ["party", "stroke", "stableford", "skins", "match", "wolf", "bbb", "bestball", "vegas", "wad", "caddy"] };
     const SIZE_NOTES = {
       "1": "Just you and the course. Kinda sad, but great for keeping score.",
       "2": "Head to head. Nowhere to hide.",
@@ -661,11 +665,37 @@ async function loadRound(code) {
     odNote.className = "waiting";
     odNote.style.display = "none";
     odNote.textContent = "Playing in groups? One device per group. Make someone in each group a co-leader, then have them open the round link on their phone and tap \"I'm already in this round\" to claim their name. They'll keep score for their group.";
-    odRow.classList.add("room-only");
-    odNote.classList.add("room-only");
-    hostArea.append(odRow, odNote);
+    odRow.classList.add("settings-only");
+    odNote.classList.add("settings-only");
+    const setupBack = document.createElement("button");
+    setupBack.className = "link-btn setup-only";
+    setupBack.textContent = "Change game";
+    setupBack.onclick = () => setStep("mode");
+    const setupTitle = h3("How do you want to play?");
+    setupTitle.classList.add("setup-only");
+    const setupNext = document.createElement("button");
+    setupNext.className = "setup-only";
+    setupNext.textContent = "Next: add players";
+    setupNext.style.cssText = "width:100%;margin-top:14px";
+    setupNext.onclick = () => setStep("room");
+    hostArea.append(setupBack, setupTitle, odRow, odNote);
+    const roomSettingsHead = h3("Round settings");
+    roomSettingsHead.classList.add("room-only");
+    let settingsPlace = null;
+    function placeSettings(st) {
+      if (!startBtn.parentNode) return;
+      const where = st === "room" ? "room" : "setup";
+      if (settingsPlace === where) return;
+      settingsPlace = where;
+      const els = [odRow, odNote, hcRow, money, mullArea];
+      if (setupNext.nextElementSibling !== startBtn) startBtn.before(setupNext);
+      if (where === "room") {
+        let after = startBtn;
+        [roomSettingsHead, ...els].forEach(e => { after.after(e); after = e; });
+      } else els.forEach(e => setupNext.before(e));
+    }
     const hcRow = document.createElement("div");
-    hcRow.className = "toggle-row od-row room-only";
+    hcRow.className = "toggle-row od-row settings-only";
     const hcTxt = document.createElement("div");
     const hcLabel = document.createElement("span");
     hcLabel.className = "field-label";
@@ -690,10 +720,6 @@ async function loadRound(code) {
       if (error) { toast(error.message); return; }
       round.handicap = on;
       syncHc();
-      if (on && me && !me.usual_score) {
-        const hc = await askHandicap();
-        if (hc) await db.from("players").update({ usual_score: hc.usual, hcp: hc.hcp }).eq("id", me.id);
-      }
       refresh();
     };
     hcRow.append(hcTxt, hcSwitch);
@@ -901,7 +927,7 @@ async function loadRound(code) {
     cSkip.onclick = () => setStep("size");
 
     const mullArea = document.createElement("div");
-    mullArea.className = "room-only toggle-row";
+    mullArea.className = "settings-only toggle-row od-row";
     const mullTxt = document.createElement("div");
     const mullLbl = document.createElement("span");
     mullLbl.className = "field-label";
@@ -1006,10 +1032,10 @@ async function loadRound(code) {
       caddyNote.textContent = "Next, you'll set who's golfing and who's caddying.";
       modeArea.append(caddyNote);
       const nextBtn = document.createElement("button");
-      nextBtn.textContent = "Next: add players";
+      nextBtn.textContent = "Next: settings";
       nextBtn.style.cssText = "width:100%;margin-top:14px";
       nextBtn.disabled = !pickedMode;
-      nextBtn.onclick = () => setStep("room");
+      nextBtn.onclick = () => setStep("setup");
       modeArea.append(nextBtn);
       picker.fit();
     }
@@ -1027,6 +1053,10 @@ async function loadRound(code) {
         startBtn.textContent = n < need ? "Waiting for " + (need - n) + " more" : "Too many players for " + pickedSize;
         return;
       }
+      if (round.handicap) {
+        const noHc = players.filter(pl => !pl.usual_score && pl.role !== "caddy");
+        if (noHc.length) { startBtn.textContent = "Add handicaps for " + noHc.map(pl => pl.name).join(", "); return; }
+      }
       startBtn.disabled = false;
       startBtn.textContent = "Start game";
     }
@@ -1038,12 +1068,17 @@ async function loadRound(code) {
     stepBack.onclick = () => setStep("mode");
     const stepSummary = document.createElement("span");
     stepSummary.className = "step-summary";
-    stepBar.append(stepBack, stepSummary);
+    const stepSettings = document.createElement("button");
+    stepSettings.className = "link-btn";
+    stepSettings.textContent = "Change settings";
+    stepSettings.onclick = () => setStep("setup");
+    stepBar.append(stepBack, stepSettings, stepSummary);
     lobby.prepend(stepBar);
     function guideLine() {
       const st = lobby.dataset.step;
       if (st === "course") return CRABBY_LINES.course;
       if (st === "size") return CRABBY_LINES.size;
+      if (st === "setup") return CRABBY_LINES.setup;
       if (st === "mode") return pickedMode ? CRABBY_LINES.modePicked : CRABBY_LINES.mode;
       if (startBtn.disabled) {
         const need = pickedSize === "5" ? 5 : +pickedSize;
@@ -1061,6 +1096,7 @@ async function loadRound(code) {
     function setStep(st, fromHistory) {
       const stepChanged = lobby.dataset.step !== st;
       lobby.dataset.step = st;
+      placeSettings(st);
       if (stepChanged && lobby.isConnected) {
         window.scrollTo(0, 0);
         lobby.animate([{ opacity: 0, transform: "translateY(8px)" }, { opacity: 1, transform: "none" }], { duration: 200, easing: "ease-out" });
@@ -1079,7 +1115,7 @@ async function loadRound(code) {
     }
     setStep("course");
 
-    lobbyUpdateStart = () => { updateStart(); guide.say(guideLine()); if (lobby.dataset.step === "course") renderCourseCurrent(); if (startBtn.parentNode && mullArea.nextElementSibling !== startBtn) startBtn.before(mullArea); drawMull(); };
+    lobbyUpdateStart = () => { updateStart(); guide.say(guideLine()); if (lobby.dataset.step === "course") renderCourseCurrent(); placeSettings(lobby.dataset.step); drawMull(); };
     updateStart();
 
     startBtn.onclick = async () => {
@@ -1088,6 +1124,7 @@ async function loadRound(code) {
         const missing = players.filter(pl => !pl.usual_score && pl.role !== "caddy");
         if (missing.length) { toast("Handicaps are on. Add a usual score for " + missing.map(pl => pl.name).join(", ") + "."); return; }
       }
+      if (pickedMode === "stableford" && !course) { toast("Stableford needs a course so we know the pars. Go back and pick one."); return; }
       if (pickedMode === "wolf") {
         const sizes = {};
         players.forEach(pl => (sizes[pl.group_no] = (sizes[pl.group_no] || 0) + 1));
@@ -1116,6 +1153,7 @@ async function loadRound(code) {
           return;
         }
       }
+      if (stakes === "pot" && pickedSize === "5" && Math.round(num("m-count")) !== players.length) { mq("m-count").value = players.length; syncMoney(); }
       if (stakes === "pot" && potBox.problem()) { toast(potBox.problem()); return; }
       if (pickedMode === "wad") {
         const sizes = {};
@@ -1133,7 +1171,7 @@ async function loadRound(code) {
     };
     let stakes = "none";
     const money = document.createElement("div");
-    money.className = "room-only money-box";
+    money.className = "settings-only money-box";
     money.innerHTML = `
       <div class="toggle-row">
         <div><span class="field-label">Play for money</span><small>Parcade keeps track. You settle up yourselves.</small></div>
@@ -1144,6 +1182,7 @@ async function loadRound(code) {
           <button type="button" data-t="pot">Buy-in pot</button>
           <button type="button" data-t="point">Per point</button>
         </div>
+        <label class="money-field" id="m-count-wrap" style="display:none"><span>How many players total?</span><input id="m-count" type="number" inputmode="numeric" min="5" max="64" step="1" placeholder="8"></label>
         <div id="money-pot"></div>
         <div id="money-point" style="display:none">
           <label class="money-field"><span id="m-unit">Dollars per point</span><input id="m-per" type="number" inputmode="decimal" min="0" step="0.5" placeholder="1"></label>
@@ -1153,16 +1192,15 @@ async function loadRound(code) {
     hostArea.append(money);
     const mq = (id) => money.querySelector("#" + id);
     const num = id => { const v = parseFloat(mq(id).value); return isNaN(v) || v < 0 ? 0 : Math.round(v * 100) / 100; };
-    const payers = () => (pickedMode === "caddy" ? players.filter(pl => pl.role === "caddy").length : players.length);
+    const expectedPlayers = () => (pickedSize === "5" ? Math.max(5, Math.round(num("m-count")) || 5) : (+pickedSize || 1));
+    const payers = () => (pickedMode === "caddy" ? players.filter(pl => pl.role === "caddy").length : Math.max(players.length, expectedPlayers()));
     const potBox = potSetup({ payers, split: [60, 30, 10],
       payerText: n => n + (pickedMode === "caddy" ? (n === 1 ? " caddy" : " caddies") : (n === 1 ? " player" : " players")) });
     mq("money-pot").append(potBox.el);
     function syncMoney() {
       if (pickedMode === "wad" && stakes === "pot") stakes = "point";
       mq("money-type").querySelector('[data-t="pot"]').style.display = pickedMode === "wad" ? "none" : "";
-      mq("money-point").querySelector(".cp-note").textContent = pickedMode === "wad"
-        ? "Whoever makes the last Wad collects the whole pot from everyone else in their group."
-        : "At the end, everyone settles the point difference with everyone else.";
+      mq("money-point").querySelector(".cp-note").textContent = (MONEY_UNITS[pickedMode] || MONEY_UNITS.party).note;
       const on = stakes !== "none";
       const sw = mq("money-switch");
       sw.textContent = on ? "On" : "Off";
@@ -1171,13 +1209,15 @@ async function loadRound(code) {
       mq("money-opts").style.display = on ? "block" : "none";
       mq("money-type").querySelectorAll("button").forEach(b => b.classList.toggle("selected", b.dataset.t === stakes));
       mq("money-pot").style.display = stakes === "pot" ? "block" : "none";
+      mq("m-count-wrap").style.display = stakes === "pot" && pickedSize === "5" && pickedMode !== "caddy" ? "" : "none";
       mq("money-point").style.display = stakes === "point" ? "block" : "none";
-      mq("m-unit").textContent = pickedMode === "stroke" ? "Dollars per stroke" : pickedMode === "skins" ? "Dollars per skin" : pickedMode === "wad" ? "Dollars per Wad" : "Dollars per point";
+      mq("m-unit").textContent = "Dollars per " + (MONEY_UNITS[pickedMode] || MONEY_UNITS.party).unit;
       potBox.sync();
     }
     mq("money-switch").onclick = () => { stakes = stakes === "none" ? "pot" : "none"; syncMoney(); };
     mq("money-type").querySelectorAll("button").forEach(b => (b.onclick = () => { stakes = b.dataset.t; syncMoney(); }));
     mq("m-per").oninput = syncMoney;
+    mq("m-count").oninput = syncMoney;
     const moneyFields = () => stakes === "pot"
       ? { stakes, buy_in: potBox.buyIn(), payouts: potBox.payouts(), per_point: null }
       : stakes === "point" ? { stakes, per_point: num("m-per"), buy_in: null, payouts: null }
@@ -1185,6 +1225,7 @@ async function loadRound(code) {
     syncMoney();
 
     startBtn.classList.add("room-only");
+    startBtn.style.marginTop = "14px";
     hostArea.append(startBtn);
   }
 
@@ -1245,6 +1286,12 @@ async function loadRound(code) {
       <div id="skins-pot" class="ch-text"></div>
       <div id="skins-result" class="ch-winner"></div>
     </div>
+    <div id="stab-box" class="ch-box" style="display:none">
+      <div class="ch-kicker">Stableford</div>
+      <div id="stab-par" class="ch-text"></div>
+      <div id="stab-result" class="ch-winner"></div>
+    </div>
+    <div id="recap-box" class="ch-box recap-inline" style="display:none"></div>
     <div id="score-label" class="score-label">Your score</div>
     <div id="score-grid" class="score-grid"></div>
     <p id="waiting-on" class="waiting"></p>`;
@@ -1264,7 +1311,7 @@ async function loadRound(code) {
   const tabs = document.createElement("div");
   tabs.className = "tabs";
   const panels = {}, tabBtns = {};
-  [["hole", "Hole 1"], ["board", "Leaderboard"], ["chat", "Chat"], ["bets", "Bets"], ["rules", "Rules"]].forEach(([key, label]) => {
+  [["hole", "Hole 1"], ["board", "Leaderboard"], ["chat", "Chat"], ["bets", "Bets"], ["course", "Course"], ["rules", "Rules"]].forEach(([key, label]) => {
     const b = document.createElement("button");
     b.className = "tab";
     b.textContent = label;
@@ -1274,6 +1321,7 @@ async function loadRound(code) {
     panels[key] = document.createElement("div");
   });
   tabBtns.rules.classList.add("tab-small");
+  tabBtns.course.classList.add("tab-small");
   panels.hole.append(card);
   const finishBtn = document.createElement("button");
   finishBtn.className = "btn-ghost";
@@ -1397,12 +1445,13 @@ async function loadRound(code) {
   }
   function showTab(key) {
     activeTab = key;
+    if (key === "course") renderCoursePanel();
     if (key === "rules") { panels.rules.innerHTML = ""; renderRules(panels.rules, [RULES[round.mode] ? round.mode : "party", "round"]); }
     if (key === "chat") { unread = 0; updateChatTab(); setTimeout(() => (chatList.scrollTop = chatList.scrollHeight), 0); }
     Object.entries(panels).forEach(([k, el]) => (el.style.display = k === key ? "block" : "none"));
     Object.entries(tabBtns).forEach(([k, b]) => b.classList.toggle("active", k === key));
   }
-  game.append(lateWrap, tabs, panels.hole, panels.board, panels.chat, panels.bets, panels.rules);
+  game.append(lateWrap, tabs, panels.hole, panels.board, panels.chat, panels.bets, panels.course, panels.rules);
   showTab("hole");
   let playedFinale = false;
   const scoreArea = document.createElement("div");
@@ -1648,7 +1697,7 @@ async function loadRound(code) {
 
   async function addOfflinePlayer() {
     const vals = await ask("Add a player", [
-      { label: "Their name", placeholder: "What the boys call them", max: 20 },
+      { label: "Their name", placeholder: "What your crew calls them", max: 20 },
       { label: "Pick their stick figure", type: "colors", taken: players.map(p => p.color) }
     ], "Add");
     if (!vals) return;
@@ -1778,7 +1827,7 @@ async function loadRound(code) {
     document.body.classList.add("has-copy");
     requestAnimationFrame(() => { document.body.style.paddingTop = "calc(" + (topBar.offsetHeight + 20) + "px + env(safe-area-inset-top, 0px))"; });
     scoreArea.style.display = finished ? "block" : "none";
-    if (finished) renderScorecard(scoreArea, { round, players, scores, results, user, picks, preds, mulls, bets, wads });
+    if (finished) renderScorecard(scoreArea, { round, players, scores, results, user, picks, preds, mulls, bets, wads, course });
     sub.textContent = finished ? "Final results" : playing
       ? (MODES[round.mode] || MODES.party).name + (round.handicap ? " with handicaps" : "") + (course ? " at " + course.name : "")
       : "Round code: " + round.code + (round.handicap ? ", handicaps on" : "");
@@ -1823,6 +1872,7 @@ async function loadRound(code) {
     const bestTot = isBest() ? bestBallTotals(round, players, scores) : {};
     const vegasTot = isVegas() ? vegasTotals(round, players, scores) : {};
     const wadHold = isWad() ? wadHolders(players, wads) : new Set();
+    const stabTot = isStab() ? stablefordTotals(round, players, scores, course) : {};
     const rows = players.map(pl => {
       const mine = played.filter(x => x.player_id === pl.id);
       const total = mine.reduce((a, x) => a + x.strokes, 0);
@@ -1838,9 +1888,10 @@ async function loadRound(code) {
       if (isBest()) pts = bestTot[pl.id] || 0;
       if (isVegas()) pts = vegasTot[pl.id] || 0;
       if (isWad()) pts = wads.filter(w => w.player_id === pl.id).length;
+      if (isStab()) pts = stabTot[pl.id] || 0;
       return { pl, pts, total, net: total - Math.floor(mine.length * (allow[pl.id] || 0) + 1e-9), thru: mine.length };
     });
-    if (isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas() || isWad()) rows.sort((a, b) => b.pts - a.pts);
+    if (isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas() || isWad() || isStab()) rows.sort((a, b) => b.pts - a.pts);
     else { const avg = r => (r.thru ? r.net / r.thru : Infinity); rows.sort((a, b) => avg(a) - avg(b)); }
     if (isWad()) rows.sort((a, b) => (wadHold.has(b.pl.id) - wadHold.has(a.pl.id)) || b.pts - a.pts);
 
@@ -1850,11 +1901,11 @@ async function loadRound(code) {
       const name = document.createElement("span");
       name.append((i + 1) + ". ", figureEl(r.pl.color), r.pl.name + (r.pl.user_id === user.id ? " (you)" : ""));
       const val = document.createElement("span");
-      val.textContent = (isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas() || isWad())
+      val.textContent = (isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas() || isWad() || isStab())
         ? r.pts + (isSkins() ? (r.pts === 1 ? " skin" : " skins") : isMatch() ? (r.pts === 1 ? " hole won" : " holes won") : isWad() ? " made" : " pts")
         : (r.thru ? r.total + " strokes" + (round.handicap ? ", net " + Math.round(r.net) : "") + " (thru " + r.thru + ")" : "-");
       if (isWad() && wadHold.has(r.pl.id)) val.prepend("💰 ");
-      if ((isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas() || isWad()) && r.thru) {
+      if ((isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas() || isWad() || isStab()) && r.thru) {
         const sub = document.createElement("span");
         sub.className = "sub-score";
         sub.textContent = " (" + r.total + " thru " + r.thru + ")";
@@ -1956,9 +2007,12 @@ async function loadRound(code) {
       setHole(prog);
       maybeIntro(prog);
     } else if (me && lastProgress !== null && prog > lastProgress && hole === lastProgress) {
+      const doneHole = lastProgress;
       setHole(prog);
-      maybeIntro(prog);
+      showHoleRecap(doneHole).then(() => maybeIntro(prog));
     } else if (me) drawCard();
+    if (me && lastProgress !== null && players.filter(p => p.group_no === me.group_no && p.role !== "caddy")
+      .every(p => scores.some(x => x.player_id === p.id && x.hole === 18 && x.strokes))) showHoleRecap(18);
     lastProgress = prog;
   }
 
@@ -2010,6 +2064,7 @@ async function loadRound(code) {
       if (ms.valid) message = "⚔️ " + ms.holes[h].before;
     }
     if (isBbb()) message = "🎯 3 points up for grabs";
+    if (isStab()) message = "⭐ Par is worth 2 points";
     if (isBest()) message = "🤝 Carry your partner";
     if (isVegas()) message = "🎰 Lowest number wins the difference";
     if (isWad()) {
@@ -2022,7 +2077,7 @@ async function loadRound(code) {
       const n = skinsState(round, players, scores).holes[h].pot;
       message = "💰 " + n + (n === 1 ? " skin" : " skins") + " on the line";
     }
-    playHoleIntro({ hole: h, color, challenge: ch, idx, message, wolfGrab: isWolf(), coins: isSkins(), cartRun: isMatch(), bbb: isBbb(), carry: isBest(), slots: isVegas(), cashRain: isWad(), items }).then(() => { introRunning = false; });
+    playHoleIntro({ hole: h, color, challenge: ch, idx, message, wolfGrab: isWolf(), coins: isSkins(), cartRun: isMatch(), bbb: isBbb(), carry: isBest(), slots: isVegas(), cashRain: isWad(), tornado: isStab(), items }).then(() => { introRunning = false; });
   }
 
   function drawCard() {
@@ -2103,6 +2158,33 @@ async function loadRound(code) {
 
     $("wolf-box").style.display = isWolf() ? "block" : "none";
     $("skins-box").style.display = isSkins() ? "block" : "none";
+    $("stab-box").style.display = isStab() ? "block" : "none";
+    if (isStab()) drawStab(target);
+    const rb = $("recap-box");
+    if (rb) {
+      const gp = players.filter(p => p.group_no === myGroup && p.role !== "caddy");
+      const doneHere = gp.length && gp.every(p => scores.some(x => x.player_id === p.id && x.hole === hole && x.strokes));
+      const d = doneHere ? holeRecapData(hole, myGroup) : null;
+      rb.innerHTML = "";
+      rb.style.display = d ? "block" : "none";
+      if (d) {
+        const mk = (cls, text) => { const e = document.createElement("div"); e.className = cls; if (text != null) e.textContent = text; return e; };
+        rb.append(mk("ch-kicker", "Hole " + hole + " result"), mk("recap-title", d.title));
+        d.rows.forEach(r => {
+          const row = mk("recap-row");
+          const left = document.createElement("div");
+          const name = document.createElement("span");
+          name.append(figureEl(r.p.color, 16), d.nm(r.p));
+          left.append(name);
+          if (r.sub) left.append(mk("recap-sub", r.sub));
+          const val = document.createElement("b");
+          val.textContent = r.v;
+          row.append(left, val);
+          rb.append(row);
+        });
+        rb.append(mk("recap-note", d.note));
+      }
+    }
     $("match-box").style.display = isMatch() ? "block" : "none";
     $("caddy-box").style.display = isCaddy() ? "block" : "none";
     if (isCaddy()) drawCaddy(myGroup, isLeader);
@@ -2709,6 +2791,200 @@ async function loadRound(code) {
     refresh();
   }
 
+  function drawStab(t) {
+    const par = course && Array.isArray(course.pars) ? course.pars[hole - 1] : 4;
+    $("stab-par").textContent = "Par " + par + (round.handicap ? " (net)" : "") + ". Double bogey 0, bogey 1, par 2, birdie 3, eagle 4.";
+    const x = t && scores.find(s => s.player_id === t.id && s.hole === hole && s.strokes);
+    const pts = x ? stablefordPoints(x, course, holeAllowances(round, players)) : null;
+    $("stab-result").textContent = x ? (t.id === me.id ? "You" : t.name) + " scored " + pts + (pts === 1 ? " point" : " points") + " here." : "";
+  }
+
+  function renderCoursePanel() {
+    const p = panels.course;
+    p.innerHTML = "";
+    const isHost = round.host_id === user.id;
+    const h = document.createElement("h3");
+    h.textContent = course ? course.name + (course.tee_name ? " (" + course.tee_name + " tees)" : "") : "No course picked";
+    p.append(h);
+    if (course && Array.isArray(course.pars)) {
+      const wrap = document.createElement("div");
+      wrap.className = "sc-wrap";
+      const t = document.createElement("table");
+      t.className = "sc-table";
+      const row = (label, vals, cls) => {
+        const tr = document.createElement("tr");
+        if (cls) tr.className = cls;
+        [label, ...vals].forEach(v => { const td = document.createElement("td"); td.textContent = v == null ? "-" : v; tr.append(td); });
+        t.append(tr);
+      };
+      row("Hole", Array.from({ length: 18 }, (_, i) => i + 1), "sc-meta");
+      row("Par", course.pars);
+      if (Array.isArray(course.hcp_index) && course.hcp_index.length === 18) row("Hdcp", course.hcp_index, "sc-meta");
+      wrap.append(t);
+      p.append(wrap);
+    }
+    const note = document.createElement("p");
+    note.className = "waiting";
+    note.textContent = isHost ? "Spot a wrong par? Fix it here. Scores stay put." : "Spot a wrong par? Tell the party leader. They can fix it here.";
+    p.append(note);
+    if (isHost) {
+      const b = document.createElement("button");
+      b.textContent = course ? "Fix the pars" : "Add the pars";
+      b.style.cssText = "width:100%;margin-top:8px";
+      b.onclick = fixPars;
+      p.append(b);
+    }
+  }
+
+  async function fixPars() {
+    const old = course;
+    const m = await parsModal(old ? { name: old.name, location: old.location, tee_name: old.tee_name, pars: old.pars, hcp_index: old.hcp_index } : "");
+    if (!m) return;
+    const keep = old ? { rating: old.rating, slope: old.slope, yardage: old.yardage, tee_gender: old.tee_gender,
+      rating_source: old.rating_source, external_id: old.external_id, source: old.source } : {};
+    const { data, error } = await db.from("courses").insert({ ...m, ...keep }).select().single();
+    if (error) { toast(error.message); return; }
+    const up = await db.from("rounds").update({ course_id: data.id }).eq("id", round.id);
+    if (up.error) { toast(up.error.message); return; }
+    round.course_id = data.id;
+    course = data;
+    let body;
+    if (old) {
+      const diffs = data.pars.map((pp, i) => (pp !== old.pars[i] ? "hole " + (i + 1) + " is now a par " + pp : null)).filter(Boolean);
+      const hcpChanged = JSON.stringify(old.hcp_index || null) !== JSON.stringify(data.hcp_index || null);
+      body = diffs.length ? "\u{1F4DD} Pars fixed: " + diffs.join(", ") + "." : hcpChanged ? "\u{1F4DD} Hole handicaps updated." : null;
+    } else body = "\u{1F4DD} Course added: " + data.name + ", par " + data.pars.reduce((a, b) => a + b, 0) + ".";
+    if (body && me) db.from("messages").insert({ round_id: round.id, player_id: me.id, kind: "auto", body: body.slice(0, 280) }).then(() => {});
+    await refresh();
+    renderCoursePanel();
+  }
+
+  function holeRecapData(h, g) {
+    const gp = players.filter(p => p.group_no === g && p.role !== "caddy");
+    const allow = holeAllowances(round, players);
+    const nm = p => (!p ? "?" : p.user_id === user.id ? "You" : p.name);
+    const byId = id => players.find(p => p.id === id);
+    const net = x => netOf(x, allow);
+    const rows = gp.map(p => ({ p, x: scores.find(s => s.player_id === p.id && s.hole === h && s.strokes) })).filter(r => r.x);
+    if (!rows.length) return null;
+    const sTxt = x => (x.strokes >= 11 ? "11+" : String(x.strokes)) + (round.handicap && net(x) !== x.strokes ? " (net " + net(x) + ")" : "");
+    rows.forEach(r => { r.v = sTxt(r.x); r.sub = ""; });
+    const lows = () => { const m = Math.min(...rows.map(r => net(r.x))); return rows.filter(r => net(r.x) === m); };
+    const winLine = arr => arr.length === 1
+      ? nm(arr[0].p) + (arr[0].p.user_id === user.id ? " win" : " wins") + " the hole"
+      : "Tie between " + arr.map(r => nm(r.p)).join(" and ");
+    const topPts = () => { const m = Math.max(...rows.map(r => r.pts)); return winLine(rows.filter(r => r.pts === m)); };
+    let title = "", note = "";
+    if (isParty()) {
+      const played = scores.filter(s => s.hole === h && s.strokes);
+      rows.forEach(r => {
+        const beat = played.filter(o => net(o) > net(r.x)).length;
+        const ch = results.filter(z => z.hole === h && z.winner_id === r.p.id && !z.award).reduce((a, z) => a + z.points, 0);
+        r.pts = 1 + beat + ch;
+        r.v = (r.pts > 0 ? "+" : "") + r.pts;
+        r.sub = sTxt(r.x) + " strokes, beat " + beat + (ch ? ", challenge " + (ch > 0 ? "+" : "") + ch : "");
+      });
+      title = topPts();
+      note = "1 point for finishing, +1 for each player you beat, plus or minus the challenge card.";
+    } else if (isStab()) {
+      rows.forEach(r => { r.pts = stablefordPoints(r.x, course, allow); r.v = "+" + r.pts; r.sub = sTxt(r.x) + " strokes"; });
+      title = topPts();
+      note = "Bogey 1, par 2, birdie 3, eagle 4. Double bogey or worse scores 0.";
+    } else if (isSkins()) {
+      const info = skinsState(round, players, scores).holes[h];
+      const n = info.pot, word = n === 1 ? " skin" : " skins";
+      title = info.result === "won" ? nm(info.winner) + " took " + n + word
+        : h === 18 ? "Tie on 18. Those skins go unclaimed." : "Tie. " + n + word + " carry to hole " + (h + 1);
+      note = "Lowest score alone takes the skins. Any tie carries them over.";
+    } else if (isMatch()) {
+      const ms = matchState(round, players, scores, g);
+      title = ms.valid && ms.holes[h] && ms.holes[h].result ? ms.holes[h].result : winLine(lows());
+      note = "Lowest score wins the hole. Same score halves it.";
+    } else if (isWolf()) {
+      const st = wolfState(round, players, scores, picks, g);
+      const r = st.valid && st.holes[h] ? st.holes[h].result : null;
+      title = !r ? winLine(lows()) : r.kind === "push" ? "Push. No points."
+        : r.kind === "nopick" ? "No pick was made, so it pushed."
+        : r.ids.map(id => nm(byId(id))).join(" + ") + " won it, +" + r.pts + (r.ids.length > 1 ? " each" : "");
+      note = "The Wolf's side needs the best score. Going alone pays more.";
+    } else if (isBbb()) {
+      title = ["bingo", "bango", "bongo"].map(k => {
+        const z = results.find(q => q.hole === h && q.group_no === g && q.award === k);
+        return k[0].toUpperCase() + k.slice(1) + ": " + (z ? nm(byId(z.winner_id)) : "nobody");
+      }).join(" \u00B7 ");
+      note = "First on the green, closest to the pin, first in the cup. 1 point each.";
+    } else if (isBest()) {
+      const st = bestBallState(round, players, scores, g);
+      const hi = st.valid ? st.holes[h] : null;
+      title = !hi ? winLine(lows()) : hi.winner ? TEAM_NAMES[hi.winner] + " takes it, " + hi.best[hi.winner] + " to " + hi.best[3 - hi.winner]
+        : "Tie at " + hi.best[1] + ". No points.";
+      note = "Each team's lowest score counts. Better ball wins the point.";
+    } else if (isVegas()) {
+      const st = vegasState(round, players, scores, g);
+      const hi = st.valid ? st.holes[h] : null;
+      title = !hi ? winLine(lows()) : hi.winner ? TEAM_NAMES[hi.winner] + " wins by " + hi.diff + " (" + hi.num[hi.winner] + " vs " + hi.num[3 - hi.winner] + ")"
+        : "Both teams made " + hi.num[1] + ". Push.";
+      note = "Each team's two scores make one number, low score first. Lowest number wins the difference.";
+    } else if (isWad()) {
+      const made = wads.filter(w => w.hole === h && gp.some(p => p.id === w.player_id));
+      title = made.length ? made.map(w => nm(byId(w.player_id))).join(" and ") + " made a Wad" : "No Wads this hole";
+      note = "Drain your first putt from flagstick length or longer and the pot grows.";
+    } else if (isCaddy()) {
+      const calls = preds.filter(z => z.hole === h && z.outcome != null && gp.some(p => p.id === z.golfer_id));
+      title = calls.length ? calls.map(z => nm(byId(z.caddy_id)) + " +" + (z.points || 0)).join(" \u00B7 ") : "No caddy calls settled";
+      note = "Caddies get 3 for calling it and 1 for close.";
+    } else {
+      title = winLine(lows());
+      note = "Lowest score takes the hole. In stroke play every shot counts toward your total.";
+    }
+    const par = course && Array.isArray(course.pars) ? course.pars[h - 1] : null;
+    if (par) note = "Par " + par + ". " + note;
+    return { title, note, rows, nm };
+  }
+
+  function showHoleRecap(h) {
+    return new Promise(resolve => {
+      if (!me) return resolve();
+      const key = "parcade-recap-" + round.id + "-" + h;
+      try { if (localStorage.getItem(key)) return resolve(); localStorage.setItem(key, "1"); } catch (e) {}
+      const d = holeRecapData(h, me.group_no);
+      if (!d) return resolve();
+      const mk = (cls, text) => { const e = document.createElement("div"); e.className = cls; if (text != null) e.textContent = text; return e; };
+      const ov = mk("recap");
+      ov.setAttribute("role", "status");
+      const card = mk("recap-card");
+      card.append(mk("recap-kicker", "Hole " + h + " results"), mk("recap-title", d.title));
+      const list = mk("recap-rows");
+      d.rows.forEach(r => {
+        const row = mk("recap-row");
+        const left = document.createElement("div");
+        const name = document.createElement("span");
+        name.append(figureEl(r.p.color, 16), d.nm(r.p));
+        left.append(name);
+        if (r.sub) left.append(mk("recap-sub", r.sub));
+        const val = document.createElement("b");
+        val.textContent = r.v;
+        row.append(left, val);
+        list.append(row);
+      });
+      const go = document.createElement("button");
+      go.className = "recap-btn";
+      go.textContent = "Continue";
+      card.append(list, mk("recap-note", d.note), go);
+      ov.append(card);
+      document.body.append(ov);
+      Sound.play("pop");
+      let closed = false;
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        ov.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: "forwards" }).finished.then(() => { ov.remove(); resolve(); });
+      };
+      go.onclick = close;
+      setTimeout(() => go.focus({ preventScroll: true }), 50);
+    });
+  }
+
   async function saveScore(n) {
     const h = hole;
     const target = keeperTarget(me ? me.group_no : 1);
@@ -2767,7 +3043,7 @@ async function loadRound(code) {
   async function doJoin() {
     const joinName = await accountName();
     const vals = await ask("Join " + round.name, [
-      { label: "Your name", placeholder: "What the boys call you", max: 20, value: joinName },
+      { label: "Your name", placeholder: "What your crew calls you", max: 20, value: joinName },
       { label: "Pick your stick figure", type: "colors", taken: players.map(p => p.color) }
     ], "I'm in");
     if (!vals) return;
@@ -2919,7 +3195,7 @@ async function createAccount() {
       await ensureUser();
       const { error } = await db.auth.updateUser(
         { email, data: { first_name: first, needs_password: true, terms_accepted_at: new Date().toISOString(), terms_version: "2026-09-26" } },
-        { emailRedirectTo: location.origin + "/" });
+        { emailRedirectTo: location.origin + location.pathname + location.search });
       if (error) throw error;
       return null;
     } catch (e) { return friendlyAuthError(e); }
@@ -3022,7 +3298,7 @@ if (recentBtn) recentBtn.onclick = showRecentRounds;
 async function forgotPassword() {
   const v = await ask("Reset your password", [{ label: "Email", type: "email", placeholder: "you@example.com", max: 120 }],
     "Send reset link", "We'll email you a link to set a new password.", async ([email]) => {
-      const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: location.origin + "/" });
+      const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname + location.search });
       return error ? friendlyAuthError(error) : null;
     });
   if (v) toast("Check your email for a reset link.", true);
@@ -3375,3 +3651,28 @@ new MutationObserver(muts => {
     requestAnimationFrame(() => { reset(); setTimeout(reset, 60); });
   }));
 }).observe(document.body, { childList: true });
+
+function stablefordPoints(x, course, allow) {
+  const par = course && Array.isArray(course.pars) ? course.pars[x.hole - 1] : 4;
+  return Math.max(0, par - netOf(x, allow) + 2);
+}
+function stablefordTotals(round, players, scores, course) {
+  const allow = holeAllowances(round, players);
+  const t = {};
+  scores.filter(x => x.strokes).forEach(x => { t[x.player_id] = (t[x.player_id] || 0) + stablefordPoints(x, course, allow); });
+  return t;
+}
+
+const MONEY_UNITS = {
+  party: { unit: "point", note: "Every point is worth this much. At the end, everyone settles the point difference with everyone else." },
+  stroke: { unit: "stroke", note: "Every stroke is worth this much. Shoot 85 to their 90 and they owe you 5 strokes' worth." },
+  stableford: { unit: "Stableford point", note: "Every Stableford point is worth this much. Everyone settles the point difference at the end." },
+  skins: { unit: "skin", note: "Every skin is worth this much. Everyone settles the skins difference at the end." },
+  match: { unit: "hole won", note: "Every hole you win is worth this much. Everyone settles the holes-won difference at the end." },
+  wolf: { unit: "point", note: "Every Wolf point is worth this much. Everyone settles the point difference at the end." },
+  bbb: { unit: "point", note: "Every Bingo, Bango or Bongo is worth this much. Everyone settles the difference at the end." },
+  bestball: { unit: "hole won", note: "Every hole your team wins is worth this much to each teammate. Settle the difference at the end." },
+  vegas: { unit: "point", note: "Every Vegas point (the difference between team numbers) is worth this much. Settle up at the end." },
+  wad: { unit: "Wad", note: "Whoever makes the last Wad collects the whole pot from everyone else in their group." },
+  caddy: { unit: "Caddy Point", note: "Every Caddy Point is worth this much. Caddies settle the point difference at the end." },
+};

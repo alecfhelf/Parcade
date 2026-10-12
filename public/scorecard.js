@@ -193,7 +193,7 @@ function renderCaddyResults(box, { round, players, scores, user, preds, mulls, b
   renderAddToSeason(addWrap, round, players);
 }
 
-function renderScorecard(box, { round, players, scores, results, user, picks, preds, mulls, bets, wads }) {
+function renderScorecard(box, { round, players, scores, results, user, picks, preds, mulls, bets, wads, course }) {
   if (round.mode === "caddy") return renderCaddyResults(box, { round, players, scores, user, preds: preds || [], mulls: mulls || [], bets: bets || [] });
   const wolf = round.mode === "wolf";
   const skins = round.mode === "skins";
@@ -202,6 +202,8 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
   const best = round.mode === "bestball";
   const vegas = round.mode === "vegas";
   const wadMode = round.mode === "wad";
+  const stab = round.mode === "stableford";
+  const stabTot = stab ? stablefordTotals(round, players, scores, course) : {};
   const wadHold = wadMode ? wadHolders(players, wads || []) : new Set();
   const vegasTot = vegas ? vegasTotals(round, players, scores) : {};
   const bestTot = best ? bestBallTotals(round, players, scores) : {};
@@ -211,7 +213,7 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
     return n + " " + k[0].toUpperCase() + k.slice(1) + (n === 1 ? "" : "s");
   }).join(", ");
   const matchWon = match ? matchTotals(round, players, scores) : {};
-  const party = round.mode !== "stroke" && !wolf && !skins && !match && !bbb && !best && !vegas && !wadMode;
+  const party = round.mode !== "stroke" && !wolf && !skins && !match && !bbb && !best && !vegas && !wadMode && !stab;
   const skinTot = skins ? skinsState(round, players, scores).totals : {};
   const wolfTot = wolf ? wolfTotals(round, players, scores, picks || []) : {};
   const played = scores.filter(x => x.strokes);
@@ -228,12 +230,12 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
     const cursed = results.filter(r => r.winner_id === pl.id && r.points < 0);
     const chPts = [...won, ...cursed].reduce((a, r) => a + r.points, 0);
     return { pl, byHole, thru: mine.length, strokes: mine.reduce((a, x) => a + x.strokes, 0),
-             holePts, chPts, won: won.length, cursed: cursed.length, total: wolf ? (wolfTot[pl.id] || 0) : skins ? (skinTot[pl.id] || 0) : match ? (matchWon[pl.id] || 0) : bbb ? results.filter(x => x.award && x.winner_id === pl.id).length : best ? (bestTot[pl.id] || 0) : vegas ? (vegasTot[pl.id] || 0) : wadMode ? (wads || []).filter(w => w.player_id === pl.id).length : holePts + chPts };
+             holePts, chPts, won: won.length, cursed: cursed.length, total: wolf ? (wolfTot[pl.id] || 0) : skins ? (skinTot[pl.id] || 0) : match ? (matchWon[pl.id] || 0) : bbb ? results.filter(x => x.award && x.winner_id === pl.id).length : best ? (bestTot[pl.id] || 0) : vegas ? (vegasTot[pl.id] || 0) : wadMode ? (wads || []).filter(w => w.player_id === pl.id).length : stab ? (stabTot[pl.id] || 0) : holePts + chPts };
   });
-  if (party || wolf || skins || match || bbb || best || vegas || wadMode) rows.sort((a, b) => b.total - a.total);
+  if (party || wolf || skins || match || bbb || best || vegas || wadMode || stab) rows.sort((a, b) => b.total - a.total);
   else { const avg = r => (r.thru ? (r.strokes - Math.floor(r.thru * (allow[r.pl.id] || 0) + 1e-9)) / r.thru : Infinity); rows.sort((a, b) => avg(a) - avg(b)); }
   if (wadMode) rows.sort((a, b) => (wadHold.has(b.pl.id) - wadHold.has(a.pl.id)) || b.total - a.total);
-  const headline = r => (wadMode ? (wadHold.has(r.pl.id) ? "💰 Won the Wad" : r.total + " made") : match ? r.total + (r.total === 1 ? " hole won" : " holes won") : skins ? r.total + (r.total === 1 ? " skin" : " skins") : (party || wolf || bbb || best || vegas) ? r.total + " pts" : (r.thru ? r.strokes + " strokes" + (round.handicap ? ", net " + Math.round(r.strokes - Math.floor(r.thru * (allow[r.pl.id] || 0) + 1e-9)) : "") : "-"));
+  const headline = r => (wadMode ? (wadHold.has(r.pl.id) ? "💰 Won the Wad" : r.total + " made") : match ? r.total + (r.total === 1 ? " hole won" : " holes won") : skins ? r.total + (r.total === 1 ? " skin" : " skins") : (party || wolf || bbb || best || vegas || stab) ? r.total + " pts" : (r.thru ? r.strokes + " strokes" + (round.handicap ? ", net " + Math.round(r.strokes - Math.floor(r.thru * (allow[r.pl.id] || 0) + 1e-9)) : "") : "-"));
 
   box.innerHTML = "";
 
@@ -280,13 +282,13 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
     left.append(scEl("span", "detail", detail));
     const li = scEl("li");
     const right = scEl("span", null, headline(r));
-    if ((party || wolf || skins || match || bbb || best || vegas || wadMode) && r.thru) right.append(scEl("span", "sub-score", " (" + r.strokes + ")"));
+    if ((party || wolf || skins || match || bbb || best || vegas || wadMode || stab) && r.thru) right.append(scEl("span", "sub-score", " (" + r.strokes + ")"));
     li.append(left, right);
     list.append(li);
   });
   box.append(list);
 
-  const pointsMode = party || wolf || skins || match || bbb || best || vegas || wadMode;
+  const pointsMode = party || wolf || skins || match || bbb || best || vegas || wadMode || stab;
   const entries = rows.filter(r => pointsMode || r.thru).map(r => ({
     pl: r.pl, v: pointsMode ? r.total : -(r.strokes - Math.floor(r.thru * (allow[r.pl.id] || 0) + 1e-9)) }));
   renderMoneySection(box, { round, players, entries, bets: bets || [], user, override: wadMode ? wadMoney(round, players, wads || []) : null });

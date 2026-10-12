@@ -105,7 +105,7 @@ function tournamentForm(t, myName) {
     const panel = el("form", { className: "modal-panel" });
     const field = (label, input) => el("label", {}, el("span", { textContent: label }), input);
     const nameI = el("input", { placeholder: "The Crabby Cup", maxLength: 40, autocomplete: "off", value: s.name || "" });
-    const meI = el("input", { placeholder: "What the boys call you", maxLength: 20, autocomplete: "off", value: myName || "" });
+    const meI = el("input", { placeholder: "What your crew calls you", maxLength: 20, autocomplete: "off", value: myName || "" });
 
     const draws = [];
     const redraw = () => draws.forEach(f => f());
@@ -1244,7 +1244,7 @@ async function tournamentPreview(box, code, acct) {
   if (p.status !== "setup") { desk.say(CRABBY_TOURNEY.active); box.append(el("p", { className: "waiting", textContent: "This one already started. Ask the creator to add you next time." })); return; }
   desk.say(CRABBY_TOURNEY.join);
   const b = el("button", { textContent: "Join this tournament", onclick: async () => {
-    const vals = await ask("Join " + p.name, [{ label: "Your name", placeholder: "What the boys call you", max: 20, value: await accountName() }], "Next");
+    const vals = await ask("Join " + p.name, [{ label: "Your name", placeholder: "What your crew calls you", max: 20, value: await accountName() }], "Next");
     if (!vals) return;
     const hcp = await askSeasonHandicap(null);
     if (hcp == null) return;
