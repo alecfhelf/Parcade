@@ -1,65 +1,83 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Privacy Policy | Parcade</title>
+  <meta name="description" content="Parcade Privacy Policy.">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
-    body { margin: 0; background: #060A1A; color: #EAF2FF; font-family: "Chakra Petch", system-ui, sans-serif; line-height: 1.6; }
-    main { max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; }
-    h1 { font-family: "Bungee", sans-serif; font-weight: 400; font-size: clamp(1.8rem, 7vw, 2.6rem); margin: 0 0 4px; text-shadow: 0 0 12px rgba(92,225,255,0.5); }
-    h2 { font-size: 1.15rem; color: #5CE1FF; margin: 28px 0 6px; }
-    p, li { color: #C9D3E8; }
-    .muted { color: #8A9BC4; }
-    a { color: #5CE1FF; }
-    .back { display: inline-block; margin-bottom: 20px; }
+    :root { --bg:#060A1A; --panel:#0E1630; --ink:#EAF2FF; --muted:#8A9BC4; --blue:#2E6BFF; --glow:#5CE1FF; }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Chakra Petch", system-ui, sans-serif; line-height: 1.6; }
+    main { max-width: 760px; margin: 0 auto; padding: calc(24px + env(safe-area-inset-top)) 20px 80px; }
+    .top { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 28px; }
+    a { color: var(--glow); }
+    h1 { font-family: "Bungee", sans-serif; font-weight: 400; font-size: clamp(1.8rem, 6vw, 2.6rem); line-height: 1.15; margin: 0 0 6px;
+      text-shadow: 0 0 12px rgba(92,225,255,0.5); }
+    .eff { color: var(--muted); margin: 0 0 28px; }
+    h2 { font-size: 1.1rem; color: var(--glow); margin: 32px 0 8px; }
+    h3 { font-size: 1rem; color: #fff; margin: 20px 0 6px; }
+    p { margin: 0 0 14px; color: #D3DDF2; }
+    .caps { font-size: 0.92rem; }
+    footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.08); color: var(--muted); font-size: 0.9rem;
+      display: flex; gap: 18px; flex-wrap: wrap; }
   </style>
 </head>
 <body>
 <main>
-  <a class="back" href="/">&larr; Back to Parcade</a>
+  <div class="top"><a href="/">&larr; Back to Parcade</a><a href="/terms">Terms of Service</a></div>
   <h1>Privacy Policy</h1>
-  <p class="muted">Last updated September 26, 2026</p>
-
-  <p>This policy explains what Parcade collects, why, and what you can do about it. The short version: we collect what the app needs to run your rounds, we don't sell your data, and we don't show ads.</p>
-
-  <h2>What we collect</h2>
-  <ul>
-    <li><strong>Account info:</strong> your email address, your first name, and when you agreed to these policies.</li>
-    <li><strong>Game info:</strong> round and season names, player names, stick-figure colors, scores, handicaps or usual scores, challenge results, chat messages, bet descriptions and amounts, and payouts.</li>
-    <li><strong>Guest sessions:</strong> a random ID so you can play without an account.</li>
-    <li><strong>Settings on your device:</strong> things like sound, volume, and scorekeeper preferences are stored in your own browser, not on our servers.</li>
-    <li><strong>Technical info:</strong> our hosting and database providers automatically log basics like IP addresses and browser type to keep the service running and secure.</li>
-  </ul>
-
-  <h2>How we use it</h2>
-  <p>Only to run Parcade: saving and showing rounds, seasons, chat, and payouts, keeping you signed in, and fixing problems. We don't sell your information and we don't use it for advertising.</p>
-
-  <h2>Who can see it</h2>
-  <ul>
-    <li>People in your round can see the names, scores, chat, bets, and results in that round. Members of a season can see that season's standings and money stats.</li>
-    <li>We use service providers to run the app: Supabase (database and accounts), Netlify (hosting), and Google Fonts and jsDelivr (fonts and code libraries). They process data only to provide those services.</li>
-    <li>We may share information if required by law.</li>
-  </ul>
-
-  <h2>Keeping and deleting your data</h2>
-  <p>We keep your information while your account is active. To delete your account and personal information, email <a href="mailto:support@parcade.golf">support@parcade.golf</a>. Rounds you played with others may be kept with your name removed so their records still work. Guest data on your device can be cleared by clearing your browser's site data.</p>
-
-  <h2>Children</h2>
-  <p>Parcade isn't meant for anyone under 13, and money features are only for people 21 and older. If you believe a child under 13 has given us information, contact us and we'll delete it.</p>
-
-  <h2>Security</h2>
-  <p>We use access controls and encrypted connections to protect your information, but no system is perfectly secure.</p>
-
-  <h2>Changes</h2>
-  <p>If we change this policy, we'll update the date above.</p>
-
-  <h2>Contact</h2>
-  <p>Questions or requests? Email <a href="mailto:support@parcade.golf">support@parcade.golf</a>.</p>
-
+  <p class="eff">Effective Date: October 3, 2026</p>
+  <h2>Introduction</h2>
+  <p>Witheasement, LLC ("Parcade," "we," "us," or "our") operates the Parcade platform (the "Platform"). This Privacy Policy explains how we collect, use, disclose, and protect personal information when you visit our website, create an account, or otherwise use our services. Please read this policy carefully. By using the Platform, you agree to the practices described here.</p>
+  <h2>1. Information We Collect</h2>
+  <p>We collect information you provide directly to us, information we generate as you use the Platform, and in limited cases, information from third-party sources.</p>
+  <h3>Account and Registration Information</h3>
+  <p>When you create an account, we collect your name, email address, phone number, mailing address, business name (if applicable), and any other information you provide during registration. You may also choose to provide additional profile details.</p>
+  <h3>Payment and Billing Information</h3>
+  <p>When you subscribe to a paid plan, we collect your credit card number, expiration date, billing address, and related payment information. This information is transmitted over encrypted connections to our third-party payment processor and is not stored on our servers in full, unencrypted form. Our payment processor retains billing details in accordance with its own privacy and security policies and applicable PCI-DSS standards.</p>
+  <h3>User Content</h3>
+  <p>We collect data, files, and other content you upload, input, or otherwise submit through the Platform.</p>
+  <h3>Usage and Technical Information</h3>
+  <p>We automatically collect certain information when you use the Platform, including your IP address, browser type and version, operating system, device identifiers, referring URL, pages visited, and timestamps. We may use cookies, web beacons, and similar tracking technologies to collect this information.</p>
+  <h2>2. How We Use Your Information</h2>
+  <p>We use the information we collect to provide, operate, maintain, and improve the Platform; process your subscription payments and send billing-related communications; send you administrative and transactional messages, including account confirmations, security alerts, and support responses; respond to your inquiries and provide customer support; analyze usage patterns to improve the user experience; comply with applicable legal obligations; and detect, investigate, and prevent fraudulent or unauthorized activity.</p>
+  <p>We do not use your personal information to train artificial intelligence or machine learning models for any purpose other than improving the Platform's direct functionality for you. We do not sell your personal information to third parties.</p>
+  <h2>3. How We Handle Credit Card and Payment Data</h2>
+  <p>Credit card and other financial data you provide is processed by our payment processor using industry-standard TLS encryption. We do not store your full credit card number on our systems. Our payment processor operates in compliance with PCI-DSS standards. Under the California Consumer Privacy Act (CCPA), credit card and payment information qualifies as sensitive personal information. California residents have specific rights regarding this data, described in Section 7 of this Policy.</p>
+  <h2>4. Sharing of Information</h2>
+  <p>We do not sell, rent, or trade your personal information to third parties. We share information only in the following limited circumstances:</p>
+  <p><strong>Service Providers.</strong> We work with third-party vendors that perform services on our behalf, such as payment processing, data hosting, and analytics. These providers are contractually restricted to using your information only to perform those services.</p>
+  <p><strong>Legal Requirements.</strong> We may disclose your information if required to do so by law, court order, or governmental authority, or if we believe in good faith that disclosure is necessary to protect our rights, your safety, or the safety of others.</p>
+  <p><strong>Business Transfers.</strong> If Witheasement, LLC is involved in a merger, acquisition, or asset sale, your information may be transferred. We will provide notice before your information becomes subject to a different privacy policy.</p>
+  <h2>5. Data Retention</h2>
+  <p>We retain your personal information for as long as your account is active or as needed to provide services to you. If you close your account, we will retain information as necessary for legal compliance, dispute resolution, and enforcement of our agreements, and will delete or anonymize it when it is no longer needed for those purposes.</p>
+  <h2>6. Security</h2>
+  <p>We implement administrative, technical, and physical safeguards to protect your personal information, including encryption of data in transit, access controls, and regular security reviews. No electronic storage method is completely secure, and we cannot guarantee absolute security.</p>
+  <h2>7. Your Rights Under the California Consumer Privacy Act (CCPA)</h2>
+  <p>If you are a resident of California, you have the following rights with respect to your personal information:</p>
+  <p><strong>Right to Know.</strong> You may request disclosure of what personal information we have collected about you, the sources, our purposes, and the categories of third parties with whom we have shared it in the preceding 12 months.</p>
+  <p><strong>Right to Delete.</strong> You may request that we delete personal information we have collected from you, subject to certain legal exceptions.</p>
+  <p><strong>Right to Correct.</strong> You may request correction of inaccurate personal information we maintain about you.</p>
+  <p><strong>Right to Opt Out of Sale or Sharing.</strong> We do not sell or share your personal information for cross-context behavioral advertising.</p>
+  <p><strong>Right to Limit Use of Sensitive Personal Information.</strong> We use your credit card and payment information solely to process your subscription payments. You have the right to direct us to limit the use and disclosure of your sensitive personal information to uses necessary to provide the services you have requested.</p>
+  <p><strong>Right to Non-Discrimination.</strong> We will not discriminate against you for exercising your CCPA rights.</p>
+  <p>To submit a request, email <a href="mailto:support@parcade.golf">support@parcade.golf</a>. We will respond within 45 days and may extend that period by an additional 45 days where necessary, with notice.</p>
+  <h2>8. Cookies and Tracking Technologies</h2>
+  <p>We use cookies and similar tracking technologies to maintain your session, remember your preferences, and gather analytics data. You may disable cookies through your browser settings, but certain Platform features may not function correctly without them.</p>
+  <h2>9. Children's Privacy</h2>
+  <p>The Platform is not directed to children under the age of 13, and we do not knowingly collect personal information from children. If we become aware that we have collected information from a child under 13, we will take steps to delete it promptly. Please contact us at <a href="mailto:support@parcade.golf">support@parcade.golf</a> if you believe we may have collected such information.</p>
+  <h2>10. Changes to This Privacy Policy</h2>
+  <p>We may update this Privacy Policy from time to time. When we make material changes, we will notify you by email or by posting a prominent notice on the Platform and will update the Effective Date. Your continued use of the Platform following notice of changes constitutes your acceptance of the updated Policy.</p>
+  <h2>11. Contact Us</h2>
+  <p>If you have questions, concerns, or requests regarding this Privacy Policy or how we handle your personal information, please contact us at:<br /> Witheasement, LLC<br /> <a href="mailto:support@parcade.golf">support@parcade.golf</a></p>
+  <footer><a href="/">Parcade</a><a href="/terms">Terms of Service</a><a href="/privacy">Privacy Policy</a><a href="mailto:support@parcade.golf">support@parcade.golf</a></footer>
 </main>
 </body>
 </html>

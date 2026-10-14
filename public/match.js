@@ -52,7 +52,9 @@ function matchState(round, players, scores, groupNo) {
       out.holes[h].result = winners[0].name + " won the hole." + (round.handicap && grossTie ? " A handicap stroke broke the tie." : "");
     } else {
       const grossWinners = grp.filter((p, i) => gross[i] === grossBest).length;
-      out.holes[h].result = "Halved." + (round.handicap && grossWinners === 1 ? " Handicap strokes evened it out." : "");
+      winners.forEach(p => { out.won[p.id] += 0.5; });
+      out.holes[h].result = "Halved. Half a point each" + (winners.length < grp.length ? " for " + winners.map(p => p.name).join(" and ") : "") + "."
+        + (round.handicap && grossWinners === 1 ? " Handicap strokes evened it out." : "");
     }
     played++;
     if (!out.clinched) {

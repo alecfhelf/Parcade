@@ -88,6 +88,7 @@ const CRABBY_LINES = {
   welcome: "Welcome to the course, I'm Crabby. Nice shoes. Your mom pick 'em out? Name your round, type your name, pick a color, then hit Tee it up.",
   course: "What course are you on? Search for it, or punch in the pars yourself. I'm not a mind reader.",
   setup: "House rules time. One phone or many? Handicaps? Money on the line? Mulligans for the weak? Choose wisely.",
+  confirm: "Check the card. If a par is wrong, now is the time. Once balls are flying I am not hearing it.",
   size: "How many of you are playing? Tap a number. Counting's the easy part, trust me.",
   mode: "Pick a game. Tap the little i if you need the rules explained like you're five.",
   modePicked: "Fine. Now hit Next before I change my mind.",
@@ -98,6 +99,17 @@ const CRABBY_LINES = {
   ready: "Everybody's here. Hit Start game. Slow play is a crime.",
   joiner: "Tap Join this round and type in your name. It's two steps. Try not to mess it up.",
   joined: "You're in. Now we wait on the slowpoke running this thing.",
+};
+
+// Dressing room
+const CRABBY_DRESS = {
+  open: "Welcome to the pro shop. Everything's free, which is about what your game is worth. Pick a tab, try stuff on, hit Save.",
+  saved: [
+    "Saved. You look like a guy who three-putts with confidence.",
+    "Look at you. Dressed like a pro, swings like a lawn sprinkler.",
+    "Bold choice. The course won't care, but your buddies will talk.",
+    "Saved. Clothes don't lower your score, but at least you'll lose in style.",
+  ],
 };
 
 function crabbyDesk(line) {

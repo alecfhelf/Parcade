@@ -460,7 +460,10 @@ async function loadTournament(code) {
       ? tournamentPayouts({ teams: teams.map(x => ({ id: x.id, members: roster(x.id).map(m => m.user_id) })), buyIn: t.buy_in, payouts: t.payouts, place })
       : null;
     const me = acct ? memberOf.get(acct.id) : null;
-    return { ...raw, R, onTeam, memberOf, teamOf, roster, teamHcp, base, ranks, strokesFor, gross, teamRound, roundById, seedOf, holesFor,
+    // Each member's outfit, from the player rows of this tournament's rounds
+    const outfitOf = new Map();
+    players.forEach(p => { if (p.user_id && p.outfit) outfitOf.set(p.user_id, p.outfit); });
+    return { ...raw, outfitOf, R, onTeam, memberOf, teamOf, roster, teamHcp, base, ranks, strokesFor, gross, teamRound, roundById, seedOf, holesFor,
       bracket, D, place, money, me, myTeam: me && me.team_id };
   }
 
@@ -751,7 +754,7 @@ async function loadTournament(code) {
       const rowEl = el("div", { className: "bk-row" });
       if (!id && d.status === "bye") { rowEl.classList.add("bye"); rowEl.append(el("span", { className: "bk-seed" }), el("span", { className: "bk-name", textContent: "Bye" })); return rowEl; }
       const dot = el("span", { className: "bk-dot" });
-      if (id) dot.style.background = teamColor(id) || "var(--muted)";
+      if (id) { if (teamColor(id)) paintColor(dot, "background", teamColor(id)); else dot.style.background = "var(--muted)"; }
       rowEl.append(el("span", { className: "bk-seed", textContent: id ? S.seedOf.get(id) || "" : "" }), dot, el("span", { className: "bk-name", textContent: id ? teamName(id) : "TBD" }));
       if (!id) rowEl.classList.add("tbd");
       if (r && r.holesDone) rowEl.append(el("span", { className: "bk-score", textContent: String(side === "a" ? r.a : r.b) }));
@@ -825,13 +828,13 @@ async function loadTournament(code) {
     const tm = S.teamOf.get(id);
     const roster = S.roster(id);
     const blk = el("div", { className: "tb-team" + (id === S.myTeam ? " mine" : "") });
-    blk.style.setProperty("--c", tm.color || "var(--glow)");
+    if (tm.color) paintColor(blk, "--c", tm.color); else blk.style.setProperty("--c", "var(--glow)");
     blk.append(el("div", { className: "tb-team-head" }, el("b", { textContent: tm.name }),
       el("span", { className: "detail", textContent: (S.seedOf.get(id) ? "Seed " + S.seedOf.get(id) + " · " : "") + "Team HCP " + hcpText(S.teamHcp(id)) })));
     const ul = el("ul", { className: "player-list" });
     roster.forEach(p => {
       const got = holes.reduce((a, h) => a + S.strokesFor(p.user_id, h), 0);
-      ul.append(el("li", {}, el("span", { textContent: p.name + (p.is_captain ? " (captain)" : "") }),
+      ul.append(el("li", {}, el("span", {}, figureEl(tm.color, 18, S.outfitOf.get(p.user_id) || undefined), p.name + (p.is_captain ? " (captain)" : "")),
         el("span", { className: "detail", textContent: "HCP " + hcpText(hcpOf(p)) + (t.handicap ? " · " + got + (got === 1 ? " stroke" : " strokes") : "") })));
     });
     blk.append(ul);
@@ -915,7 +918,8 @@ async function loadTournament(code) {
     cols.forEach(({ ids, i }) => {
       if (!ids.length || !ids[0]) return;
       const col = tnEl("div", "podium-col place-" + (i + 1));
-      col.append(podiumFigure(teamColor(ids[0]), i), tnEl("div", "podium-name", ids.map(teamName).join(" & ")),
+      const solo = S.roster(ids[0]);
+      col.append(podiumFigure(teamColor(ids[0]), i, solo.length === 1 ? S.outfitOf.get(solo[0].user_id) : null), tnEl("div", "podium-name", ids.map(teamName).join(" & ")),
         tnEl("div", "podium-score", ids.flatMap(id => S.roster(id).map(p => p.name)).join(", ")), tnEl("div", "podium-block", ["1st", "2nd", "3rd"][i]));
       podium.append(col);
     });
@@ -968,7 +972,7 @@ async function loadTournament(code) {
     order.forEach(tm => {
       const roster = S.roster(tm.id);
       const blk = el("div", { className: "tb-team" + (tm.id === S.myTeam ? " mine" : "") });
-      blk.style.setProperty("--c", tm.color || "var(--glow)");
+      if (tm.color) paintColor(blk, "--c", tm.color); else blk.style.setProperty("--c", "var(--glow)");
       const canRename = isOwner || roster.some(p => acct && p.user_id === acct.id && p.is_captain);
       const head = el("div", { className: "tb-team-head" }, el("b", { textContent: (t.status !== "setup" && S.seedOf.get(tm.id) ? S.seedOf.get(tm.id) + ". " : "") + tm.name }),
         el("span", { className: "detail", textContent: roster.length + "/" + t.team_size + " · HCP " + hcpText(S.teamHcp(tm.id)) }));

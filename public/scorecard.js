@@ -30,22 +30,36 @@ function pickFrom(title, options) {
   });
 }
 
-function podiumFigure(color, place) {
+// podiumFigure(color | player, place, outfit). The podium figure is drawn on a 48 grid; outfit layers are
+// drawn on the 24 grid of figureEl, so each layer is mapped onto this pose's head, torso, legs and feet.
+function podiumFigure(who, place, outfitArg) {
+  const pl = who && typeof who === "object" ? who : null;
+  const color = pl ? pl.color : who;
   const c = PALETTE.some(p => p[0] === color) ? color : "#8A9BC4";
+  const outfit = outfitArg || (pl && pl.outfit);
+  const L = outfit ? outfitLayers(outfit, c, false) : {};
+  const at = (tf, layer) => (layer ? '<g transform="' + tf + '">' + layer + "</g>" : "");
+  const HEAD = "translate(4 1.67) scale(1.667)";
+  const legs = at("translate(6 14.5) scale(1.5)", L.shoes);
+  const top = at("translate(6 -10) scale(1.5 2.667)", L.pants) + at("translate(4 -2.14) scale(1.667 2.143)", L.shirt);
   const body = '<circle cx="24" cy="10" r="5"/><path d="M24 15V30M24 30L18 46M24 30L30 46"/>';
   let art = "";
   if (place === 0) {
-    art = body + '<path d="M24 19L17 24L21 28"/>' +
+    // The winner's crown replaces the hat; the sword is in the hand, so no item
+    art = legs + body + '<path d="M24 19L17 24L21 28"/>' + top +
       '<g class="sword"><path d="M24 19L33 8"/><path d="M33 8L39 -6" stroke="#EAF2FF"/><path d="M37 -7L41 -5" stroke="#EAF2FF"/></g>' +
       '<path class="crown" d="M17.5 5L19 -2L22 2L24 -4L26 2L29 -2L30.5 5Z" fill="#FFD84D" stroke="#FFD84D" stroke-width="1" style="filter:drop-shadow(0 0 4px #FFD84D)"/>';
   } else if (place === 1) {
-    art = body + '<path d="M24 19L17 27"/>' +
+    art = legs + body + '<path d="M24 19L17 27"/>' + top + at(HEAD, L.hat) +
       '<g class="fist"><path d="M24 19L31 16L32 8"/><circle cx="32" cy="6" r="2.2" fill="' + c + '"/></g>' +
       '<text class="curse" x="35" y="-1" font-size="7" fill="#FF5C7A" stroke="none">#@%!</text>';
   } else if (place === 2) {
-    art = body + '<g class="clap-l"><path d="M24 19L17 24L19 28"/></g><g class="clap-r"><path d="M24 19L31 24L29 28"/></g>';
+    art = legs + body + top + at(HEAD, L.hat) +
+      '<g class="clap-l"><path d="M24 19L17 24L19 28"/></g><g class="clap-r"><path d="M24 19L31 24L29 28"/></g>';
   } else {
-    art = '<circle cx="27" cy="14" r="5"/><path d="M24 19Q22 25 24 31M24 31L19 46M24 31L29 46M24 21L20 31M24 21L28 31"/>';
+    // Slumped last place: just the hat, tipped with the head
+    art = '<circle cx="27" cy="14" r="5"/><path d="M24 19Q22 25 24 31M24 31L19 46M24 31L29 46M24 21L20 31M24 21L28 31"/>' +
+      at("translate(7 5.67) scale(1.667) rotate(12 12 5)", L.hat);
   }
   const w = document.createElement("span");
   w.className = "stick pod-fig pod-" + place;
@@ -67,7 +81,7 @@ function renderMoneySection(box, { round, players, entries, bets, user, override
     const x = net[pl.id];
     const left = scEl("div");
     const nm = scEl("span");
-    nm.append(figureEl(pl.color), pl.name + (pl.user_id === user.id ? " (you)" : ""));
+    nm.append(figureEl(pl), pl.name + (pl.user_id === user.id ? " (you)" : ""));
     const parts = [];
     if (hasStakes) parts.push("Round " + moneySigned(x.round));
     if (bets.length) parts.push("bets " + moneySigned(x.bets));
@@ -110,7 +124,7 @@ function renderCaddyResults(box, { round, players, scores, user, preds, mulls, b
     const awards = scEl("div", "caddy-awards");
     const award = (title, r, kind) => {
       const c = scEl("div", "award award-" + kind);
-      c.append(scEl("div", "award-title", title), podiumFigure(r.pl.color, kind === "best" ? 0 : 3),
+      c.append(scEl("div", "award-title", title), podiumFigure(r.pl, kind === "best" ? 0 : 3),
         scEl("div", "podium-name", r.pl.name), scEl("div", "podium-score", r.pts + " pts"));
       return c;
     };
@@ -123,7 +137,7 @@ function renderCaddyResults(box, { round, players, scores, user, preds, mulls, b
     caddies.forEach((r, i) => {
       const left = scEl("div");
       const nm = scEl("span");
-      nm.append((i + 1) + ". ", figureEl(r.pl.color), r.pl.name + you(r.pl));
+      nm.append((i + 1) + ". ", figureEl(r.pl), r.pl.name + you(r.pl));
       left.append(nm, scEl("span", "detail", r.right + " of " + r.calls + " calls right" +
         (r.mulls ? ", " + r.mulls + (r.mulls === 1 ? " mulligan" : " mulligans") + " granted" : "")));
       const li = scEl("li");
@@ -149,7 +163,7 @@ function renderCaddyResults(box, { round, players, scores, user, preds, mulls, b
   grows.forEach((r, i) => {
     const left = scEl("div");
     const nm = scEl("span");
-    nm.append((i + 1) + ". ", figureEl(r.pl.color), r.pl.name + you(r.pl));
+    nm.append((i + 1) + ". ", figureEl(r.pl), r.pl.name + you(r.pl));
     left.append(nm, scEl("span", "detail", r.thru ? "Thru " + r.thru + " holes" : "No scores entered"));
     const li = scEl("li");
     li.append(left, scEl("span", null, r.thru ? r.total + " strokes" + (round.handicap ? ", net " + Math.round(r.net) : "") : "-"));
@@ -175,7 +189,7 @@ function renderCaddyResults(box, { round, players, scores, user, preds, mulls, b
     grows.forEach(r => {
       const tr = scEl("tr");
       const nameTd = scEl("td");
-      nameTd.append(figureEl(r.pl.color, 16), r.pl.name);
+      nameTd.append(figureEl(r.pl, 16), r.pl.name);
       tr.append(nameTd);
       holes.forEach(hn => {
         const v = r.byHole[hn];
@@ -235,7 +249,7 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
   if (party || wolf || skins || match || bbb || best || vegas || wadMode || stab) rows.sort((a, b) => b.total - a.total);
   else { const avg = r => (r.thru ? (r.strokes - Math.floor(r.thru * (allow[r.pl.id] || 0) + 1e-9)) / r.thru : Infinity); rows.sort((a, b) => avg(a) - avg(b)); }
   if (wadMode) rows.sort((a, b) => (wadHold.has(b.pl.id) - wadHold.has(a.pl.id)) || b.total - a.total);
-  const headline = r => (wadMode ? (wadHold.has(r.pl.id) ? "💰 Won the Wad" : r.total + " made") : match ? r.total + (r.total === 1 ? " hole won" : " holes won") : skins ? r.total + (r.total === 1 ? " skin" : " skins") : (party || wolf || bbb || best || vegas || stab) ? r.total + " pts" : (r.thru ? r.strokes + " strokes" + (round.handicap ? ", net " + Math.round(r.strokes - Math.floor(r.thru * (allow[r.pl.id] || 0) + 1e-9)) : "") : "-"));
+  const headline = r => (wadMode ? (wadHold.has(r.pl.id) ? "💰 Won the Wad" : r.total + " made") : match ? r.total + (r.total === 1 ? " pt" : " pts") : skins ? r.total + (r.total === 1 ? " skin" : " skins") : (party || wolf || bbb || best || vegas || stab) ? r.total + " pts" : (r.thru ? r.strokes + " strokes" + (round.handicap ? ", net " + Math.round(r.strokes - Math.floor(r.thru * (allow[r.pl.id] || 0) + 1e-9)) : "") : "-"));
 
   box.innerHTML = "";
 
@@ -245,7 +259,7 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
     const r = rows[i];
     if (!r) return;
     const col = scEl("div", "podium-col place-" + (i + 1));
-    col.append(podiumFigure(r.pl.color, i), scEl("div", "podium-name", r.pl.name), scEl("div", "podium-score", headline(r)), scEl("div", "podium-block", labels[i]));
+    col.append(podiumFigure(r.pl, i), scEl("div", "podium-name", r.pl.name), scEl("div", "podium-score", headline(r)), scEl("div", "podium-block", labels[i]));
     podium.append(col);
   });
   box.append(podium);
@@ -261,7 +275,7 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
     const last = rows[rows.length - 1];
     const lp = scEl("div", "last-place");
     const figs = scEl("div", "last-figs");
-    figs.append(scEl("span", "poop", "\u{1F4A9}"), podiumFigure(last.pl.color, 3));
+    figs.append(scEl("span", "poop", "\u{1F4A9}"), podiumFigure(last.pl, 3));
     const txt = scEl("div");
     txt.append(scEl("b", null, last.pl.name + " finished dead last"), scEl("span", "sub", headline(last)));
     lp.append(figs, txt);
@@ -273,7 +287,7 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
   rows.forEach((r, i) => {
     const left = scEl("div");
     const nm = scEl("span");
-    nm.append((i + 1) + ". ", figureEl(r.pl.color), r.pl.name + (r.pl.user_id === user.id ? " (you)" : ""));
+    nm.append((i + 1) + ". ", figureEl(r.pl), r.pl.name + (r.pl.user_id === user.id ? " (you)" : ""));
     left.append(nm);
     const sign = r.chPts > 0 ? "+" : "";
     const detail = wadMode ? r.total + (r.total === 1 ? " Wad made" : " Wads made") : bbb ? bbbDetail(r.pl) : (best || vegas) ? (r.pl.team ? TEAM_NAMES[r.pl.team] : "No team") + (r.thru ? ", thru " + r.thru + " holes" : "") : party
@@ -309,7 +323,7 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
     rows.forEach(r => {
       const tr = scEl("tr");
       const nameTd = scEl("td");
-      nameTd.append(figureEl(r.pl.color, 16), r.pl.name);
+      nameTd.append(figureEl(r.pl, 16), r.pl.name);
       tr.append(nameTd);
       holes.forEach(h => {
         const v = r.byHole[h];

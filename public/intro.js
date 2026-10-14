@@ -85,7 +85,7 @@ function playHoleIntro({ hole, color, challenge, idx, message, wolfGrab, coins, 
     const c = PALETTE.some(p => p[0] === color) ? color : "#5CE1FF";
     const ov = document.createElement("div");
     ov.className = "intro";
-    ov.style.setProperty("--c", c);
+    ov.style.setProperty("--c", themeHex(c));
     ov.setAttribute("role", "dialog");
     ov.setAttribute("aria-label", "Hole " + hole);
     ov.innerHTML =
@@ -263,7 +263,7 @@ function playHoleIntro({ hole, color, challenge, idx, message, wolfGrab, coins, 
             const figs = cols.map((col, k) => {
               const d = document.createElement("div");
               d.className = "intro-extra walking";
-              d.style.setProperty("--c2", col);
+              d.style.setProperty("--c2", themeHex(col));
               d.innerHTML = stickSVG();
               Object.assign(d.style, { width: fw + "px", height: fh + "px", left: xs[k] - fw / 2 + "px", top: ground - fh + "px" });
               ov.append(d);
@@ -415,7 +415,7 @@ function playHoleIntro({ hole, color, challenge, idx, message, wolfGrab, coins, 
             const figs = cols.map((col, k) => {
               const d = document.createElement("div");
               d.className = "intro-extra walking";
-              d.style.setProperty("--c2", col);
+              d.style.setProperty("--c2", themeHex(col));
               d.innerHTML = stickSVG();
               Object.assign(d.style, { width: fw * 0.8 + "px", height: fh * 0.8 + "px", left: xs[k] - fw * 0.4 + "px", top: ground - fh * 0.8 + "px" });
               ov.append(d);
@@ -520,7 +520,7 @@ function playHoleIntro({ hole, color, challenge, idx, message, wolfGrab, coins, 
           const gw = wr.width * 44 / 40, gh = wr.height;
           const golfer = document.createElement("div");
           golfer.className = "intro-golfer walking";
-          golfer.style.setProperty("--g", gc);
+          golfer.style.setProperty("--g", themeHex(gc));
           golfer.innerHTML = golferSVG();
           const gLeft = Math.max(16, wr.left - Math.max(W * 0.32, wr.width * 2.5));
           const gTop = wr.bottom - gh;

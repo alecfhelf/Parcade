@@ -23,6 +23,14 @@ export default async (req) => {
   try {
     if (id) {
       if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "Bad course id" }, 400);
+      const full = await get("https://api.opengolfapi.org/api/v1/courses/" + id).catch(() => null);
+      if (full && Array.isArray(full.holes_data) && full.holes_data.length) {
+        return json({
+          id: full.id, name: full.course_name || full.name, city: full.city, state: full.state, holes: full.holes,
+          scorecard: full.holes_data.map(h => ({ hole: h.number, par: h.par, handicap: h.handicap_index })),
+          tees: full.tees || []
+        });
+      }
       const [course, tees] = await Promise.all([
         get(BASE + "/" + id),
         get(BASE + "/" + id + "/tees").catch(() => ({ tees: [] }))

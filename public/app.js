@@ -18,14 +18,122 @@ const PALETTE = BASE_COLORS.concat(Array.from({ length: 40 }, (_, i) => {
   return [hslHex(hue, pale ? 85 : 95, pale ? 80 : 60), (pale ? "Pale " : "Deep ") + hueName(hue)];
 }));
 
-function figureEl(color, size = 18, cheer = false) {
+// ---------- Theme: dark (default), light, or match the phone ----------
+const THEME_KEY = "parcade-theme";
+const LIGHT_BG = "#F4F6FB";
+const themeMQ = window.matchMedia ? window.matchMedia("(prefers-color-scheme: light)") : null;
+function hexRgb(hex) { const n = parseInt(hex.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+function hexLum(hex) {
+  const [r, g, b] = hexRgb(hex).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+function hexHsl(hex) {
+  const [r, g, b] = hexRgb(hex).map(v => v / 255), max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min, l = (max + min) / 2;
+  if (!d) return [0, 0, l * 100];
+  const s = d / (1 - Math.abs(2 * l - 1));
+  const h = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s * 100, l * 100];
+}
+// Darken a neon color until it reads on the light background (3.5:1). Pale colors also lose
+// saturation so they stay distinguishable from the deep ones once both are darkened.
+const LIGHT_HEX = {};
+function lightHex(hex) {
+  hex = String(hex).toUpperCase();
+  if (!/^#[0-9A-F]{6}$/.test(hex)) return hex;
+  if (LIGHT_HEX[hex]) return LIGHT_HEX[hex];
+  if (hex === "#FFFFFF") return (LIGHT_HEX[hex] = "#2B3245");
+  let [h, s, l] = hexHsl(hex), out = hex;
+  if (l >= 75) s *= 0.55;
+  const bg = hexLum(LIGHT_BG);
+  while (l > 0 && (bg + 0.05) / (hexLum(out = hslHex(h, s, l)) + 0.05) < 3.5) l -= 1;
+  return (LIGHT_HEX[hex] = out);
+}
+function isLight() { return document.documentElement.getAttribute("data-theme") === "light"; }
+// Player/team color as it should render right now
+function themeHex(hex) { return hex && isLight() ? lightHex(hex) : hex; }
+// Set a CSS property to a player color and keep it in sync when the theme flips
+function paintColor(el, prop, hex) {
+  if (!hex) return;
+  el.dataset.pc = hex;
+  el.dataset.pcProp = prop;
+  el.style.setProperty(prop, themeHex(hex));
+}
+(function injectThemeCSS() {
+  // SVG art uses stroke/fill attributes; remap each fixed color to its light variant
+  const extra = ["#2E6BFF", "#E6C3A1", "#C9B27C", "#6FCF8A", "#F3E6C4", "#C9A24A", "#FF7A3D"].concat(OUTFIT_COLORS);
+  const rules = PALETTE.map(p => p[0]).concat(extra).map(hex => {
+    const l = lightHex(hex), sel = ':root[data-theme="light"] ';
+    return sel + '[stroke="' + hex + '" i] { stroke: ' + l + '; } ' + sel + '[fill="' + hex + '" i] { fill: ' + l + '; }';
+  });
+  const st = document.createElement("style");
+  st.id = "theme-css";
+  st.textContent = rules.join("\n");
+  document.head.append(st);
+})();
+function themePref() {
+  let p = null;
+  try { p = localStorage.getItem(THEME_KEY); } catch (e) {}
+  return p === "light" || p === "system" ? p : "dark";
+}
+function applyTheme() {
+  const p = themePref();
+  const light = p === "light" || (p === "system" && !!themeMQ && themeMQ.matches);
+  document.documentElement.setAttribute("data-theme", light ? "light" : "dark");
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m => {
+    if (!m.dataset.dark) m.dataset.dark = m.content;
+    m.content = light ? LIGHT_BG : m.dataset.dark;
+  });
+  document.querySelectorAll("[data-pc]").forEach(el => el.style.setProperty(el.dataset.pcProp, themeHex(el.dataset.pc)));
+  document.dispatchEvent(new Event("parcade-theme"));
+}
+function setThemePref(p) {
+  try { localStorage.setItem(THEME_KEY, p); } catch (e) {}
+  applyTheme();
+}
+if (themeMQ) {
+  const onPhoneTheme = () => { if (themePref() === "system") applyTheme(); };
+  if (themeMQ.addEventListener) themeMQ.addEventListener("change", onPhoneTheme); else if (themeMQ.addListener) themeMQ.addListener(onPhoneTheme);
+}
+applyTheme();
+
+// Small sun/moon button for the home screen (guests can't open Profile)
+function themeButton() {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "copy-top sound-btn";
+  const sync = () => {
+    const light = isLight();
+    b.innerHTML = light
+      ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>'
+      : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">' +
+        '<circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>';
+    const label = light ? "Switch to dark mode" : "Switch to light mode";
+    b.setAttribute("aria-label", label);
+    b.title = label;
+  };
+  b.onclick = () => setThemePref(isLight() ? "dark" : "light");
+  document.addEventListener("parcade-theme", sync);
+  sync();
+  return b;
+}
+
+// figureEl(color | player, size, outfit | cheer). A player row brings its own color and outfit.
+// The round's color always wins over outfit.color, so figures match everything else colored by player.
+function figureEl(who, size = 18, extra) {
+  const pl = who && typeof who === "object" ? who : null;
+  const color = pl ? pl.color : who;
+  const cheer = extra === true;
+  const outfit = extra && typeof extra === "object" ? extra : pl && pl.outfit;
   const c = PALETTE.some(p => p[0] === color) ? color : "#8A9BC4";
   const arms = cheer ? "M12 10l-5-6M12 10l5-6" : "M12 11l-5-2M12 11l5-2";
+  const L = outfit ? outfitLayers(outfit, c, size < 22) : {};
   const w = document.createElement("span");
   w.className = "stick";
-  w.innerHTML = '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="' + c +
+  w.innerHTML = '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" overflow="visible" fill="none" stroke="' + c +
     '" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="filter:drop-shadow(0 0 3px ' + c + ')">' +
-    '<circle cx="12" cy="5" r="3"/><path d="M12 8v7' + arms + 'M12 15l-4 6M12 15l4 6"/></svg>';
+    (L.shoes || "") +
+    '<circle cx="12" cy="5" r="3"/><path d="M12 8v7' + arms + 'M12 15l-4 6M12 15l4 6"/>' +
+    (L.pants || "") + (L.shirt || "") + (L.hat || "") + (L.item || "") + '</svg>';
   return w;
 }
 
@@ -143,16 +251,21 @@ function colorField(f, panel) {
     b.className = "swatch";
     b.disabled = (f.taken || []).includes(hex);
     b.setAttribute("aria-label", name + (b.disabled ? " (taken)" : ""));
-    b.append(figureEl(hex, 24));
+    b.dataset.hex = hex;
+    b.append(figureEl(hex, 24, f.outfit || undefined));
     b.onclick = () => {
       input.value = hex;
-      row.querySelectorAll(".swatch").forEach(x => x.classList.toggle("selected", x === b));
+      row.querySelectorAll(".swatch").forEach(x => {
+        x.classList.toggle("selected", x === b);
+        x.setAttribute("aria-pressed", String(x === b));
+      });
     };
     row.append(b);
   });
   wrap.append(span, row, input);
   panel.append(wrap);
-  const first = row.querySelector(".swatch:not(:disabled)");
+  const saved = f.selected && [...row.querySelectorAll(".swatch:not(:disabled)")].find(x => x.dataset.hex === f.selected);
+  const first = saved || row.querySelector(".swatch:not(:disabled)");
   if (first) first.click(); else input.value = "-";
   return input;
 }
@@ -393,21 +506,25 @@ async function ensureUser() {
 
 $("create-round").addEventListener("click", async () => {
   const myName = await accountName();
+  const fit = await myOutfit();
   const vals = await ask("Start a new round", [
     { label: "Round name", placeholder: "Saturday Showdown" },
     { label: "Your name", placeholder: "What your crew calls you", max: 20, value: myName },
-    { label: "Pick your stick figure", type: "colors" }
+    { label: "Pick your stick figure", type: "colors", selected: fit.color, outfit: fit }
   ], "Tee it up", null, null, CRABBY_LINES.welcome);
   if (!vals) return;
   const [roundName, playerName, color] = vals;
-  const hcp = false, usual = null, hcpNum = null;
+  const hcp = false;
+  const mineHc = await myHandicap();
+  const usual = mineHc ? mineHc.usual : null, hcpNum = mineHc ? mineHc.hcp : null;
   try {
     await ensureUser();
     const { data: round, error: e1 } = await db.from("rounds")
       .insert({ name: roundName.trim(), handicap: hcp }).select().single();
     if (e1) throw e1;
-    const { error: e2 } = await db.from("players")
-      .insert({ round_id: round.id, name: playerName.trim(), color: color === "-" ? null : color, usual_score: usual, hcp: hcpNum });
+    const pc = color === "-" ? null : color;
+    const { error: e2 } = await insertPlayer({ round_id: round.id, name: playerName.trim(), color: pc, usual_score: usual, hcp: hcpNum,
+      outfit: { ...fit, color: pc || fit.color } });
     if (e2) throw e2;
     openRound(round.code);
   } catch (err) {
@@ -420,7 +537,7 @@ const MODES = {
   stroke: { name: "Stroke Play", desc: "Regular golf rules, lowkey boring but so is your personality." },
   stableford: { name: "Stableford", desc: "Points vs par every hole. Par is 2, birdie 3, blow-ups just score 0. Most points wins." },
   skins: { name: "Skins", desc: "Ties roll the prize into the next hole, so holes stack up. One clutch hole can win you a pile." },
-  match: { name: "Match Play", desc: "Every hole is worth exactly 1 point. Ties just cancel out. Win the most holes, win the match." },
+  match: { name: "Match Play", desc: "Win a hole for 1 point. Tie it and everyone tied gets half. Most points wins the match." },
   wad: { name: "Wad", desc: "Drain your first putt from long range and the pot grows. Make the last one of the round and everybody pays you." },
   vegas: { name: "Vegas", desc: "2 vs 2. Your team's scores mash into one number, so a 4 and a 5 is 45. Lowest number wins the difference." },
   bestball: { name: "Best Ball", desc: "2 vs 2. Your team's best score on each hole counts. Carry your partner, or get carried." },
@@ -679,6 +796,25 @@ async function loadRound(code) {
     setupNext.style.cssText = "width:100%;margin-top:14px";
     setupNext.onclick = () => setStep("room");
     hostArea.append(setupBack, setupTitle, odRow, odNote);
+    const roomGame = document.createElement("div");
+    roomGame.className = "room-only";
+    function renderRoomGame() {
+      roomGame.innerHTML = "";
+      if (!pickedSize) return;
+      const head = h3("Game mode");
+      head.style.marginTop = "28px";
+      roomGame.append(head);
+      const picker = modeGrid({ modes: MODES_FOR[pickedSize], selected: pickedMode, onPick: key => {
+        pickedMode = key;
+        renderModes();
+        updateStart();
+        renderLobbyList();
+        guide.say(guideLine());
+        stepSummary.textContent = MODES[pickedMode].name + ", " + SIZES.find(([k]) => k === pickedSize)[1].toLowerCase() + (course ? ", " + course.name : "");
+      } });
+      roomGame.append(picker.el);
+      picker.fit();
+    }
     const roomSettingsHead = h3("Round settings");
     roomSettingsHead.classList.add("room-only");
     let settingsPlace = null;
@@ -691,7 +827,7 @@ async function loadRound(code) {
       if (setupNext.nextElementSibling !== startBtn) startBtn.before(setupNext);
       if (where === "room") {
         let after = startBtn;
-        [roomSettingsHead, ...els].forEach(e => { after.after(e); after = e; });
+        [roomGame, roomSettingsHead, ...els].forEach(e => { after.after(e); after = e; });
       } else els.forEach(e => setupNext.before(e));
     }
     const hcRow = document.createElement("div");
@@ -720,6 +856,10 @@ async function loadRound(code) {
       if (error) { toast(error.message); return; }
       round.handicap = on;
       syncHc();
+      if (on && me && !me.usual_score) {
+        const mineHc = await myHandicap();
+        if (mineHc) await db.from("players").update({ usual_score: mineHc.usual, hcp: mineHc.hcp }).eq("id", me.id);
+      }
       refresh();
     };
     hcRow.append(hcTxt, hcSwitch);
@@ -808,7 +948,7 @@ async function loadRound(code) {
       course = c;
       ROUND_RANKS[round.id] = Array.isArray(c.hcp_index) && c.hcp_index.length === 18 ? c.hcp_index : null;
       renderCourseCurrent();
-      setStep("size");
+      setStep("confirm");
     }
     let searchTimer = null, searchSeq = 0;
     const courseRow = (title, detail, onclick) => {
@@ -846,7 +986,7 @@ async function loadRound(code) {
       toast("Grabbing the scorecard...");
       let d = null;
       try {
-        const r = await fetch("/.netlify/functions/courses?id=" + encodeURIComponent(c.id));
+        const r = await fetch("/.netlify/functions/courses?id=" + encodeURIComponent(c.id) + "&v=2");
         if (r.ok) d = await r.json();
       } catch (e) {}
       const location = [(c.city || "").trim(), c.state].filter(Boolean).join(", ") || null;
@@ -869,7 +1009,8 @@ async function loadRound(code) {
       const { data: have } = await db.from("courses").select("*").eq("source", "api").eq("external_id", c.id);
       const matches = (have || []).filter(x => (x.tee_name || null) === tee_name && x.pars.join() === pars.join()
         && (x.created_by === user.id || !x.hcp_index));
-      const match = matches.find(x => x.hcp_index) || matches[0];
+      const match = hcp_index ? matches.find(x => x.hcp_index && x.hcp_index.join() === hcp_index.join())
+        : (matches.find(x => x.hcp_index) || matches[0]);
       const base = match || {
         name: d.name || c.name, location, tee_name, pars, hcp_index,
         ...teeDifficulty(tee, d.tees),
@@ -925,6 +1066,66 @@ async function loadRound(code) {
       selectCourse(data);
     };
     cSkip.onclick = () => setStep("size");
+
+    const confirmArea = document.createElement("div");
+    confirmArea.className = "confirm-only";
+    hostArea.append(confirmArea);
+    function renderConfirm() {
+      confirmArea.innerHTML = "";
+      if (!course) { setStep("size"); return; }
+      const c = course;
+      const mkEl = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+      confirmArea.append(h3("Is this right?"));
+      confirmArea.append(mkEl("p", "confirm-name", courseLabel(c)));
+      const facts = [c.location, c.rating && c.slope ? "Rating " + c.rating + " / Slope " + c.slope : null,
+        c.yardage ? c.yardage.toLocaleString() + " yds" : null].filter(Boolean).join(" \u00B7 ");
+      if (facts) confirmArea.append(mkEl("p", "waiting", facts));
+      const hasHcp = Array.isArray(c.hcp_index) && c.hcp_index.length === 18;
+      const sum = (a, b, e) => a.slice(b, e).reduce((x, y) => x + (y || 0), 0);
+      [[0, 9, "Out"], [9, 18, "In"]].forEach(([b, e, label]) => {
+        const wrap = mkEl("div", "sc-wrap");
+        const t = mkEl("table", "sc-table confirm-table");
+        const row = (head, vals, tot, cls) => {
+          const tr = mkEl("tr", cls);
+          tr.append(mkEl("td", null, head));
+          vals.forEach(v => tr.append(mkEl("td", null, v == null ? "-" : String(v))));
+          tr.append(mkEl("td", "tot", tot));
+          t.append(tr);
+        };
+        row("Hole", Array.from({ length: 9 }, (_, i) => b + i + 1), label, "sc-meta");
+        row("Par", c.pars.slice(b, e), String(sum(c.pars, b, e)));
+        if (hasHcp) row("Hdcp", c.hcp_index.slice(b, e), "", "sc-meta");
+        wrap.append(t);
+        confirmArea.append(wrap);
+      });
+      confirmArea.append(mkEl("p", "waiting", "Total par " + sum(c.pars, 0, 18) + (hasHcp ? "" : ". No hole handicaps, so strokes spread evenly.")));
+      const ok = mkEl("button", null, "Looks right");
+      ok.style.cssText = "width:100%;margin-top:12px";
+      ok.onclick = () => setStep("size");
+      const fix = mkEl("button", "btn-ghost", "Fix something");
+      fix.style.cssText = "width:100%;margin-top:10px";
+      fix.onclick = async () => {
+        const m = await parsModal({ name: c.name, location: c.location, tee_name: c.tee_name, pars: c.pars, hcp_index: c.hcp_index, showHcp: true });
+        if (!m) return;
+        saveCourse({ ...m, rating: c.rating, slope: c.slope, yardage: c.yardage, tee_gender: c.tee_gender,
+          rating_source: c.rating_source, external_id: c.external_id, source: c.source || "manual" });
+      };
+      const other = mkEl("button", "link-btn", "Pick a different course");
+      other.style.marginTop = "12px";
+      other.onclick = () => setStep("course");
+      const combo = c.name.match(/^(\S+) (\S+) (At .+)$/);
+      const swapName = combo ? combo[2] + " " + combo[1] + " " + combo[3]
+        : /\(back nine first\)$/.test(c.name) ? c.name.replace(/ \(back nine first\)$/, "") : c.name + " (back nine first)";
+      const swap = mkEl("button", "btn-ghost", "Swap the nines" + (combo ? " (play " + combo[2] + " first)" : " (start on 10)"));
+      swap.style.cssText = "width:100%;margin-top:10px";
+      swap.onclick = () => {
+        const flip = arr => (Array.isArray(arr) && arr.length === 18 ? arr.slice(9).concat(arr.slice(0, 9)) : null);
+        saveCourse({ name: swapName, location: c.location, tee_name: c.tee_name, pars: flip(c.pars), hcp_index: flip(c.hcp_index),
+          rating: c.rating, slope: c.slope, yardage: c.yardage, tee_gender: c.tee_gender, rating_source: c.rating_source,
+          external_id: c.external_id, source: c.source || "manual" });
+      };
+      confirmArea.append(ok, fix, swap, other);
+    }
 
     const mullArea = document.createElement("div");
     mullArea.className = "settings-only toggle-row od-row";
@@ -1077,6 +1278,7 @@ async function loadRound(code) {
     function guideLine() {
       const st = lobby.dataset.step;
       if (st === "course") return CRABBY_LINES.course;
+      if (st === "confirm") return CRABBY_LINES.confirm;
       if (st === "size") return CRABBY_LINES.size;
       if (st === "setup") return CRABBY_LINES.setup;
       if (st === "mode") return pickedMode ? CRABBY_LINES.modePicked : CRABBY_LINES.mode;
@@ -1105,6 +1307,8 @@ async function loadRound(code) {
       window.__lobbyStep = setStep;
       if (st === "size") { sizeTitle.style.display = ""; sizeArea.style.display = ""; }
       if (st === "course") renderCourseCurrent();
+      if (st === "confirm") renderConfirm();
+      if (st === "room") renderRoomGame();
       guide.say(guideLine());
       if (st === "room" && pickedMode && pickedSize) {
         stepSummary.textContent = MODES[pickedMode].name + ", " + SIZES.find(([k]) => k === pickedSize)[1].toLowerCase() + (course ? ", " + course.name : "");
@@ -1235,7 +1439,7 @@ async function loadRound(code) {
   game.style.display = "none";
 
   const card = document.createElement("div");
-  card.style.cssText = "padding:16px;border-radius:14px;background:rgba(255,255,255,0.06)";
+  card.style.cssText = "padding:16px;border-radius:14px;background:rgba(var(--hi-rgb),0.06)";
   card.innerHTML = `
     <div id="hole-strip" class="hole-strip"></div>
     <div class="hole-head"><b id="hole-label"></b><span id="hole-mine"></span></div>
@@ -1424,7 +1628,7 @@ async function loadRound(code) {
       const body = document.createElement("span");
       body.textContent = m.body;
       txt.append(who, body);
-      d.append(figureEl(pl && pl.color), txt);
+      d.append(figureEl(pl), txt);
       chatList.append(d);
     });
     chatList.scrollTop = chatList.scrollHeight;
@@ -1563,11 +1767,11 @@ async function loadRound(code) {
               ? " for " + pairs.filter(x => x.caddy_id === pl.id).map(x => (players.find(g => g.id === x.golfer_id) || {}).name).filter(Boolean).join(", ")
               : "") + ")" : "")
           + (pl.user_id === user.id ? " (you)" : "");
-        name.prepend(figureEl(pl.color));
+        name.prepend(figureEl(pl));
         li.append(name);
         if (round.handicap) {
           const txt = pl.hcp != null ? "Handicap " + pl.hcp : pl.usual_score ? "Shoots " + pl.usual_score : "Handicap ?";
-          if (isLeader) {
+          if (isLeader || pl.user_id === user.id) {
             const eb = document.createElement("button");
             eb.className = "mini";
             eb.textContent = txt + " (edit)";
@@ -1614,7 +1818,7 @@ async function loadRound(code) {
               const on = pairs.some(x => x.caddy_id === pl.id && x.golfer_id === gp.id);
               const b = document.createElement("button");
               b.className = "mini" + (on ? " selected" : "");
-              b.append(figureEl(gp.color, 14), "Caddies for " + gp.name);
+              b.append(figureEl(gp, 14), "Caddies for " + gp.name);
               b.onclick = () => togglePair(pl, gp, on);
               ctl.append(b);
             });
@@ -1703,11 +1907,13 @@ async function loadRound(code) {
     if (!vals) return;
     let hc = { usual: null, hcp: null };
     if (round.handicap) { hc = await askHandicap(vals[0]); if (!hc) return; }
-    const { error } = await db.from("players").insert({
+    const pc = vals[1] === "-" ? null : vals[1];
+    const { error } = await insertPlayer({
       round_id: round.id, user_id: null, name: vals[0],
-      color: vals[1] === "-" ? null : vals[1],
+      color: pc,
       usual_score: hc.usual,
       hcp: hc.hcp,
+      outfit: { ...DEFAULT_OUTFIT, color: pc || DEFAULT_OUTFIT.color },
     });
     if (error) { toast(error.code === "23505" ? "That color's taken. Pick another." : error.message); return; }
     refresh();
@@ -1724,6 +1930,7 @@ async function loadRound(code) {
   async function editUsual(pl) {
     const hc = await askHandicap(pl.name, { hcp: pl.hcp, usual: pl.usual_score });
     if (!hc) return;
+    if (pl.user_id === user.id) saveMyHandicap(hc);
     const { error } = await db.from("players").update({ usual_score: hc.usual, hcp: hc.hcp }).eq("id", pl.id);
     if (error) { toast(error.message); return; }
     refresh();
@@ -1899,10 +2106,10 @@ async function loadRound(code) {
     rows.forEach((r, i) => {
       const li = document.createElement("li");
       const name = document.createElement("span");
-      name.append((i + 1) + ". ", figureEl(r.pl.color), r.pl.name + (r.pl.user_id === user.id ? " (you)" : ""));
+      name.append((i + 1) + ". ", figureEl(r.pl), r.pl.name + (r.pl.user_id === user.id ? " (you)" : ""));
       const val = document.createElement("span");
       val.textContent = (isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas() || isWad() || isStab())
-        ? r.pts + (isSkins() ? (r.pts === 1 ? " skin" : " skins") : isMatch() ? (r.pts === 1 ? " hole won" : " holes won") : isWad() ? " made" : " pts")
+        ? r.pts + (isSkins() ? (r.pts === 1 ? " skin" : " skins") : isMatch() ? (r.pts === 1 ? " pt" : " pts") : isWad() ? " made" : " pts")
         : (r.thru ? r.total + " strokes" + (round.handicap ? ", net " + Math.round(r.net) : "") + " (thru " + r.thru + ")" : "-");
       if (isWad() && wadHold.has(r.pl.id)) val.prepend("💰 ");
       if ((isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas() || isWad() || isStab()) && r.thru) {
@@ -1960,7 +2167,7 @@ async function loadRound(code) {
       gp.forEach(pl => {
         const tr = document.createElement("tr");
         const nameTd = document.createElement("td");
-        nameTd.append(figureEl(pl.color, 16), pl.name);
+        nameTd.append(figureEl(pl, 16), pl.name);
         tr.append(nameTd);
         let tot = 0;
         for (let hn = 1; hn <= maxH; hn++) {
@@ -1985,7 +2192,7 @@ async function loadRound(code) {
         const li = document.createElement("li");
         const left = document.createElement("div");
         const nm = document.createElement("span");
-        nm.append(figureEl(pl.color), pl.name + (pl.user_id === user.id ? " (you)" : ""));
+        nm.append(figureEl(pl), pl.name + (pl.user_id === user.id ? " (you)" : ""));
         const d = document.createElement("span");
         d.className = "detail";
         d.textContent = strokeHolesText(allowAll[pl.id] || 0);
@@ -2174,7 +2381,7 @@ async function loadRound(code) {
           const row = mk("recap-row");
           const left = document.createElement("div");
           const name = document.createElement("span");
-          name.append(figureEl(r.p.color, 16), d.nm(r.p));
+          name.append(figureEl(r.p, 16), d.nm(r.p));
           left.append(name);
           if (r.sub) left.append(mk("recap-sub", r.sub));
           const val = document.createElement("b");
@@ -2222,7 +2429,7 @@ async function loadRound(code) {
     if (isLeader) {
       players.filter(pl => pl.group_no === myGroup).forEach(pl => {
         const b = document.createElement("button");
-        b.append(figureEl(pl.color), pl.name);
+        b.append(figureEl(pl), pl.name);
         b.classList.toggle("selected", resAll.some(r => r.winner_id === pl.id));
         b.onclick = () => awardChallenge(pl.id, ch.multi);
         pick.append(b);
@@ -2296,7 +2503,7 @@ async function loadRound(code) {
       const canJudge = isLeader || (!!me && me.id === gf.id);
       const sec = mk("div", "caddy-pair");
       const head = mk("div", "cp-head");
-      head.append(figureEl(cd.color, 14), cd.name + " caddying for ", figureEl(gf.color, 14), gf.name);
+      head.append(figureEl(cd, 14), cd.name + " caddying for ", figureEl(gf, 14), gf.name);
       sec.append(head, mk("div", "cp-title", card.title), mk("p", "cp-prompt", card.prompt.replace("{g}", gf.name)));
       if (!pred) {
         if (canCall) sec.append(inputFor(card, card.options, v => makeCall(pr, card, v), "Lock it in", card.type === "number" ? "Yards" : "Your prediction"));
@@ -2381,7 +2588,7 @@ async function loadRound(code) {
     const row = (pl, label, i) => {
       const li = document.createElement("li");
       const name = document.createElement("span");
-      name.append((i + 1) + ". ", figureEl(pl.color), pl.name + (pl.user_id === user.id ? " (you)" : ""));
+      name.append((i + 1) + ". ", figureEl(pl), pl.name + (pl.user_id === user.id ? " (you)" : ""));
       const val = document.createElement("span");
       val.textContent = label;
       li.append(name, val);
@@ -2417,7 +2624,7 @@ async function loadRound(code) {
       const line = document.createElement("div");
       line.className = "wad-line";
       const txt = document.createElement("span");
-      txt.append(figureEl(pl.color), pl.name + " made one" + (w.birdie ? " for birdie (x2)" : ""));
+      txt.append(figureEl(pl), pl.name + " made one" + (w.birdie ? " for birdie (x2)" : ""));
       line.append(txt);
       if (isLeader || pl.user_id === user.id) {
         const un = document.createElement("button");
@@ -2434,7 +2641,7 @@ async function loadRound(code) {
       row.className = "chip-row";
       loggable.forEach(pl => {
         const b = document.createElement("button");
-        if (isLeader) b.append(figureEl(pl.color), pl.name + " made one");
+        if (isLeader) b.append(figureEl(pl), pl.name + " made one");
         else b.textContent = "I made a Wad";
         b.onclick = () => logWad(pl);
         row.append(b);
@@ -2530,7 +2737,7 @@ async function loadRound(code) {
         players.filter(p => p.group_no === g).forEach(p => {
           const same = !!w && w.id === p.id;
           const b = document.createElement("button");
-          b.append(figureEl(p.color), p.name);
+          b.append(figureEl(p), p.name);
           b.classList.toggle("selected", same);
           b.onclick = () => awardBbb(k, p.id, same);
           row.append(b);
@@ -2581,7 +2788,7 @@ async function loadRound(code) {
       lbl.style.width = "100%";
       lbl.textContent = "Posting for:";
       forRow.append(lbl);
-      players.forEach(pl => forRow.append(chip(pl.name, () => { betPoster = pl.id; renderBets(); }, pl.id === betPoster, pl.color)));
+      players.forEach(pl => forRow.append(chip(pl.name, () => { betPoster = pl.id; renderBets(); }, pl.id === betPoster, pl)));
     }
 
     betList.innerHTML = "";
@@ -2600,7 +2807,7 @@ async function loadRound(code) {
       card.className = "bet-card";
       const top = document.createElement("div");
       top.className = "bet-top";
-      top.append(figureEl(cr.color), cr.name + " bets " + amt);
+      top.append(figureEl(cr), cr.name + " bets " + amt);
       const body = document.createElement("div");
       body.className = "bet-body";
       body.textContent = "\u201C" + b.body + "\u201D";
@@ -2610,7 +2817,7 @@ async function loadRound(code) {
       actions.className = "chip-row";
       if (!b.taker_id) {
         status.textContent = "Open. Waiting for someone to take it.";
-        if (isHost) players.filter(pl => pl.id !== cr.id).forEach(pl => actions.append(chip("Taken by " + pl.name, () => takeBet(b, pl), false, pl.color)));
+        if (isHost) players.filter(pl => pl.id !== cr.id).forEach(pl => actions.append(chip("Taken by " + pl.name, () => takeBet(b, pl), false, pl)));
         else if (me && me.id !== cr.id) actions.append(chip("Take it", () => takeBet(b, me)));
         if (isHost || (me && me.id === cr.id)) actions.append(chip("Cancel", () => cancelBet(b)));
       } else if (!b.outcome) {
@@ -2703,7 +2910,7 @@ async function loadRound(code) {
     if (!canPick) return;
     info.tee.filter(p => p.id !== info.wolf.id).forEach(p => {
       const b = document.createElement("button");
-      b.append(figureEl(p.color), p.name);
+      b.append(figureEl(p), p.name);
       b.classList.toggle("selected", !!pick && pick.kind === "partner" && pick.partner_id === p.id);
       b.onclick = () => saveWolfPick(g, info.wolf.id, "partner", p.id);
       box.append(b);
@@ -2743,7 +2950,7 @@ async function loadRound(code) {
     players.filter(p => p.group_no === g && p.role !== "caddy").forEach(p => {
       const sc = (scores.find(x => x.player_id === p.id && x.hole === hole) || {}).strokes;
       const b = document.createElement("button");
-      b.append(figureEl(p.color), p.name + (sc ? ": " + (sc >= 11 ? "11+" : sc) : ""));
+      b.append(figureEl(p), p.name + (sc ? ": " + (sc >= 11 ? "11+" : sc) : ""));
       b.classList.toggle("selected", p.id === target.id);
       b.onclick = () => { scoringFor = p.id; drawCard(); };
       row.append(b);
@@ -2959,7 +3166,7 @@ async function loadRound(code) {
         const row = mk("recap-row");
         const left = document.createElement("div");
         const name = document.createElement("span");
-        name.append(figureEl(r.p.color, 16), d.nm(r.p));
+        name.append(figureEl(r.p, 16), d.nm(r.p));
         left.append(name);
         if (r.sub) left.append(mk("recap-sub", r.sub));
         const val = document.createElement("b");
@@ -3024,7 +3231,7 @@ async function loadRound(code) {
   }
 
   async function rejoin() {
-    const choice = await pickFrom("Which one is you?", players.map(pl => ({ label: pl.name, value: pl, color: pl.color })));
+    const choice = await pickFrom("Which one is you?", players.map(pl => ({ label: pl.name, value: pl, color: pl })));
     if (!choice) return;
     const { error } = await db.rpc("claim_player", { p_player_id: choice.id });
     if (error) {
@@ -3042,16 +3249,19 @@ async function loadRound(code) {
 
   async function doJoin() {
     const joinName = await accountName();
+    const fit = await myOutfit();
     const vals = await ask("Join " + round.name, [
       { label: "Your name", placeholder: "What your crew calls you", max: 20, value: joinName },
-      { label: "Pick your stick figure", type: "colors", taken: players.map(p => p.color) }
+      { label: "Pick your stick figure", type: "colors", taken: players.map(p => p.color), selected: fit.color, outfit: fit }
     ], "I'm in");
     if (!vals) return;
-    let hc = { usual: null, hcp: null };
-    if (round.handicap) { hc = await askHandicap(); if (!hc) return; }
+    let hc = (await myHandicap()) || { usual: null, hcp: null };
+    if (round.handicap && !hc.usual) { hc = await askHandicap(); if (!hc) return; saveMyHandicap(hc); }
     if (!vals) return;
     await ensureUser();
-    const { error } = await db.from("players").insert({ round_id: round.id, name: vals[0], color: vals[1] === "-" ? null : vals[1], usual_score: hc.usual, hcp: hc.hcp });
+    const pc = vals[1] === "-" ? null : vals[1];
+    const { error } = await insertPlayer({ round_id: round.id, name: vals[0], color: pc, usual_score: hc.usual, hcp: hc.hcp,
+      outfit: { ...fit, color: pc || fit.color } });
     if (error && error.code === "23505") { toast("Someone just grabbed that color. Pick another."); refresh(); return; }
     if (error) { toast("Error: " + error.message); return; }
     refresh();
@@ -3095,6 +3305,10 @@ if (!roundCode) {
   const sb = soundButton();
   sb.classList.add("sound-home", "home-only");
   document.body.append(sb);
+  const tb = document.createElement("span");
+  tb.className = "sound-ctl sound-home theme-home home-only";
+  tb.append(themeButton());
+  document.body.append(tb);
   let hintSeen = false;
   try { hintSeen = sessionStorage.getItem("parcade-sound-hint") === "1"; } catch (e) {}
   if (Sound.muted && !hintSeen) {
@@ -3156,6 +3370,7 @@ async function renderAccount() {
   const { data: { session } } = await db.auth.getSession();
   const u = session && session.user;
   el.innerHTML = "";
+  gateHomeButtons(!!(u && !u.is_anonymous));
   if (u && !u.is_anonymous) {
     const who = document.createElement("span");
     const nm = u.user_metadata && u.user_metadata.first_name;
@@ -3193,8 +3408,10 @@ async function createAccount() {
     if (agree !== "yes") return "Please check the box to agree to the Terms and Privacy Policy.";
     try {
       await ensureUser();
+      const guestFit = guestOutfit();
       const { error } = await db.auth.updateUser(
-        { email, data: { first_name: first, needs_password: true, terms_accepted_at: new Date().toISOString(), terms_version: "2026-09-26" } },
+        { email, data: { first_name: first, needs_password: true, terms_accepted_at: new Date().toISOString(), terms_version: "2026-10-03",
+          ...(guestFit ? { outfit: normalizeOutfit(guestFit) } : {}) } },
         { emailRedirectTo: location.origin + location.pathname + location.search });
       if (error) throw error;
       return null;
@@ -3668,7 +3885,7 @@ const MONEY_UNITS = {
   stroke: { unit: "stroke", note: "Every stroke is worth this much. Shoot 85 to their 90 and they owe you 5 strokes' worth." },
   stableford: { unit: "Stableford point", note: "Every Stableford point is worth this much. Everyone settles the point difference at the end." },
   skins: { unit: "skin", note: "Every skin is worth this much. Everyone settles the skins difference at the end." },
-  match: { unit: "hole won", note: "Every hole you win is worth this much. Everyone settles the holes-won difference at the end." },
+  match: { unit: "point", note: "A won hole is 1 point and a halved hole is half. Everyone settles the point difference at the end." },
   wolf: { unit: "point", note: "Every Wolf point is worth this much. Everyone settles the point difference at the end." },
   bbb: { unit: "point", note: "Every Bingo, Bango or Bongo is worth this much. Everyone settles the difference at the end." },
   bestball: { unit: "hole won", note: "Every hole your team wins is worth this much to each teammate. Settle the difference at the end." },
@@ -3676,3 +3893,444 @@ const MONEY_UNITS = {
   wad: { unit: "Wad", note: "Whoever makes the last Wad collects the whole pot from everyone else in their group." },
   caddy: { unit: "Caddy Point", note: "Every Caddy Point is worth this much. Caddies settle the point difference at the end." },
 };
+
+async function myHandicap() {
+  try {
+    const { data: { session } } = await db.auth.getSession();
+    const md = (session && session.user && session.user.user_metadata) || {};
+    return md.usual_score ? { usual: md.usual_score, hcp: md.hcp ?? null } : null;
+  } catch (e) { return null; }
+}
+async function saveMyHandicap(hc) {
+  if (!hc || !hc.usual) return;
+  try { await db.auth.updateUser({ data: { usual_score: hc.usual, hcp: hc.hcp } }); } catch (e) {}
+}
+
+// ---------- Outfit: account in user_metadata.outfit, guests in localStorage ----------
+const OUTFIT_KEY = "parcade-outfit";
+function guestOutfit() {
+  try { const v = localStorage.getItem(OUTFIT_KEY); return v ? JSON.parse(v) : null; } catch (e) { return null; }
+}
+async function myOutfit() {
+  try {
+    const { data: { session } } = await db.auth.getSession();
+    const u = session && session.user;
+    const md = (u && !u.is_anonymous && u.user_metadata) || {};
+    return normalizeOutfit(md.outfit || guestOutfit());
+  } catch (e) { return normalizeOutfit(guestOutfit()); }
+}
+// Returns an error message, or null when saved
+async function saveMyOutfit(o) {
+  const fit = normalizeOutfit(o);
+  try {
+    const { data: { session } } = await db.auth.getSession();
+    const u = session && session.user;
+    if (u && !u.is_anonymous) {
+      const { error } = await db.auth.updateUser({ data: { outfit: fit } });
+      return error ? error.message : null;
+    }
+  } catch (e) { return e.message; }
+  try { localStorage.setItem(OUTFIT_KEY, JSON.stringify(fit)); } catch (e) { return "Couldn't save on this device."; }
+  return null;
+}
+// Insert a players row. If supabase/character.sql hasn't been run yet, retry without the outfit column.
+async function insertPlayer(row) {
+  let res = await db.from("players").insert(row);
+  if (res.error && "outfit" in row && /outfit/i.test(res.error.message || "")) {
+    const { outfit, ...rest } = row;
+    res = await db.from("players").insert(rest);
+  }
+  return res;
+}
+
+// gateHomeButtons: homescreen buttons need a signed-in account
+const HOME_GATED = ["Start a new round", "Seasons", "Tournaments", "Recent rounds"];
+let homeSignedIn = false;
+function homeGatedButtons() {
+  return [...document.querySelectorAll("button")].filter(b =>
+    !b.closest(".modal") && !b.closest(".lobby") && !b.closest(".season-box") && HOME_GATED.includes(b.textContent.trim()));
+}
+function gateHomeButtons(signedIn) {
+  homeSignedIn = signedIn;
+  homeGatedButtons().forEach(b => {
+    b.classList.toggle("locked-home", !signedIn);
+    b.setAttribute("aria-disabled", String(!signedIn));
+  });
+  let note = document.getElementById("home-lock-note");
+  const first = homeGatedButtons()[0];
+  if (!signedIn && first && !note) {
+    note = document.createElement("p");
+    note.id = "home-lock-note";
+    note.className = "home-lock-note";
+    note.textContent = "\u{1F512} Sign in or create an account to play.";
+    first.before(note);
+  }
+  if (note) note.style.display = signedIn ? "none" : "";
+}
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest && e.target.closest("button.locked-home");
+  if (!b || homeSignedIn) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  const pick = await pickFrom("You'll need an account for that", [
+    { label: "Create account", value: "create" },
+    { label: "Sign in", value: "signin" }
+  ]);
+  if (pick === "create") await createAccount();
+  if (pick === "signin" && await signIn()) renderAccount();
+}, true);
+
+// ---------- Profile ----------
+async function openProfile() {
+  const { data: { session } } = await db.auth.getSession();
+  const u = session && session.user;
+  if (!u || u.is_anonymous) { if (await signIn()) renderAccount(); return; }
+  const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const wrap = mk("div", "modal");
+  const stack = mk("div", "modal-stack");
+  const panel = mk("div", "modal-panel profile-panel");
+  const close = () => { wrap.remove(); renderAccount(); };
+  wrap.onclick = e => { if (e.target === wrap) close(); };
+  const section = title => { const sec = mk("div", "profile-sec"); sec.append(mk("div", "profile-head", title)); panel.append(sec); return sec; };
+  const row = (label, hint, control) => {
+    const r = mk("div", "toggle-row od-row");
+    const txt = mk("div");
+    txt.append(mk("span", "field-label", label));
+    if (hint) txt.append(mk("small", null, hint));
+    r.append(txt, control);
+    return r;
+  };
+  let md = u.user_metadata || {};
+
+  panel.append(mk("h2", null, "Your profile"));
+
+  // Name
+  const nameSec = section("Preferred name");
+  const nameRow = mk("div", "profile-inline");
+  const nameIn = mk("input");
+  nameIn.value = md.first_name || "";
+  nameIn.maxLength = 30;
+  nameIn.placeholder = "What your crew calls you";
+  nameIn.autocomplete = "given-name";
+  nameIn.setAttribute("aria-label", "Preferred name");
+  const nameSave = mk("button", null, "Save");
+  nameSave.onclick = async () => {
+    const v = nameIn.value.trim();
+    if (v.length < 1) { toast("Give us a name."); return; }
+    const { data, error } = await db.auth.updateUser({ data: { first_name: v } });
+    if (error) { toast(error.message); return; }
+    md = (data && data.user && data.user.user_metadata) || md;
+    toast("Name saved.");
+  };
+  nameRow.append(nameIn, nameSave);
+  nameSec.append(nameRow, mk("small", "profile-note", "Fills in automatically when you start or join a round."));
+
+  // Handicap
+  const hcSec = section("Handicap");
+  const hcVal = mk("b");
+  const drawHc = () => {
+    hcVal.textContent = md.hcp != null ? (md.hcp < 0 ? "+" + Math.abs(md.hcp) : String(md.hcp))
+      : md.usual_score ? "Shoots " + md.usual_score : "Not set";
+  };
+  drawHc();
+  const hcBtn = mk("button", "mini", "Change");
+  hcBtn.onclick = async () => {
+    const hc = await askHandicap(null, { hcp: md.hcp, usual: md.usual_score }, true);
+    if (!hc) return;
+    await saveMyHandicap(hc);
+    md = { ...md, usual_score: hc.usual, hcp: hc.hcp };
+    drawHc();
+    toast("Handicap saved.");
+  };
+  hcSec.append(row("Your handicap", "Applied automatically to rounds with handicaps on.", (() => { const c = mk("div", "profile-inline"); c.append(hcVal, hcBtn); return c; })()));
+
+  // Character
+  const chSec = section("Character");
+  const chBtn = mk("button", "mini", "Customize");
+  const chFig = mk("div", "profile-inline");
+  const drawFig = fit => { const old = chFig.querySelector(".stick"); if (old) old.remove(); chFig.prepend(figureEl(fit.color, 32, fit)); };
+  myOutfit().then(drawFig);
+  chBtn.onclick = async () => drawFig(await openDressingRoom());
+  chFig.append(chBtn);
+  chSec.append(row("Customize character", "Hats, shirts, pants, shoes and something to hold.", chFig));
+
+  // Settings
+  const setSec = section("Settings");
+  const sw = (get, set) => {
+    const b = mk("button", "switch");
+    b.type = "button";
+    b.setAttribute("role", "switch");
+    const sync = () => { const on = get(); b.classList.toggle("on", on); b.textContent = on ? "On" : "Off"; b.setAttribute("aria-checked", String(on)); };
+    b.onclick = () => { set(!get()); sync(); if (get()) Sound.play("pop"); };
+    sync();
+    return b;
+  };
+  setSec.append(
+    row("Sound effects", "Reveals, scores and chat pings.", sw(() => Sound.sfxOn, v => Sound.setSfx(v))),
+    row("Music", "Plays on the home and setup screens.", sw(() => Sound.musicOn, v => Sound.setMusic(v))));
+  const look = mk("div", "od-row theme-row");
+  look.append(mk("span", "field-label", "Appearance"));
+  const lookPick = mk("div", "theme-pick");
+  lookPick.setAttribute("role", "radiogroup");
+  lookPick.setAttribute("aria-label", "Appearance");
+  const lookBtns = [["dark", "Dark"], ["light", "Light"], ["system", "Match my phone"]].map(([val, label]) => {
+    const b = mk("button", "switch", label);
+    b.type = "button";
+    b.setAttribute("role", "radio");
+    b.onclick = () => { setThemePref(val); syncLook(); };
+    return [val, b];
+  });
+  const syncLook = () => lookBtns.forEach(([val, b]) => {
+    const on = themePref() === val;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-checked", String(on));
+  });
+  syncLook();
+  lookPick.append(...lookBtns.map(([, b]) => b));
+  look.append(lookPick);
+  setSec.append(look);
+  const pw = mk("button", "btn-ghost", "Change password");
+  pw.style.cssText = "width:100%;margin-top:10px";
+  pw.onclick = async () => {
+    const v = await ask("Change password", [{ label: "New password", type: "password", placeholder: "At least 8 characters", max: 72 }], "Save", null,
+      async ([p]) => {
+        if (!p || p.length < 8) return "Use at least 8 characters.";
+        const { error } = await db.auth.updateUser({ password: p });
+        return error ? friendlyAuthError(error) : null;
+      });
+    if (v) toast("Password updated.");
+  };
+  setSec.append(pw);
+
+  // Account
+  const acSec = section("Account");
+  acSec.append(mk("p", "waiting", "Signed in as " + (u.email || "your account")));
+  const out = mk("button", "btn-ghost", "Sign out");
+  out.style.cssText = "width:100%";
+  out.onclick = () => { wrap.remove(); signOut(); };
+  const links = mk("div", "profile-links");
+  [["Terms", "/terms"], ["Privacy", "/privacy"], ["support@parcade.golf", "mailto:support@parcade.golf"]].forEach(([t, h]) => {
+    const a = mk("a", null, t);
+    a.href = h;
+    if (h.startsWith("/")) a.target = "_blank";
+    links.append(a);
+  });
+  acSec.append(out, links);
+
+  const done = mk("button", null, "Done");
+  done.style.cssText = "width:100%;margin-top:18px";
+  done.onclick = close;
+  panel.append(done);
+  stack.append(panel);
+  wrap.append(stack);
+  document.body.append(wrap);
+}
+
+// ---------- Dressing room ----------
+const DRESS_TABS = [["color", "Color"], ["hat", "Hats"], ["shirt", "Shirts"], ["pants", "Pants"], ["shoes", "Shoes"], ["item", "Items"]];
+function openDressingRoom() {
+  return new Promise(async resolve => {
+    const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+    const { data: { session } } = await db.auth.getSession();
+    const u = session && session.user;
+    let saved = await myOutfit();
+    let cur = { ...saved };
+    let tab = "color";
+    const name = (await accountName()) || "Guest";
+    const opener = document.activeElement;
+
+    const wrap = mk("div", "dress");
+    wrap.setAttribute("role", "dialog");
+    wrap.setAttribute("aria-modal", "true");
+    wrap.setAttribute("aria-label", "Customize character");
+    const top = mk("div", "dress-top");
+    const back = mk("button", "btn-ghost dress-back", "Back");
+    back.type = "button";
+    top.append(back, mk("h2", null, "Dressing room"));
+
+    const main = mk("div", "dress-main");
+    const stage = mk("div", "dress-stage");
+    const fig = mk("div", "dress-fig");
+    stage.append(fig, mk("div", "dress-pedestal"), mk("div", "dress-name", name));
+    const tabs = mk("div", "dress-tabs");
+    tabs.setAttribute("role", "tablist");
+    tabs.setAttribute("aria-label", "Outfit slots");
+    const tabBtns = DRESS_TABS.map(([key, label]) => {
+      const b = mk("button", "dress-tab", label);
+      b.type = "button";
+      b.id = "dress-tab-" + key;
+      b.setAttribute("role", "tab");
+      b.setAttribute("aria-controls", "dress-grid");
+      b.onclick = () => { tab = key; draw(); };
+      return b;
+    });
+    tabs.append(...tabBtns);
+    tabs.onkeydown = e => {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft" && e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      e.preventDefault();
+      const i = DRESS_TABS.findIndex(([k]) => k === tab), d = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : -1;
+      tab = DRESS_TABS[(i + d + DRESS_TABS.length) % DRESS_TABS.length][0];
+      draw();
+      tabBtns.find(b => b.id === "dress-tab-" + tab).focus();
+    };
+    main.append(stage, tabs);
+
+    const grid = mk("div", "dress-grid");
+    grid.id = "dress-grid";
+    grid.setAttribute("role", "tabpanel");
+    const actions = mk("div", "dress-actions");
+    const btn = (label, cls, fn) => { const b = mk("button", cls, label); b.type = "button"; b.onclick = fn; return b; };
+    const guide = crabbyDesk(CRABBY_DRESS.open);
+    guide.reserve([CRABBY_DRESS.open, ...CRABBY_DRESS.saved]);
+    const body = mk("div", "dress-body");
+    body.append(main, grid, actions, guide);
+    wrap.append(top, body);
+
+    const owned = id => outfitOwned(id, u);
+    const dirty = () => JSON.stringify(cur) !== JSON.stringify(saved);
+    function tile(label, figure, selected, onPick, opts = {}) {
+      const b = mk("button", "dress-tile" + (opts.compact ? " compact" : "") + (selected ? " selected" : ""));
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(selected));
+      b.setAttribute("aria-label", label + (opts.rarity ? ", " + opts.rarity : "") + (opts.locked ? ", coming soon" : ""));
+      b.append(figure);
+      if (!opts.compact) b.append(mk("span", "dress-tile-name", label));
+      if (opts.rarity) b.append(mk("span", "dress-rarity r-" + opts.rarity, opts.rarity));
+      if (opts.locked) { b.disabled = true; b.classList.add("locked"); b.append(mk("span", "dress-lock", "\u{1F512} Coming soon")); }
+      b.onclick = onPick;
+      return b;
+    }
+    function draw() {
+      fig.innerHTML = "";
+      fig.append(figureEl(cur.color, 240, cur));
+      tabBtns.forEach((b, i) => {
+        const on = DRESS_TABS[i][0] === tab;
+        b.classList.toggle("on", on);
+        b.setAttribute("aria-selected", String(on));
+        b.tabIndex = on ? 0 : -1;
+      });
+      grid.setAttribute("aria-labelledby", "dress-tab-" + tab);
+      grid.innerHTML = "";
+      grid.classList.toggle("colors", tab === "color");
+      if (tab === "color") {
+        PALETTE.forEach(([hex, label]) => grid.append(tile(label, figureEl(hex, 44, cur), cur.color === hex,
+          () => { cur.color = hex; draw(); }, { compact: true })));
+      } else {
+        const solo = id => ({ ...DEFAULT_OUTFIT, color: cur.color, [tab]: id });
+        grid.append(tile("None", figureEl(cur.color, 56, solo(null)), !cur[tab], () => { cur[tab] = null; draw(); }));
+        OUTFIT_ITEMS.filter(it => it.slot === tab).forEach(it => grid.append(tile(it.name, figureEl(cur.color, 56, solo(it.id)),
+          cur[tab] === it.id, () => { cur[tab] = it.id; draw(); }, { rarity: it.rarity, locked: !owned(it.id) })));
+      }
+      saveBtn.disabled = !dirty();
+    }
+    const saveBtn = btn("Save", "", async () => {
+      saveBtn.disabled = true;
+      const err = await saveMyOutfit(cur);
+      if (err) { toast(err); saveBtn.disabled = false; return; }
+      saved = { ...cur };
+      Sound.play("pop");
+      guide.say(CRABBY_DRESS.saved[Math.floor(Math.random() * CRABBY_DRESS.saved.length)]);
+      draw();
+    });
+    actions.append(
+      btn("Randomize", "btn-ghost", () => {
+        const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+        const next = { color: pick(PALETTE)[0] };
+        OUTFIT_SLOTS.slice(1).forEach(slot => {
+          const ids = OUTFIT_ITEMS.filter(it => it.slot === slot && owned(it.id)).map(it => it.id);
+          next[slot] = Math.random() < 0.2 || !ids.length ? null : pick(ids);
+        });
+        cur = normalizeOutfit(next);
+        draw();
+      }),
+      btn("Reset", "btn-ghost", () => { cur = { ...DEFAULT_OUTFIT }; draw(); }),
+      saveBtn);
+
+    const finish = () => {
+      wrap.remove();
+      document.removeEventListener("keydown", onKey);
+      document.body.classList.remove("dress-open");
+      if (opener && opener.isConnected) opener.focus({ preventScroll: true });
+      resolve(saved);
+    };
+    async function leave() {
+      if (!dirty()) return finish();
+      const pick = await pickFrom("Save your new look?", [{ label: "Save", value: "save" }, { label: "Discard changes", value: "discard" }]);
+      if (pick === "discard") return finish();
+      if (pick !== "save") return;
+      const err = await saveMyOutfit(cur);
+      if (err) { toast(err); return; }
+      saved = { ...cur };
+      toast(CRABBY_DRESS.saved[Math.floor(Math.random() * CRABBY_DRESS.saved.length)]);
+      finish();
+    }
+    const onKey = e => { if (e.key === "Escape" && !document.querySelector(".dress ~ .modal")) leave(); };
+    back.onclick = leave;
+    document.addEventListener("keydown", onKey);
+    document.body.classList.add("dress-open");
+    document.body.append(wrap);
+    draw();
+    setTimeout(() => back.focus({ preventScroll: true }), 50);
+  });
+}
+
+// ---------- Home profile menu (top right) ----------
+(function profileMenu() {
+  if (new URLSearchParams(location.search).get("r")) return;
+  const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const btn = mk("button", "profile-home home-only");
+  btn.type = "button";
+  btn.setAttribute("aria-label", "Profile and settings");
+  btn.setAttribute("aria-haspopup", "true");
+  btn.setAttribute("aria-expanded", "false");
+  btn.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">' +
+    '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>';
+  const menu = mk("div", "profile-menu");
+  menu.hidden = true;
+  document.body.append(btn, menu);
+
+  const swRow = (label, get, set) => {
+    const r = mk("div", "pm-row");
+    const b = mk("button", "switch");
+    b.type = "button";
+    b.setAttribute("role", "switch");
+    b.setAttribute("aria-label", label);
+    const sync = () => { const on = get(); b.classList.toggle("on", on); b.textContent = on ? "On" : "Off"; b.setAttribute("aria-checked", String(on)); };
+    b.onclick = (e) => { e.stopPropagation(); set(!get()); sync(); };
+    sync();
+    r.append(mk("span", null, label), b);
+    return r;
+  };
+  const linkRow = (label, fn) => {
+    const b = mk("button", "pm-link", label);
+    b.type = "button";
+    b.onclick = async (e) => { e.stopPropagation(); close(); await fn(); renderAccount(); };
+    return b;
+  };
+  async function draw() {
+    menu.innerHTML = "";
+    const { data: { session } } = await db.auth.getSession();
+    const u = session && session.user;
+    const signed = !!(u && !u.is_anonymous);
+    const md = (u && u.user_metadata) || {};
+    menu.append(mk("div", "pm-head", signed ? (md.first_name || u.email) : "Playing as a guest"));
+    menu.append(
+      swRow("Sound effects", () => Sound.sfxOn, v => { Sound.setSfx(v); if (v) Sound.play("pop"); }),
+      swRow("Music", () => Sound.musicOn, v => Sound.setMusic(v)),
+      swRow("Light mode", () => isLight(), v => setThemePref(v ? "light" : "dark")));
+    menu.append(mk("div", "pm-sep"), linkRow("Customize character", openDressingRoom), mk("div", "pm-sep"));
+    if (signed) menu.append(linkRow("Edit profile", openProfile), linkRow("Sign out", signOut));
+    else menu.append(linkRow("Create account", createAccount), linkRow("Sign in", signIn));
+  }
+  function close() { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); }
+  btn.onclick = async (e) => {
+    e.stopPropagation();
+    if (!menu.hidden) return close();
+    await draw();
+    menu.hidden = false;
+    btn.setAttribute("aria-expanded", "true");
+  };
+  menu.onclick = e => e.stopPropagation();
+  document.addEventListener("click", close);
+  document.addEventListener("keydown", e => { if (e.key === "Escape") close(); });
+})();
