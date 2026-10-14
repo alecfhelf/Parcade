@@ -30,36 +30,51 @@ function pickFrom(title, options) {
   });
 }
 
-// podiumFigure(color | player, place, outfit). The podium figure is drawn on a 48 grid; outfit layers are
-// drawn on the 24 grid of figureEl, so each layer is mapped onto this pose's head, torso, legs and feet.
+// The podium figure is drawn on a 48 grid. Each place's pose gives outfitLayers the head, torso, the first segment
+// of each arm (for sleeves), legs, feet and the hand that holds the item, so the outfit is built on this body.
+const PODIUM_BASE = { head: [24, 10, 5], neck: [24, 15], shoulder: [24, 19], hip: [24, 30],
+  feet: [[18, 46], [30, 46]], sw: 2.6, k: 1.5, tw: 4.2, u: 1.5 };
+const PODIUM_POSES = [
+  // 1st: item raised overhead like the classic sword. 2nd: item shaken in the fist. 3rd: item in the clapping hand.
+  { ...PODIUM_BASE, arms: [[17, 24], [33, 8]], hand: [33, 8], aim: "raise" },
+  { ...PODIUM_BASE, arms: [[17, 27], [31, 16]], hand: [32, 6], aim: "raise" },
+  { ...PODIUM_BASE, arms: [[17, 24], [31, 24]], hand: [29, 28] },
+  // Slumped last place: hat tipped with the head, item hanging from the limp right hand
+  { head: [27, 14, 5], tilt: 12, neck: [24, 19], shoulder: [24, 21], arms: [[20, 31], [28, 31]], hand: [28, 31], aim: "drag",
+    hip: [24, 31], feet: [[19, 46], [29, 46]], sw: 2.6, k: 1.5, tw: 4.2, u: 1.5 },
+];
+
+// podiumFigure(color | player, place, outfit). A figure with an outfit wears it in every pose; one with no outfit
+// at all (One Device Mode names, old rounds) keeps the classic look, crown and sword included when it wins.
 function podiumFigure(who, place, outfitArg) {
   const pl = who && typeof who === "object" ? who : null;
   const color = pl ? pl.color : who;
   const c = PALETTE.some(p => p[0] === color) ? color : "#8A9BC4";
   const outfit = outfitArg || (pl && pl.outfit);
-  const L = outfit ? outfitLayers(outfit, c, false) : {};
-  const at = (tf, layer) => (layer ? '<g transform="' + tf + '">' + layer + "</g>" : "");
-  const HEAD = "translate(4 1.67) scale(1.667)";
-  const legs = at("translate(6 14.5) scale(1.5)", L.shoes);
-  const top = at("translate(6 -10) scale(1.5 2.667)", L.pants) + at("translate(4 -2.14) scale(1.667 2.143)", L.shirt);
-  const body = '<circle cx="24" cy="10" r="5"/><path d="M24 15V30M24 30L18 46M24 30L30 46"/>';
+  const L = outfit ? outfitLayers(outfit, c, false, PODIUM_POSES[Math.min(place, 3)]) : { sleeves: ["", ""] };
+  const [sleeveL, sleeveR] = L.sleeves;
+  const hat = L.hat || "", item = L.item || "";
+  const body = '<circle cx="24" cy="10" r="5"/><path d="M24 15V30M24 30L18 46M24 30L30 46"/>' + (L.pants || "") + (L.shoes || "");
+  // Arms (each with its sleeve and anything in its hand, inside its animated group), then the shirt torso over
+  // where they meet, then the hat
+  const shirt = L.shirt || "";
+  const fist = (x, y) => '<circle cx="' + x + '" cy="' + y + '" r="2.2" fill="' + c + '"/>';
   let art = "";
   if (place === 0) {
-    // The winner's crown replaces the hat; the sword is in the hand, so no item
-    art = legs + body + '<path d="M24 19L17 24L21 28"/>' + top +
-      '<g class="sword"><path d="M24 19L33 8"/><path d="M33 8L39 -6" stroke="#EAF2FF"/><path d="M37 -7L41 -5" stroke="#EAF2FF"/></g>' +
-      '<path class="crown" d="M17.5 5L19 -2L22 2L24 -4L26 2L29 -2L30.5 5Z" fill="#FFD84D" stroke="#FFD84D" stroke-width="1" style="filter:drop-shadow(0 0 4px #FFD84D)"/>';
+    const raised = !outfit ? '<path d="M33 8L39 -6" stroke="#EAF2FF"/><path d="M37 -7L41 -5" stroke="#EAF2FF"/>' : item || fist(33, 8);
+    art = body + '<path d="M24 19L17 24L21 28"/>' + sleeveL +
+      '<g class="sword"><path d="M24 19L33 8"/>' + sleeveR + raised + '</g>' + shirt +
+      (outfit ? hat : '<path class="crown" d="M17.5 5L19 -2L22 2L24 -4L26 2L29 -2L30.5 5Z" fill="#FFD84D" stroke="#FFD84D" stroke-width="1" style="filter:drop-shadow(0 0 4px #FFD84D)"/>');
   } else if (place === 1) {
-    art = legs + body + '<path d="M24 19L17 27"/>' + top + at(HEAD, L.hat) +
-      '<g class="fist"><path d="M24 19L31 16L32 8"/><circle cx="32" cy="6" r="2.2" fill="' + c + '"/></g>' +
+    art = body + '<path d="M24 19L17 27"/>' + sleeveL +
+      '<g class="fist"><path d="M24 19L31 16L32 8"/>' + sleeveR + item + fist(32, 6) + '</g>' + shirt + hat +
       '<text class="curse" x="35" y="-1" font-size="7" fill="#FF5C7A" stroke="none">#@%!</text>';
   } else if (place === 2) {
-    art = legs + body + top + at(HEAD, L.hat) +
-      '<g class="clap-l"><path d="M24 19L17 24L19 28"/></g><g class="clap-r"><path d="M24 19L31 24L29 28"/></g>';
+    art = body + '<g class="clap-l"><path d="M24 19L17 24L19 28"/>' + sleeveL + '</g><g class="clap-r"><path d="M24 19L31 24L29 28"/>' + sleeveR + item + '</g>' +
+      shirt + hat;
   } else {
-    // Slumped last place: just the hat, tipped with the head
     art = '<circle cx="27" cy="14" r="5"/><path d="M24 19Q22 25 24 31M24 31L19 46M24 31L29 46M24 21L20 31M24 21L28 31"/>' +
-      at("translate(7 5.67) scale(1.667) rotate(12 12 5)", L.hat);
+      (L.pants || "") + (L.shoes || "") + sleeveL + sleeveR + shirt + item + hat;
   }
   const w = document.createElement("span");
   w.className = "stick pod-fig pod-" + place;

@@ -740,20 +740,23 @@
     .profile-inline b { font-size: 1.1rem; color: var(--strong); }
     /* Dressing room */
     body.dress-open { overflow: hidden; }
-    .dress { position: fixed; inset: 0; z-index: 10; background: var(--bg); overflow-y: auto; overscroll-behavior: contain;
-      padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 0; }
-    .dress-top, .dress-body { max-width: 900px; margin: 0 auto; }
-    .dress-top { display: flex; align-items: center; gap: 12px; }
+    .dress { position: fixed; inset: 0; z-index: 10; background: var(--bg); display: flex; flex-direction: column; overflow: hidden;
+      padding-top: calc(12px + env(safe-area-inset-top, 0px)); }
+    .dress-top, .dress-body, .dress-actions { width: 100%; max-width: 932px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
+    .dress-top { flex: none; display: flex; align-items: center; gap: 12px; }
+    .dress-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+    .dress-body { padding-bottom: 40px; }
+    .dress-scroll { scroll-padding-bottom: 40px; }
     .dress-top h2 { font-family: "Bungee", sans-serif; font-weight: 400; font-size: 1.3rem; margin: 0; }
     .dress-back { min-height: 44px; padding: 10px 16px; }
     .dress-main { display: flex; flex-direction: column; align-items: center; }
-    .dress-stage { position: relative; display: flex; flex-direction: column; align-items: center; padding: 44px 24px 6px; }
+    .dress-stage { position: relative; display: flex; flex-direction: column; align-items: center; padding: 19px 24px 6px; }
     .dress-stage::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 30px; width: 260px; transform: translateX(-50%); pointer-events: none;
       background: radial-gradient(ellipse 50% 70% at 50% 0%, rgba(var(--glow-rgb),0.16), transparent 75%);
       clip-path: polygon(38% 0, 62% 0, 100% 100%, 0 100%); }
     .dress-fig { position: relative; z-index: 1; line-height: 0; }
     .dress-fig .stick { margin: 0; }
-    .dress-pedestal { width: 210px; height: 30px; margin-top: -16px; border-radius: 50%;
+    .dress-pedestal { width: 210px; height: 30px; margin-top: -21px; border-radius: 50%;
       background: radial-gradient(ellipse at center, rgba(var(--glow-rgb),0.32), rgba(var(--blue-rgb),0.14) 55%, transparent 72%);
       box-shadow: inset 0 -3px 0 rgba(var(--glow-rgb),0.35); }
     .dress-name { font-family: "Bungee", sans-serif; color: var(--strong); margin-top: 8px; font-size: 1.05rem; text-align: center; }
@@ -788,12 +791,15 @@
       padding: 2px 6px; border-radius: 999px; }
     .dress-rarity.r-common { background: rgba(var(--muted-rgb),0.18); color: var(--muted); }
     .dress-rarity.r-rare { background: rgba(var(--blue-rgb),0.2); color: var(--glow); }
-    .dress-rarity.r-epic { background: rgba(var(--gold-rgb),0.2); color: var(--gold); }
+    .dress-rarity.r-epic { background: rgba(155,108,255,0.22); color: #B99BFF; }
+    .dress-rarity.r-legendary { background: linear-gradient(135deg, #FFE680, #FFC21A); color: #3A2A00; box-shadow: 0 0 8px rgba(var(--gold-rgb),0.6); }
+    :root[data-theme="light"] .dress-rarity.r-epic { background: rgba(110,63,192,0.14); color: #5E33B0; }
+    :root[data-theme="light"] .dress-rarity.r-legendary { background: linear-gradient(135deg, #F5C842, #D9A00F); color: #2E2000; box-shadow: none; }
     .dress-lock { font-size: 0.75rem; color: var(--muted); }
-    .dress-actions { position: sticky; bottom: 0; z-index: 2; display: flex; gap: 10px; margin-top: 16px; background: var(--bg);
-      padding: 10px 0 calc(10px + env(safe-area-inset-bottom, 0px)); }
+    .dress-actions { flex: none; display: flex; gap: 10px; background: var(--bg); box-shadow: 0 -1px 0 rgba(var(--muted-rgb),0.2);
+      padding-top: 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
     .dress-actions button { flex: 1; min-height: 44px; padding: 12px 8px; }
-    .dress .crabby-desk { margin: 8px 0 24px; }
+    .dress .crabby-desk { margin: 20px 0 4px; }
     :root[data-theme="light"] .dress-tile { box-shadow: inset 0 0 0 1px rgba(var(--muted-rgb),0.3), 0 2px 8px rgba(14,22,48,0.06); }
     :root[data-theme="light"] .dress-tile.selected { box-shadow: inset 0 0 0 2px var(--glow); }
     .profile-note { display: block; color: var(--muted); margin-top: 6px; }

@@ -117,23 +117,29 @@ function themeButton() {
   return b;
 }
 
-// figureEl(color | player, size, outfit | cheer). A player row brings its own color and outfit.
+// figureEl(color | player, size, outfit | cheer, roomy). A player row brings its own color and outfit.
 // The round's color always wins over outfit.color, so figures match everything else colored by player.
-function figureEl(who, size = 18, extra) {
+// Some outfit pieces poke past the 24 grid (the top hat reaches y -1.7, the driver x 23.9, spikes y 24.2) and draw
+// as overflow. roomy widens the viewBox to FIG_ROOM around the same 24 grid (size is still the grid's size) so
+// everything is inside the SVG: big figures that are redrawn in place need that, since browsers can leave overflow
+// painted outside an SVG's box behind after the figure is replaced.
+const FIG_ROOM = [-1, -2.5, 26, 27];
+function figureEl(who, size = 18, extra, roomy) {
   const pl = who && typeof who === "object" ? who : null;
   const color = pl ? pl.color : who;
   const cheer = extra === true;
   const outfit = extra && typeof extra === "object" ? extra : pl && pl.outfit;
   const c = PALETTE.some(p => p[0] === color) ? color : "#8A9BC4";
   const arms = cheer ? "M12 10l-5-6M12 10l5-6" : "M12 11l-5-2M12 11l5-2";
-  const L = outfit ? outfitLayers(outfit, c, size < 22) : {};
+  // Outfits are built on OUTFIT_POSE (outfits.js), which matches this body; the cheering pose has no outfit
+  const L = outfit && !cheer ? outfitLayers(outfit, c, size < 22) : { sleeves: [] };
   const w = document.createElement("span");
   w.className = "stick";
-  w.innerHTML = '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" overflow="visible" fill="none" stroke="' + c +
+  const vb = roomy ? FIG_ROOM : [0, 0, 24, 24], k = size / 24;
+  w.innerHTML = '<svg width="' + n2(vb[2] * k) + '" height="' + n2(vb[3] * k) + '" viewBox="' + vb.join(" ") + '" overflow="visible" fill="none" stroke="' + c +
     '" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="filter:drop-shadow(0 0 3px ' + c + ')">' +
-    (L.shoes || "") +
     '<circle cx="12" cy="5" r="3"/><path d="M12 8v7' + arms + 'M12 15l-4 6M12 15l4 6"/>' +
-    (L.pants || "") + (L.shirt || "") + (L.hat || "") + (L.item || "") + '</svg>';
+    (L.pants || "") + (L.shoes || "") + L.sleeves.join("") + (L.shirt || "") + (L.hat || "") + (L.item || "") + '</svg>';
   return w;
 }
 
@@ -2035,6 +2041,32 @@ async function loadRound(code) {
     requestAnimationFrame(() => { document.body.style.paddingTop = "calc(" + (topBar.offsetHeight + 20) + "px + env(safe-area-inset-top, 0px))"; });
     scoreArea.style.display = finished ? "block" : "none";
     if (finished) renderScorecard(scoreArea, { round, players, scores, results, user, picks, preds, mulls, bets, wads, course });
+      if (me && round.host_id === user.id) {
+        const golfers = players.filter(p => p.role !== "caddy");
+        const all18 = golfers.length && golfers.every(p => scores.some(x => x.player_id === p.id && x.hole === 18 && x.strokes));
+        if (!all18) {
+          const cont = document.createElement("button");
+          cont.textContent = "Continue round";
+          cont.style.cssText = "width:100%;margin:8px 0 18px";
+          cont.onclick = async () => {
+            cont.disabled = true;
+            const gp = golfers.filter(p => p.group_no === me.group_no);
+            const mine = scores.filter(x => x.strokes && gp.some(p => p.id === x.player_id));
+            const last = mine.length ? Math.max(...mine.map(x => x.hole)) : 0;
+            const done = last && gp.every(p => mine.some(x => x.player_id === p.id && x.hole === last));
+            const target = !last ? 1 : done ? Math.min(last + 1, 18) : last;
+            const { error } = await db.from("rounds").update({ status: "playing" }).eq("id", round.id);
+            if (error) { toast(error.message); cont.disabled = false; return; }
+            round.status = "playing";
+            db.from("messages").insert({ round_id: round.id, player_id: me.id, kind: "auto",
+              body: "\u26F3 Round's back on. Picking up on hole " + target + "." }).then(() => {});
+            await refresh();
+            setHole(target);
+            showTab("hole");
+          };
+          scoreArea.prepend(cont);
+        }
+      }
     sub.textContent = finished ? "Final results" : playing
       ? (MODES[round.mode] || MODES.party).name + (round.handicap ? " with handicaps" : "") + (course ? " at " + course.name : "")
       : "Round code: " + round.code + (round.handicap ? ", handicaps on" : "");
@@ -4182,9 +4214,12 @@ function openDressingRoom() {
     const btn = (label, cls, fn) => { const b = mk("button", cls, label); b.type = "button"; b.onclick = fn; return b; };
     const guide = crabbyDesk(CRABBY_DRESS.open);
     guide.reserve([CRABBY_DRESS.open, ...CRABBY_DRESS.saved]);
+    // Stage, tabs, grid and Crabby scroll in their own area; the action bar stays put below it, never over a tile
     const body = mk("div", "dress-body");
-    body.append(main, grid, actions, guide);
-    wrap.append(top, body);
+    body.append(main, grid, guide);
+    const scroller = mk("div", "dress-scroll");
+    scroller.append(body);
+    wrap.append(top, scroller, actions);
 
     const owned = id => outfitOwned(id, u);
     const dirty = () => JSON.stringify(cur) !== JSON.stringify(saved);
@@ -4201,8 +4236,8 @@ function openDressingRoom() {
       return b;
     }
     function draw() {
-      fig.innerHTML = "";
-      fig.append(figureEl(cur.color, 240, cur));
+      // Rebuilt from cur every time, with room for every piece so nothing paints outside the SVG
+      fig.replaceChildren(figureEl(cur.color, 240, cur, true));
       tabBtns.forEach((b, i) => {
         const on = DRESS_TABS[i][0] === tab;
         b.classList.toggle("on", on);
@@ -4213,12 +4248,12 @@ function openDressingRoom() {
       grid.innerHTML = "";
       grid.classList.toggle("colors", tab === "color");
       if (tab === "color") {
-        PALETTE.forEach(([hex, label]) => grid.append(tile(label, figureEl(hex, 44, cur), cur.color === hex,
+        PALETTE.forEach(([hex, label]) => grid.append(tile(label, figureEl(hex, 44, cur, true), cur.color === hex,
           () => { cur.color = hex; draw(); }, { compact: true })));
       } else {
         const solo = id => ({ ...DEFAULT_OUTFIT, color: cur.color, [tab]: id });
-        grid.append(tile("None", figureEl(cur.color, 56, solo(null)), !cur[tab], () => { cur[tab] = null; draw(); }));
-        OUTFIT_ITEMS.filter(it => it.slot === tab).forEach(it => grid.append(tile(it.name, figureEl(cur.color, 56, solo(it.id)),
+        grid.append(tile("None", figureEl(cur.color, 56, solo(null), true), !cur[tab], () => { cur[tab] = null; draw(); }));
+        OUTFIT_ITEMS.filter(it => it.slot === tab).forEach(it => grid.append(tile(it.name, figureEl(cur.color, 56, solo(it.id), true),
           cur[tab] === it.id, () => { cur[tab] = it.id; draw(); }, { rarity: it.rarity, locked: !owned(it.id) })));
       }
       saveBtn.disabled = !dirty();
