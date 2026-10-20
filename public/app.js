@@ -509,11 +509,11 @@ $("create-round").addEventListener("click", async () => {
   const fit = await myOutfit();
   const vals = await ask("Start a new round", [
     { label: "Round name", placeholder: "Saturday Showdown" },
-    { label: "Your name", placeholder: "What your crew calls you", max: 20, value: myName },
-    { label: "Shirt color for this round", type: "colors", selected: fit.shirtColor, outfit: fit }
+    { label: "Your name", placeholder: "What your crew calls you", max: 20, value: myName }
   ], "Tee it up", null, null, CRABBY_LINES.welcome);
   if (!vals) return;
-  const [roundName, playerName, color] = vals;
+  const [roundName, playerName] = vals;
+  const color = fit.shirtColor || "-";
   const hcp = false;
   const mineHc = await myHandicap();
   const usual = mineHc ? mineHc.usual : null, hcpNum = mineHc ? mineHc.hcp : null;
@@ -629,6 +629,7 @@ async function loadRound(code) {
   $("status").before(box);
 
   const user = await ensureUser();
+  window.__signedIn = !user.is_anonymous;
   const fetchRound = () => db.from("rounds").select("*").eq("code", code.toUpperCase()).maybeSingle();
   let { data: round } = await fetchRound();
   if (!round) {
@@ -827,7 +828,7 @@ async function loadRound(code) {
       const head = h3("Game mode");
       head.style.marginTop = "28px";
       roomGame.append(head);
-      const picker = modeGrid({ modes: MODES_FOR[pickedSize], selected: pickedMode, onPick: key => {
+      const picker = modeGrid({ modes: MODES_FOR[pickedSize], selected: pickedMode, off: guestModeLock(), onPick: key => {
         pickedMode = key;
         renderModes();
         updateStart();
@@ -873,7 +874,9 @@ async function loadRound(code) {
       hcSwitch.classList.toggle("on", on);
       hcSwitch.setAttribute("aria-checked", String(on));
     };
+    if (!window.__signedIn) { hcHint.textContent = "Sign in to use handicaps."; hcSwitch.classList.add("locked-feature"); }
     hcSwitch.onclick = async () => {
+      if (!window.__signedIn) return needAccount("handicaps");
       const on = !round.handicap;
       const { error } = await db.from("rounds").update({ handicap: on }).eq("id", round.id);
       if (error) { toast(error.message); return; }
@@ -1089,6 +1092,11 @@ async function loadRound(code) {
       selectCourse(data);
     };
     cSkip.onclick = () => setStep("size");
+    if (!window.__signedIn) {
+      cSearch.disabled = true;
+      cSearch.placeholder = "Sign in to search courses";
+      [cManual, cScan].forEach(b => { b.classList.add("locked-feature"); b.onclick = () => needAccount("courses"); });
+    }
 
     const confirmArea = document.createElement("div");
     confirmArea.className = "confirm-only";
@@ -1241,7 +1249,7 @@ async function loadRound(code) {
       back.onclick = () => { pickedSize = null; pickedMode = null; renderModes(); updateStart(); setStep("size"); };
       modeArea.append(back, h3("Pick a game mode for " + label.toLowerCase()));
       slideIn(modeArea);
-      const picker = modeGrid({ modes: MODES_FOR[pickedSize], selected: pickedMode, onPick: key => {
+      const picker = modeGrid({ modes: MODES_FOR[pickedSize], selected: pickedMode, off: guestModeLock(), onPick: key => {
         pickedMode = key;
         updateStart();
         caddyNote.style.display = key === "caddy" ? "block" : "none";
@@ -1300,7 +1308,7 @@ async function loadRound(code) {
     lobby.prepend(stepBar);
     function guideLine() {
       const st = lobby.dataset.step;
-      if (st === "course") return CRABBY_LINES.course;
+      if (st === "course") return window.__signedIn ? CRABBY_LINES.course : CRABBY_LINES.courseGuest;
       if (st === "confirm") return CRABBY_LINES.confirm;
       if (st === "size") return CRABBY_LINES.size;
       if (st === "setup") return CRABBY_LINES.setup;
@@ -1441,7 +1449,8 @@ async function loadRound(code) {
       mq("m-unit").textContent = "Dollars per " + (MONEY_UNITS[pickedMode] || MONEY_UNITS.party).unit;
       potBox.sync();
     }
-    mq("money-switch").onclick = () => { stakes = stakes === "none" ? "pot" : "none"; syncMoney(); };
+    if (!window.__signedIn) mq("money-switch").classList.add("locked-feature");
+    mq("money-switch").onclick = () => { if (!window.__signedIn) return needAccount("Play for money"); stakes = stakes === "none" ? "pot" : "none"; syncMoney(); };
     mq("money-type").querySelectorAll("button").forEach(b => (b.onclick = () => { stakes = b.dataset.t; syncMoney(); }));
     mq("m-per").oninput = syncMoney;
     mq("m-count").oninput = syncMoney;
@@ -1582,6 +1591,7 @@ async function loadRound(code) {
   const betChat = (body) => db.from("messages").insert({ round_id: round.id, player_id: me.id, kind: "auto", body: body.slice(0, 280) }).then(() => {});
   betForm.onsubmit = async (e) => {
     e.preventDefault();
+    if (!window.__signedIn) return needAccount("side bets");
     const body = $("bet-text").value.trim();
     const amount = Math.round(parseFloat($("bet-amt").value) * 100) / 100;
     const poster = players.find(pl => pl.id === betPoster) || me;
@@ -2038,7 +2048,20 @@ async function loadRound(code) {
     game.style.display = playing ? "block" : "none";
     document.body.classList.toggle("has-rail", playing);
     Sound.music(!playing);
-    if (finished && !playedFinale) { playedFinale = true; Sound.play("fanfare"); }
+    if (finished && !playedFinale) {
+      playedFinale = true;
+      Sound.play("fanfare");
+      db.rpc("claim_round_coin", { p_round: round.id }).then(({ data }) => {
+        if (!data) return;
+        const modeName = (MODES[data.mode] || {}).name || "this mode";
+        const bits = [];
+        if (data.coin) bits.push("+1 coin for finishing 18 holes");
+        if (data.bonus) bits.push("+" + data.bonus + " bonus for your first round of " + modeName + "!");
+        if (bits.length) { setTimeout(() => Sound.play("coin"), 900); toast(bits.join(" ") + " \u{1FA99}", true); }
+        else if (data.daily) toast("You already earned today's round coin. Come back tomorrow.");
+        if (typeof loadShop === "function") loadShop(true);
+      });
+    }
     stakesLine.textContent = moneySummary(round);
     stakesLine.style.display = stakesLine.textContent ? "block" : "none";
     if (playing) renderBets();
@@ -3457,10 +3480,11 @@ async function createAccount() {
     if (agree !== "yes") return "Please check the box to agree to the Terms and Privacy Policy.";
     try {
       await ensureUser();
-      const guestFit = guestOutfit();
+      await loadShop();
+      const guestFit = guestOutfit() && ownedOutfit(normalizeOutfit(guestOutfit()));
       const { error } = await db.auth.updateUser(
         { email, data: { first_name: first, needs_password: true, terms_accepted_at: new Date().toISOString(), terms_version: "2026-10-03",
-          ...(guestFit ? { outfit: normalizeOutfit(guestFit) } : {}) } },
+          ...(guestFit ? { outfit: guestFit } : {}) } },
         { emailRedirectTo: location.origin + location.pathname + location.search });
       if (error) throw error;
       return null;
@@ -3960,17 +3984,29 @@ const OUTFIT_KEY = "parcade-outfit";
 function guestOutfit() {
   try { const v = localStorage.getItem(OUTFIT_KEY); return v ? JSON.parse(v) : null; } catch (e) { return null; }
 }
+// Shop gear the account doesn't own is swapped for the default (the database does the same on player rows).
+// If the shop couldn't be reached, the outfit is left as saved and the server still strips it in rounds.
 async function myOutfit() {
+  await loadShop();
+  let fit;
   try {
     const { data: { session } } = await db.auth.getSession();
     const u = session && session.user;
     const md = (u && !u.is_anonymous && u.user_metadata) || {};
-    return normalizeOutfit(md.outfit || guestOutfit());
-  } catch (e) { return normalizeOutfit(guestOutfit()); }
+    fit = normalizeOutfit(md.outfit || guestOutfit());
+  } catch (e) { fit = normalizeOutfit(guestOutfit()); }
+  return SHOP.ready ? ownedOutfit(fit) : fit;
 }
-// Returns an error message, or null when saved
+// Returns an error message, or null when saved. Outfits with unowned shop gear are refused.
 async function saveMyOutfit(o) {
   const fit = normalizeOutfit(o);
+  await loadShop();
+  const missing = unownedPieces(fit);
+  if (missing.length) {
+    if (SHOP.failed) return "Couldn't check your gear with the Pro Shop. Try again in a sec.";
+    return "You don't own the " + missing.join(" or the ") + " yet. Buy " + (missing.length > 1 ? "them" : "it") + " or take " +
+      (missing.length > 1 ? "them" : "it") + " off before you save.";
+  }
   try {
     const { data: { session } } = await db.auth.getSession();
     const u = session && session.user;
@@ -3982,6 +4018,89 @@ async function saveMyOutfit(o) {
   try { localStorage.setItem(OUTFIT_KEY, JSON.stringify(fit)); } catch (e) { return "Couldn't save on this device."; }
   return null;
 }
+// ---------- Pro Shop data (supabase/pro-shop.sql) ----------
+// Prices, owned gear and the coin balance, copied into SHOP (outfits.js) for drawing. Reloaded when the signed-in
+// account changes or after a purchase; the database decides everything, this only reads.
+let shopLoading = null;
+async function loadShop(force) {
+  let u = null;
+  try { const { data: { session } } = await db.auth.getSession(); u = session && session.user; } catch (e) {}
+  const uid = (u && u.id) || null;
+  if (!force && shopLoading && SHOP.userId === uid) return shopLoading;
+  if (SHOP.userId !== uid) { SHOP.owned = new Set(); SHOP.balance = 0; SHOP.ready = false; }
+  SHOP.userId = uid;
+  SHOP.signedIn = !!(u && !u.is_anonymous);
+  const signed = SHOP.signedIn;
+  const load = shopLoading = (async () => {
+    const [items, coins, owned] = await Promise.all([
+      db.from("shop_items").select("id, price, active"),
+      signed ? db.from("user_coins").select("balance").maybeSingle() : { data: null },
+      signed ? db.from("user_items").select("item_id") : { data: [] }]);
+    const err = items.error || coins.error || owned.error;
+    if (err) throw err;
+    if (SHOP.userId !== uid) return;
+    SHOP.prices = Object.fromEntries((items.data || []).map(r => [r.id, { price: r.price, active: r.active }]));
+    SHOP.balance = (coins.data && coins.data.balance) || 0;
+    SHOP.owned = new Set((owned.data || []).map(r => r.item_id));
+    SHOP.ready = true;
+    SHOP.failed = false;
+  })().catch(() => { SHOP.failed = true; if (shopLoading === load) shopLoading = null; });
+  return load;
+}
+const COIN_SVG = '<svg class="coin-ic" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' +
+  '<circle cx="8" cy="8" r="7" fill="#FFD84D" stroke="#C99A1E" stroke-width="1.5"/>' +
+  '<circle cx="8" cy="8" r="3.8" fill="none" stroke="#C99A1E" stroke-width="1.3"/></svg>';
+const coinsText = n => n + (n === 1 ? " coin" : " coins");
+// Coin balance for a screen header, plus the guest note. Call update() after the balance changes.
+function coinUI() {
+  const badge = document.createElement("span");
+  badge.className = "coin-badge coin-tap";
+  badge.setAttribute("role", "button");
+  badge.tabIndex = 0;
+  badge.onclick = e => { e.stopPropagation(); coinMenu(badge); };
+  badge.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); coinMenu(badge); } };
+  const note = document.createElement("p");
+  note.className = "coin-note";
+  note.textContent = "Create an account to earn and spend coins.";
+  const update = () => {
+    badge.hidden = !SHOP.signedIn;
+    note.hidden = SHOP.signedIn;
+    badge.innerHTML = COIN_SVG + "<b>" + SHOP.balance + "</b>";
+    badge.setAttribute("aria-label", coinsText(SHOP.balance));
+    badge.title = coinsText(SHOP.balance);
+  };
+  update();
+  return { badge, note, update };
+}
+// Asks to confirm, then buys through buy_item. True when the piece is now owned.
+async function buyPiece(id) {
+  const it = OUTFIT_PIECES[id].piece, row = SHOP.prices[id];
+  if (!SHOP.signedIn) {
+    const pick = await pickFrom("Create an account to earn and spend coins", [
+      { label: "Create account", value: "create" }, { label: "Sign in", value: "signin" }]);
+    if (pick === "create") await createAccount();
+    if (pick === "signin" && await signIn()) renderAccount();
+    await loadShop(true);
+    return false;
+  }
+  if (!row || !row.active) { toast("That one's not for sale right now."); return false; }
+  if (SHOP.balance < row.price) { toast("You need " + coinsText(row.price - SHOP.balance).replace(/ (coins?)$/, " more $1") + "."); return false; }
+  const left = SHOP.balance - row.price;
+  const pick = await pickFrom("Buy the " + it.name + " for " + coinsText(row.price) + "? You'll have " + left + " left.",
+    [{ label: "Buy for " + coinsText(row.price), value: "buy" }]);
+  if (pick !== "buy") return false;
+  const { data, error } = await db.rpc("buy_item", { p_item: id });
+  if (error) {
+    toast(/already own/i.test(error.message) ? "You already own that." : error.message);
+    await loadShop(true);
+    return SHOP.owned.has(id);
+  }
+  SHOP.balance = data;
+  SHOP.owned.add(id);
+  Sound.play("coin");
+  return true;
+}
+
 // Insert a players row. If supabase/character.sql hasn't been run yet, retry without the outfit column.
 async function insertPlayer(row) {
   let res = await db.from("players").insert(row);
@@ -3993,7 +4112,7 @@ async function insertPlayer(row) {
 }
 
 // gateHomeButtons: homescreen buttons need a signed-in account
-const HOME_GATED = ["Start a new round", "Seasons", "Tournaments", "Recent rounds"];
+const HOME_GATED = ["Customize Character", "Seasons", "Tournaments", "Recent rounds"];
 let homeSignedIn = false;
 function homeGatedButtons() {
   return [...document.querySelectorAll("button")].filter(b =>
@@ -4006,12 +4125,12 @@ function gateHomeButtons(signedIn) {
     b.setAttribute("aria-disabled", String(!signedIn));
   });
   let note = document.getElementById("home-lock-note");
-  const first = homeGatedButtons()[0];
+  const first = homeGatedButtons().find(b => b.offsetParent !== null);
   if (!signedIn && first && !note) {
     note = document.createElement("p");
     note.id = "home-lock-note";
     note.className = "home-lock-note";
-    note.textContent = "\u{1F512} Sign in or create an account to play.";
+    note.textContent = "\u{1F512} Sign in to customize your character, join seasons and tournaments, and see your rounds.";
     first.before(note);
   }
   if (note) note.style.display = signedIn ? "none" : "";
@@ -4093,15 +4212,6 @@ async function openProfile() {
   };
   hcSec.append(row("Your handicap", "Applied automatically to rounds with handicaps on.", (() => { const c = mk("div", "profile-inline"); c.append(hcVal, hcBtn); return c; })()));
 
-  // Character
-  const chSec = section("Character");
-  const chBtn = mk("button", "mini", "Customize");
-  const chFig = mk("div", "profile-inline");
-  const drawFig = fit => { const old = chFig.querySelector(".stick"); if (old) old.remove(); chFig.prepend(figureEl(null, 32, fit)); };
-  myOutfit().then(drawFig);
-  chBtn.onclick = async () => drawFig(await openDressingRoom());
-  chFig.append(chBtn);
-  chSec.append(row("Customize character", "Hair, clothes, hats, shoes and something to hold.", chFig));
 
   // Settings
   const setSec = section("Settings");
@@ -4187,11 +4297,27 @@ const DRESS_PANELS = {
   hat: [["tiles", "Style", "hat"], ["swatch", "Color", "hatColor"]],
   item: [["tiles", "Held item", "item"]],
 };
+const needText = n => "You need " + n + " more " + (n === 1 ? "coin" : "coins") + ".";
+// Wardrobe list for a slot: Bogey pieces first (in their order), then shop pieces cheapest tier first
+const shopSorted = list => list.map((it, i) => [it, i]).sort((a, b) => RARITY_RANK[a[0].rarity] - RARITY_RANK[b[0].rarity] || a[1] - b[1]).map(x => x[0]);
+// The lock / price / owned line under a shop tile
+function pieceTag(it, mk) {
+  const row = SHOP.prices[it.id];
+  if (outfitOwned(it.id)) return mk("span", "dress-owned", "Owned");
+  const t = mk("span", "dress-lock");
+  if (!SHOP.ready) t.textContent = "\u{1F512} Shop's closed";
+  else if (!row || !row.active) t.textContent = "\u{1F512} Sold out";
+  else t.innerHTML = "\u{1F512} " + COIN_SVG + "<b>" + row.price + "</b>";
+  return t;
+}
+const pieceLabel = it => {
+  const row = SHOP.prices[it.id];
+  return it.name + ", " + RARITY_NAME[it.rarity] + (outfitOwned(it.id) ? ", owned" : row ? ", locked, " + coinsText(row.price) : ", locked");
+};
+
 function openDressingRoom() {
   return new Promise(async resolve => {
     const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-    const { data: { session } } = await db.auth.getSession();
-    const u = session && session.user;
     let saved = await myOutfit();
     let cur = { ...saved };
     let tab = "body", pose = "idle";
@@ -4205,7 +4331,8 @@ function openDressingRoom() {
     const top = mk("div", "dress-top");
     const back = mk("button", "btn-ghost dress-back", "Back");
     back.type = "button";
-    top.append(back, mk("h2", null, "Dressing room"));
+    const coins = coinUI();
+    top.append(back, mk("h2", null, "Dressing room"), coins.badge);
 
     const main = mk("div", "dress-main");
     const stage = mk("div", "dress-stage");
@@ -4223,7 +4350,10 @@ function openDressingRoom() {
       return b;
     });
     seg.append(...poseBtns);
-    stage.append(fig, mk("div", "dress-pedestal"), mk("div", "dress-name", name), seg);
+    const shopBtn = mk("button", "dress-shop-btn");
+    shopBtn.type = "button";
+    shopBtn.innerHTML = COIN_SVG + "<span>Pro Shop</span>";
+    stage.append(fig, mk("div", "dress-pedestal"), mk("div", "dress-name", name), seg, shopBtn);
     const tabs = mk("div", "dress-tabs");
     tabs.setAttribute("role", "tablist");
     tabs.setAttribute("aria-label", "Wardrobe");
@@ -4250,28 +4380,34 @@ function openDressingRoom() {
     const grid = mk("div", "dress-grid");
     grid.id = "dress-grid";
     grid.setAttribute("role", "tabpanel");
+    // Try-on bar: one row per unowned shop piece being previewed, with Buy / Take off
+    const tryBar = mk("div", "dress-try");
+    tryBar.setAttribute("aria-live", "polite");
     const actions = mk("div", "dress-actions");
     const btn = (label, cls, fn) => { const b = mk("button", cls, label); b.type = "button"; b.onclick = fn; return b; };
     const guide = crabbyDesk(CRABBY_DRESS.open);
-    guide.reserve([CRABBY_DRESS.open, ...CRABBY_DRESS.saved]);
+    guide.reserve([CRABBY_DRESS.open, CRABBY_DRESS.tryOn, CRABBY_DRESS.locked, CRABBY_DRESS.equipped, ...CRABBY_DRESS.saved]);
     // Stage, tabs, grid and Crabby scroll in their own area; the action bar stays put below it, never over a tile
     const body = mk("div", "dress-body");
-    body.append(main, grid, guide);
+    body.append(guide, coins.note, main, grid);
     const scroller = mk("div", "dress-scroll");
     scroller.append(body);
-    wrap.append(top, scroller, actions);
+    wrap.append(top, scroller, tryBar, actions);
 
-    const owned = id => id == null || outfitOwned(id, u);
     const dirty = () => JSON.stringify(cur) !== JSON.stringify(saved);
     const sprite = (o, cls) => { const s = mk("span", cls); s.innerHTML = PX.svg(o, "idle"); return s; };
-    function tile(label, figure, selected, onPick, opts = {}) {
-      const b = mk("button", "dress-tile" + (selected ? " selected" : ""));
+    function tile(label, figure, selected, onPick, piece) {
+      const shop = piece && piece.rarity !== "bogey";
+      const b = mk("button", "dress-tile" + (selected ? " selected" : "") + (shop ? " shop-piece r-" + piece.rarity : ""));
       b.type = "button";
       b.setAttribute("aria-pressed", String(selected));
-      b.setAttribute("aria-label", label + (opts.rarity ? ", " + opts.rarity : "") + (opts.locked ? ", coming soon" : ""));
+      b.setAttribute("aria-label", shop ? pieceLabel(piece) : label + (piece && piece.name !== "None" ? ", " + RARITY_NAME[piece.rarity] : ""));
       b.append(figure, mk("span", "dress-tile-name", label));
-      if (opts.rarity) b.append(mk("span", "dress-rarity r-" + opts.rarity, opts.rarity));
-      if (opts.locked) { b.disabled = true; b.classList.add("locked"); b.append(mk("span", "dress-lock", "\u{1F512} Coming soon")); }
+      if (piece && piece.name !== "None") b.append(mk("span", "dress-rarity r-" + piece.rarity, RARITY_NAME[piece.rarity]));
+      if (shop) {
+        b.append(pieceTag(piece, mk));
+        if (!outfitOwned(piece.id)) b.classList.add("locked");
+      }
       b.onclick = onPick;
       return b;
     }
@@ -4284,8 +4420,12 @@ function openDressingRoom() {
       const row = mk("div", "dress-tiles");
       // Hair and facial hair tiles go without the hat so the hair shows
       const bare = key === "hair" || key === "face" ? { hat: null } : {};
-      OUTFIT_SLOTS[key].forEach(it => row.append(tile(it.name, sprite({ ...cur, ...bare, [key]: it.id }, "dress-px"), cur[key] === it.id,
-        () => { cur[key] = it.id; draw(); }, { rarity: it.name === "None" ? null : it.rarity, locked: !owned(it.id) })));
+      shopSorted(OUTFIT_SLOTS[key]).filter(it => outfitOwned(it.id) || cur[key] === it.id).forEach(it => row.append(tile(it.name, sprite({ ...cur, ...bare, [key]: it.id }, "dress-px"), cur[key] === it.id,
+        () => {
+          cur[key] = it.id;
+          if (!outfitOwned(it.id)) guide.say(CRABBY_DRESS.tryOn);
+          draw();
+        }, it)));
       return group(title, row);
     }
     function swatchesFor(title, key) {
@@ -4301,6 +4441,38 @@ function openDressingRoom() {
       });
       return group(title, row);
     }
+    // What a slot goes back to when an unowned piece comes off: the saved piece, or the default
+    const takeOff = slot => { cur[slot] = outfitOwned(saved[slot]) ? saved[slot] : DEFAULT_OUTFIT[slot]; draw(); };
+    function drawTryBar() {
+      const slots = Object.keys(OUTFIT_SLOTS).filter(slot => !outfitOwned(cur[slot]));
+      tryBar.hidden = !slots.length;
+      tryBar.replaceChildren(...slots.map(slot => {
+        const it = OUTFIT_PIECES[cur[slot]].piece, row = SHOP.prices[it.id];
+        const line = mk("div", "dress-try-row");
+        const info = mk("div", "dress-try-info");
+        info.append(mk("b", null, "Trying on: " + it.name), mk("span", "dress-rarity r-" + it.rarity, RARITY_NAME[it.rarity]));
+        const btns = mk("div", "dress-try-btns");
+        if (!SHOP.signedIn) btns.append(btn("Create account to buy", "", () => buyPiece(it.id).then(after)));
+        else if (!SHOP.ready || !row || !row.active) btns.append(mk("span", "dress-try-note", SHOP.ready ? "Not for sale right now." : "The Pro Shop's closed. Try again soon."));
+        else if (SHOP.balance >= row.price) {
+          const buy = btn("", "dress-buy", async () => {
+            buy.disabled = true;
+            if (await buyPiece(it.id)) guide.say(CRABBY_SHOP.bought[Math.floor(Math.random() * CRABBY_SHOP.bought.length)]);
+            after();
+          });
+          buy.innerHTML = "Buy for " + COIN_SVG + "<b>" + row.price + "</b>";
+          buy.setAttribute("aria-label", "Buy the " + it.name + " for " + coinsText(row.price));
+          btns.append(buy);
+        } else {
+          const get = btn("Get coins", "btn-ghost dress-get", () => guide.say(CRABBY_SHOP.getCoins));
+          btns.append(mk("span", "dress-try-note", needText(row.price - SHOP.balance)), get);
+        }
+        btns.append(btn("Take off", "btn-ghost", () => takeOff(slot)));
+        line.append(info, btns);
+        return line;
+      }));
+    }
+    function after() { coins.update(); draw(); }
     function draw() {
       fig.innerHTML = PX.svg(cur, pose);
       poseBtns.forEach(b => b.setAttribute("aria-pressed", String(b.dataset.pose === pose)));
@@ -4312,13 +4484,20 @@ function openDressingRoom() {
       });
       grid.setAttribute("aria-labelledby", "dress-tab-" + tab);
       grid.replaceChildren(...DRESS_PANELS[tab].map(([kind, title, key]) => kind === "tiles" ? tilesFor(title, key) : swatchesFor(title, key)));
+      drawTryBar();
       saveBtn.disabled = !dirty();
+    }
+    // Saving with unowned gear on is refused with saveMyOutfit's message
+    async function save() {
+      if (unownedPieces(cur).length) guide.say(CRABBY_DRESS.locked);
+      const err = await saveMyOutfit(cur);
+      if (err) { toast(err); return false; }
+      saved = { ...cur };
+      return true;
     }
     const saveBtn = btn("Save", "", async () => {
       saveBtn.disabled = true;
-      const err = await saveMyOutfit(cur);
-      if (err) { toast(err); saveBtn.disabled = false; return; }
-      saved = { ...cur };
+      if (!await save()) { saveBtn.disabled = false; return; }
       Sound.play("pop");
       guide.say(CRABBY_DRESS.saved[Math.floor(Math.random() * CRABBY_DRESS.saved.length)]);
       draw();
@@ -4327,13 +4506,23 @@ function openDressingRoom() {
       btn("Randomize", "btn-ghost", () => {
         const pick = arr => arr[Math.floor(Math.random() * arr.length)];
         const next = { v: 2 };
-        Object.entries(OUTFIT_SLOTS).forEach(([slot, list]) => { next[slot] = pick(list.filter(it => owned(it.id))).id; });
+        Object.entries(OUTFIT_SLOTS).forEach(([slot, list]) => { next[slot] = pick(list.filter(it => outfitOwned(it.id))).id; });
         Object.entries(OUTFIT_COLOR_FIELDS).forEach(([k, list]) => { next[k] = pick(list); });
         cur = normalizeOutfit(next);
         draw();
       }),
       btn("Reset", "btn-ghost", () => { cur = { ...DEFAULT_OUTFIT }; draw(); }),
       saveBtn);
+
+    shopBtn.onclick = async () => {
+      const equip = await openProShop(cur);
+      await loadShop();
+      if (equip) {
+        cur[OUTFIT_PIECES[equip].slot] = equip;
+        guide.say(CRABBY_DRESS.equipped);
+      }
+      after();
+    };
 
     const finish = () => {
       wrap.remove();
@@ -4347,16 +4536,174 @@ function openDressingRoom() {
       const pick = await pickFrom("Save your new look?", [{ label: "Save", value: "save" }, { label: "Discard changes", value: "discard" }]);
       if (pick === "discard") return finish();
       if (pick !== "save") return;
-      const err = await saveMyOutfit(cur);
-      if (err) { toast(err); return; }
-      saved = { ...cur };
+      if (!await save()) return;
       toast(CRABBY_DRESS.saved[Math.floor(Math.random() * CRABBY_DRESS.saved.length)]);
       finish();
     }
-    const onKey = e => { if (e.key === "Escape" && !document.querySelector(".dress ~ .modal")) leave(); };
+    const onKey = e => { if (e.key === "Escape" && !document.querySelector(".dress ~ .modal, .pshop")) leave(); };
     back.onclick = leave;
     document.addEventListener("keydown", onKey);
     document.body.classList.add("dress-open");
+    document.body.append(wrap);
+    draw();
+    setTimeout(() => back.focus({ preventScroll: true }), 50);
+  });
+}
+
+// ---------- Pro Shop ----------
+// Crabby's counter, category tabs and item tiles, with a live preview on the player's own character.
+// Resolves with a piece id when the player taps Equip it, otherwise null.
+const SHOP_TABS = [["hat", "Hats"], ["shirt", "Shirts"], ["pants", "Pants"], ["shoes", "Shoes"], ["item", "Items"]];
+function openProShop(outfit) {
+  return new Promise(async resolve => {
+    const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+    const btn = (label, cls, fn) => { const b = mk("button", cls, label); b.type = "button"; b.onclick = fn; return b; };
+    await loadShop(true);
+    const base = { ...outfit };
+    let tab = "hat", pick = null, pose = "idle";
+    const opener = document.activeElement;
+
+    const wrap = mk("div", "dress pshop");
+    wrap.setAttribute("role", "dialog");
+    wrap.setAttribute("aria-modal", "true");
+    wrap.setAttribute("aria-label", "Pro Shop");
+    const top = mk("div", "dress-top");
+    const back = btn("Back", "btn-ghost dress-back", () => finish(null));
+    const coins = coinUI();
+    top.append(back, mk("h2", null, "Pro Shop"), coins.badge);
+
+    const lines = SHOP.signedIn ? CRABBY_SHOP.open : CRABBY_SHOP.guest;
+    const guide = crabbyDesk(SHOP.failed ? CRABBY_SHOP.closed : lines[Math.floor(Math.random() * lines.length)]);
+    guide.reserve([...CRABBY_SHOP.open, ...CRABBY_SHOP.guest, ...CRABBY_SHOP.bought, ...CRABBY_SHOP.browse,
+      CRABBY_SHOP.closed, CRABBY_SHOP.short, CRABBY_SHOP.getCoins, CRABBY_SHOP.owned]);
+    guide.classList.add("pshop-desk");
+
+    const stage = mk("div", "pshop-stage");
+    const fig = mk("div", "dress-fig pshop-fig");
+    fig.setAttribute("role", "img");
+    const seg = mk("div", "dress-seg");
+    seg.setAttribute("role", "group");
+    seg.setAttribute("aria-label", "Pose");
+    const poseBtns = [["idle", "Standing"], ["cheer", "Winner"]].map(([key, label]) => {
+      const b = btn(label, null, () => { pose = key; draw(); });
+      b.dataset.pose = key;
+      return b;
+    });
+    seg.append(...poseBtns);
+    const detail = mk("div", "pshop-detail");
+    detail.setAttribute("aria-live", "polite");
+    stage.append(fig, mk("div", "dress-pedestal pshop-pedestal"), seg, detail);
+
+    const tabs = mk("div", "dress-tabs pshop-tabs");
+    tabs.setAttribute("role", "tablist");
+    tabs.setAttribute("aria-label", "Categories");
+    const tabBtns = SHOP_TABS.map(([key, label]) => {
+      const b = btn(label, "dress-tab", () => { tab = key; pick = null; draw(); });
+      b.id = "pshop-tab-" + key;
+      b.setAttribute("role", "tab");
+      b.setAttribute("aria-controls", "pshop-grid");
+      return b;
+    });
+    tabs.append(...tabBtns);
+    tabs.onkeydown = e => {
+      if (!["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"].includes(e.key)) return;
+      e.preventDefault();
+      const i = SHOP_TABS.findIndex(([k]) => k === tab), d = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : -1;
+      tab = SHOP_TABS[(i + d + SHOP_TABS.length) % SHOP_TABS.length][0];
+      pick = null;
+      draw();
+      tabBtns.find(b => b.id === "pshop-tab-" + tab).focus();
+    };
+    const grid = mk("div", "dress-tiles pshop-grid");
+    grid.id = "pshop-grid";
+    grid.setAttribute("role", "tabpanel");
+
+    const shelf = mk("div", "pshop-shelf");
+    shelf.append(tabs, grid);
+    const layout = mk("div", "pshop-layout");
+    layout.append(stage, shelf);
+    const body = mk("div", "dress-body");
+    body.append(guide, coins.note, layout);
+    const scroller = mk("div", "dress-scroll");
+    scroller.append(body);
+    wrap.append(top, scroller);
+
+    const stock = () => shopSorted(OUTFIT_SLOTS[tab]).filter(it => it.rarity !== "bogey");
+    const wearing = () => pick ? { ...base, [OUTFIT_PIECES[pick].slot]: pick } : base;
+    function drawDetail() {
+      detail.replaceChildren();
+      if (!pick) { detail.append(mk("p", "pshop-hint", "Tap an item to try it on.")); return; }
+      const it = OUTFIT_PIECES[pick].piece, row = SHOP.prices[pick];
+      const head = mk("div", "pshop-name");
+      head.append(mk("b", null, it.name), mk("span", "dress-rarity r-" + it.rarity, RARITY_NAME[it.rarity]));
+      detail.append(head);
+      if (outfitOwned(pick)) {
+        detail.append(mk("span", "dress-owned", "Owned"), btn("Equip it", "pshop-equip", () => finish(pick)));
+        return;
+      }
+      if (!SHOP.ready || !row || !row.active) { detail.append(mk("p", "pshop-hint", SHOP.ready ? "Not for sale right now." : "The register's down. Try again soon.")); return; }
+      // The price shows on its own when there's no Buy button carrying it
+      const price = mk("span", "pshop-price");
+      price.innerHTML = COIN_SVG + "<b>" + row.price + "</b>";
+      price.setAttribute("aria-label", coinsText(row.price));
+      if (!SHOP.signedIn) { detail.append(price, btn("Create account to buy", "", () => buyPiece(pick).then(refresh))); return; }
+      if (SHOP.balance < row.price) {
+        detail.append(price, mk("p", "pshop-hint", needText(row.price - SHOP.balance)), btn("Get coins", "btn-ghost", () => guide.say(CRABBY_SHOP.getCoins)));
+        return;
+      }
+      const buy = btn("", "pshop-buy", async () => {
+        buy.disabled = true;
+        const id = pick;
+        if (await buyPiece(id)) guide.say(CRABBY_SHOP.bought[Math.floor(Math.random() * CRABBY_SHOP.bought.length)]);
+        refresh();
+        const eq = detail.querySelector(".pshop-equip");
+        if (eq) eq.focus();
+      });
+      buy.innerHTML = "Buy for " + COIN_SVG + "<b>" + row.price + "</b>";
+      buy.setAttribute("aria-label", "Buy the " + it.name + " for " + coinsText(row.price));
+      detail.append(buy);
+    }
+    function draw() {
+      fig.innerHTML = PX.svg(wearing(), pose);
+      fig.setAttribute("aria-label", pick ? "Your character wearing the " + OUTFIT_PIECES[pick].piece.name : "Your character");
+      poseBtns.forEach(b => b.setAttribute("aria-pressed", String(b.dataset.pose === pose)));
+      tabBtns.forEach((b, i) => {
+        const on = SHOP_TABS[i][0] === tab;
+        b.classList.toggle("on", on);
+        b.setAttribute("aria-selected", String(on));
+        b.tabIndex = on ? 0 : -1;
+      });
+      grid.setAttribute("aria-labelledby", "pshop-tab-" + tab);
+      grid.replaceChildren(...stock().map(it => {
+        const b = mk("button", "dress-tile shop-piece r-" + it.rarity + (pick === it.id ? " selected" : "") + (outfitOwned(it.id) ? "" : " locked"));
+        b.type = "button";
+        b.setAttribute("aria-pressed", String(pick === it.id));
+        b.setAttribute("aria-label", pieceLabel(it));
+        const s = mk("span", "dress-px");
+        s.innerHTML = PX.svg({ ...base, [tab]: it.id }, "idle");
+        b.append(s, mk("span", "dress-tile-name", it.name), mk("span", "dress-rarity r-" + it.rarity, RARITY_NAME[it.rarity]), pieceTag(it, mk));
+        b.onclick = () => {
+          pick = it.id;
+          const row = SHOP.prices[it.id];
+          if (outfitOwned(it.id)) guide.say(CRABBY_SHOP.owned);
+          else if (SHOP.signedIn && row && SHOP.balance < row.price) guide.say(CRABBY_SHOP.short);
+          else guide.say(CRABBY_SHOP.browse[Math.floor(Math.random() * CRABBY_SHOP.browse.length)]);
+          draw();
+        };
+        return b;
+      }));
+      drawDetail();
+    }
+    function refresh() { coins.update(); draw(); }
+
+    const finish = equip => {
+      wrap.remove();
+      document.removeEventListener("keydown", onKey);
+      if (opener && opener.isConnected) opener.focus({ preventScroll: true });
+      resolve(equip);
+    };
+    const onKey = e => { if (e.key === "Escape" && !document.querySelector(".pshop ~ .modal")) finish(null); };
+    document.addEventListener("keydown", onKey);
     document.body.append(wrap);
     draw();
     setTimeout(() => back.focus({ preventScroll: true }), 50);
@@ -4407,7 +4754,7 @@ function openDressingRoom() {
       swRow("Sound effects", () => Sound.sfxOn, v => { Sound.setSfx(v); if (v) Sound.play("pop"); }),
       swRow("Music", () => Sound.musicOn, v => Sound.setMusic(v)),
       swRow("Light mode", () => isLight(), v => setThemePref(v ? "light" : "dark")));
-    menu.append(mk("div", "pm-sep"), linkRow("Customize character", openDressingRoom), mk("div", "pm-sep"));
+    menu.append(mk("div", "pm-sep"));
     if (signed) menu.append(linkRow("Edit profile", openProfile), linkRow("Sign out", signOut));
     else menu.append(linkRow("Create account", createAccount), linkRow("Sign in", signIn));
   }
@@ -4476,3 +4823,129 @@ document.addEventListener("wheel", e => {
   const t = e.target;
   if (t && t.tagName === "INPUT" && t.type === "number" && document.activeElement === t) t.blur();
 }, { passive: true, capture: true });
+
+// ---------- Home: Play Now + Customize Character ----------
+(function homeButtons() {
+  const play = document.getElementById("play-now"), ch = document.getElementById("char-btn");
+  if (play) play.onclick = async () => {
+    const pick = await pickFrom("Let's play", [
+      { label: "Start a new round", value: "create-round" },
+      { label: "Join with a code", value: "join-code" }
+    ]);
+    if (pick) document.getElementById(pick).click();
+  };
+  if (ch) ch.onclick = () => openDressingRoom();
+})();
+
+// ---------- Coin menu ----------
+function coinMenu(anchor) {
+  document.querySelectorAll(".coin-menu").forEach(m => m.remove());
+  const r = anchor.getBoundingClientRect();
+  const menu = document.createElement("div");
+  menu.className = "coin-menu";
+  menu.style.top = Math.round(r.bottom + 6) + "px";
+  menu.style.right = Math.max(10, Math.round(innerWidth - r.right)) + "px";
+  const item = (label, fn) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "pm-link"; b.textContent = label;
+    b.onclick = e => { e.stopPropagation(); menu.remove(); fn(); };
+    return b;
+  };
+  menu.append(item("Buy coins", buyCoinsScreen), item("How to earn", howToEarn));
+  document.body.append(menu);
+  const off = e => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener("click", off, true); } };
+  setTimeout(() => document.addEventListener("click", off, true), 0);
+}
+
+function coinModal(title) {
+  const wrap = document.createElement("div");
+  wrap.className = "modal coin-modal";
+  const panel = document.createElement("div");
+  panel.className = "modal-panel";
+  const h = document.createElement("h2");
+  h.textContent = title;
+  panel.append(h);
+  const done = document.createElement("button");
+  done.type = "button"; done.textContent = "Done";
+  done.style.cssText = "width:100%;margin-top:16px";
+  done.onclick = () => wrap.remove();
+  wrap.onclick = e => { if (e.target === wrap) wrap.remove(); };
+  wrap.append(panel);
+  return { wrap, panel, done };
+}
+
+function buyCoinsScreen() {
+  const { wrap, panel, done } = coinModal("Buy coins");
+  const bal = document.createElement("p");
+  bal.className = "waiting";
+  bal.innerHTML = "You have " + COIN_SVG + " <b>" + (SHOP.signedIn ? SHOP.balance : 0) + "</b>";
+  const grid = document.createElement("div");
+  grid.className = "coin-bundles";
+  [[10, 1, 0, ""], [55, 5, 5, ""], [120, 10, 20, "Best value"]].forEach(([n, usd, bonus, tag]) => {
+    const card = document.createElement("div");
+    card.className = "coin-bundle" + (tag ? " best" : "");
+    card.innerHTML = (tag ? '<span class="cb-tag">' + tag + "</span>" : "") +
+      '<div class="cb-coins">' + COIN_SVG.replace('width="16" height="16"', 'width="34" height="34"') + "<b>" + n + "</b></div>" +
+      '<div class="cb-sub">' + (bonus ? "Includes " + bonus + " bonus" : "coins") + "</div>";
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = "$" + usd;
+    b.onclick = () => toast("Coming soon. Payments aren't set up yet.");
+    card.append(b);
+    grid.append(card);
+  });
+  const note = document.createElement("p");
+  note.className = "coin-note";
+  note.textContent = SHOP.signedIn ? "Coins are spent in the Pro Shop on new gear for your character." : "Create an account to earn and spend coins.";
+  panel.append(bal, grid, note, done);
+  document.body.append(wrap);
+}
+
+function howToEarn() {
+  const { wrap, panel, done } = coinModal("How to earn coins");
+  const list = document.createElement("div");
+  list.className = "coin-ways";
+  [["Play a round", "Finish all 18 holes while signed in and get 1 coin. Max 1 coin a day from rounds."],
+   ["Try a new game mode", "The first time you finish a round of each game mode (except Stroke Play), get a 10 coin bonus on top."],
+   ["Buy coins", "Grab a coin bundle any time from Buy coins."]].forEach(([t, d]) => {
+    const row = document.createElement("div");
+    row.className = "coin-way";
+    row.innerHTML = COIN_SVG.replace('width="16" height="16"', 'width="26" height="26"');
+    const txt = document.createElement("div");
+    const b = document.createElement("b"); b.textContent = t;
+    const p = document.createElement("p"); p.textContent = d;
+    txt.append(b, p);
+    row.append(txt);
+    list.append(row);
+  });
+  const left = document.createElement("p");
+  left.className = "coin-note";
+  left.textContent = SHOP.signedIn ? "Checking which bonuses you have left..." : "Sign in to earn coins.";
+  if (SHOP.signedIn) db.from("coin_ledger").select("reason").like("reason", "First time playing %").then(({ data }) => {
+    const done = new Set((data || []).map(r => r.reason.replace("First time playing ", "")));
+    const todo = Object.keys(MODES).filter(k => k !== "stroke" && !done.has(k)).map(k => MODES[k].name);
+    left.textContent = todo.length ? "Bonuses left: " + todo.join(", ") + "." : "You've collected every game mode bonus. Legend.";
+  });
+  list.append(left);
+  const buy = document.createElement("button");
+  buy.type = "button"; buy.className = "btn-ghost"; buy.textContent = "Buy coins";
+  buy.style.cssText = "width:100%;margin-top:12px";
+  buy.onclick = () => { wrap.remove(); buyCoinsScreen(); };
+  panel.append(list, buy, done);
+  document.body.append(wrap);
+}
+
+// Guests can only play Stroke Play. Every other mode needs an account.
+function guestModeLock() {
+  if (window.__signedIn) return {};
+  return Object.fromEntries(Object.keys(MODES).filter(k => k !== "stroke").map(k => [k, "Sign in to play"]));
+}
+
+// Guests tapped something that needs an account
+async function needAccount(what) {
+  const pick = await pickFrom("Create a free account to use " + what, [
+    { label: "Create account", value: "create" },
+    { label: "Sign in", value: "signin" }
+  ]);
+  if (pick === "create") await createAccount();
+  if (pick === "signin" && await signIn()) location.reload();
+}

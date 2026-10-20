@@ -86,11 +86,12 @@ function crabbyEl(size = 120) {
 
 const CRABBY_LINES = {
   welcome: "Welcome to the course, I'm Crabby. Nice shoes. Your mom pick 'em out? Name your round, type your name, pick a color, then hit Tee it up.",
+  courseGuest: "Sorry Bud, this feature is for signed-in users only.",
   course: "What course are you on? Search for it, or punch in the pars yourself. I'm not a mind reader.",
   setup: "House rules time. One phone or many? Handicaps? Money on the line? Mulligans for the weak? Choose wisely.",
   confirm: "Check the card. If a par is wrong, now is the time. Once balls are flying I am not hearing it.",
   size: "How many of you are playing? Tap a number. Counting's the easy part, trust me.",
-  mode: "Pick a game. Tap the little i if you need the rules explained like you're five.",
+  mode: "Pick a game. Tap the {i} if you need the rules explained like you're five.",
   modePicked: "Fine. Now hit Next before I change my mind.",
   waitingPlayers: "Send your buddies that link, or turn on One Device Mode and type their names in yourself. I'll wait. I'm used to waiting on you people.",
   tooMany: "Too many people for what you picked. Remove somebody or go back and change the count. Math is hard, I know.",
@@ -103,13 +104,41 @@ const CRABBY_LINES = {
 
 // Dressing room
 const CRABBY_DRESS = {
-  open: "Welcome to the pro shop. Everything's free, which is about what your game is worth. Pick a tab, try stuff on, hit Save.",
+  open: "Welcome to the dressing room. Here's everything you own. Want new gear? Tap the Pro Shop button below. Try stuff on, hit Save.",
+  tryOn: "Looks good on you. Shame you don't own it. Buy it or take it off before you save.",
+  locked: "Nice try. You can't save gear you haven't paid for. This isn't a five-finger discount shop.",
+  equipped: "Fresh off the rack. Hit Save if you want to keep it on.",
   saved: [
     "Saved. You look like a guy who three-putts with confidence.",
     "Look at you. Dressed like a pro, swings like a lawn sprinkler.",
     "Bold choice. The course won't care, but your buddies will talk.",
     "Saved. Clothes don't lower your score, but at least you'll lose in style.",
   ],
+};
+
+// Pro Shop counter
+const CRABBY_SHOP = {
+  open: [
+    "Welcome to my pro shop. Look all you want. Touching costs coins.",
+    "Back again? Buying something this time, or just fogging up the glass?",
+    "Everything's priced to move. Unlike your backswing.",
+  ],
+  guest: ["Guests can window shop. Create an account to earn and spend coins. I'll still be grumpy about it."],
+  browse: [
+    "Ooh, that one. Very you. If 'you' means overdressed.",
+    "Hand-picked by yours truly. Okay, I found it in the back.",
+    "Try it on. Mirror's free. Everything else isn't.",
+    "That's a bold look for someone who can't hit the fairway.",
+  ],
+  short: "You're short on coins. I don't do layaway, pal.",
+  getCoins: "No coins? The Parcade crew hands them out for now. Win something and maybe they'll notice you.",
+  owned: "You already own that. Equip it or quit admiring it.",
+  bought: [
+    "Pleasure doing business. No refunds, no regrets.",
+    "Sold. Now go make it look like you can play.",
+    "Ka-ching. Best shot you've hit all year.",
+  ],
+  closed: "Register's jammed. Come back in a minute and try again.",
 };
 
 function crabbyDesk(line) {
@@ -134,15 +163,23 @@ function crabbyDesk(line) {
   const textEl = document.createElement("span");
   textEl.className = "cd-text";
   bubble.append(textEl);
+  const setText = (el, text) => {
+    el.dataset.raw = text;
+    el.textContent = "";
+    String(text).split("{i}").forEach((part, k) => {
+      if (k) { const ic = document.createElement("span"); ic.className = "cd-i"; ic.textContent = "i"; ic.setAttribute("aria-label", "info button"); el.append(ic); }
+      el.append(part);
+    });
+  };
   let reserveLines = null, measured = false, tries = 0;
   const measure = () => {
     if (!reserveLines || measured) return;
     if (!wrap.isConnected || !textEl.offsetWidth) { if (++tries < 300) requestAnimationFrame(measure); return; }
-    const cur = textEl.textContent;
+    const cur = textEl.dataset.raw || "";
     let max = 0;
     textEl.style.minHeight = "";
-    reserveLines.forEach(l => { textEl.textContent = l; max = Math.max(max, textEl.offsetHeight); });
-    textEl.textContent = cur;
+    reserveLines.forEach(l => { setText(textEl, l); max = Math.max(max, textEl.offsetHeight); });
+    setText(textEl, cur);
     textEl.style.minHeight = max + "px";
     measured = true;
   };
@@ -150,8 +187,8 @@ function crabbyDesk(line) {
   window.addEventListener("resize", () => { if (reserveLines) { measured = false; tries = 0; measure(); } });
   wrap.append(stage, bubble);
   wrap.say = (text) => {
-    if (!text || textEl.textContent === text) return;
-    textEl.textContent = text;
+    if (!text || textEl.dataset.raw === text) return;
+    setText(textEl, text);
     const secs = typeof Sound !== "undefined" ? Sound.grumble(text.length) : 0;
     if (secs && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
       fig.style.transformOrigin = "50% 70%";

@@ -209,6 +209,20 @@
     .mini.co.selected, .mini.co.selected:hover { background: var(--glow); color: var(--bg); }
     .stick { position: relative; display: inline-block; vertical-align: middle; margin-right: 6px; flex: none; line-height: 0; }
     .stick svg, .dress-fig svg, .dress-px svg { display: block; width: 100%; height: 100%; shape-rendering: crispEdges; }
+    /* Animated Pro Shop pixels (sprites.js): light-up soles, laser shaft, rocket exhaust, sequin sparkle */
+    .px .px-blink, .px .px-blink2 { animation: px-blink 1.6s steps(1, end) infinite; }
+    .px .px-blink2 { animation-delay: -0.8s; }
+    @keyframes px-blink { 50% { fill: #2A2F45; } }
+    .px .px-glow { animation: px-glow 1.8s ease-in-out infinite alternate; }
+    @keyframes px-glow { to { fill: #D6FAFF; } }
+    .px .px-flame { animation: px-flame 0.5s steps(1, end) infinite; }
+    .px .px-flame2 { animation: px-flame2 0.5s steps(1, end) infinite; }
+    @keyframes px-flame { 50% { fill: #FF7A1A; } }
+    @keyframes px-flame2 { 50% { fill: #FFD84D; } }
+    .px .px-twinkle, .px .px-twinkle2 { animation: px-twinkle 2.4s steps(1, end) infinite; }
+    .px .px-twinkle2 { animation-delay: -1.2s; }
+    @keyframes px-twinkle { 50% { fill: #FFD84D; } }
+    @media (prefers-reduced-motion: reduce) { .px rect[class] { animation: none !important; } }
     .field-label { display: block; font-size: 0.9rem; color: var(--muted); margin-bottom: 6px; }
     .swatches { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
     .swatch { padding: 6px; background: var(--bg); clip-path: none; border-radius: 10px; }
@@ -802,17 +816,75 @@
       clip-path: none; border-radius: 12px; box-shadow: inset 0 0 0 1px rgba(var(--muted-rgb),0.25); }
     .dress-tile:hover { background: rgba(var(--blue-rgb),0.2); }
     .dress-tile.selected, .dress-tile.selected:hover { background: rgba(var(--glow-rgb),0.12); box-shadow: inset 0 0 0 2px var(--glow); }
-    .dress-tile.locked { opacity: 0.6; }
+    .dress-tile.locked .dress-px { opacity: 0.7; }
     .dress-tile-name { line-height: 1.2; }
     .dress-rarity { position: absolute; top: 5px; right: 5px; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
       padding: 2px 6px; border-radius: 999px; }
-    .dress-rarity.r-common { background: rgba(var(--muted-rgb),0.18); color: var(--muted); }
-    .dress-rarity.r-rare { background: rgba(var(--blue-rgb),0.2); color: var(--glow); }
-    .dress-rarity.r-epic { background: rgba(155,108,255,0.22); color: #B99BFF; }
-    .dress-rarity.r-legendary { background: linear-gradient(135deg, #FFE680, #FFC21A); color: #3A2A00; box-shadow: 0 0 8px rgba(var(--gold-rgb),0.6); }
-    :root[data-theme="light"] .dress-rarity.r-epic { background: rgba(110,63,192,0.14); color: #5E33B0; }
-    :root[data-theme="light"] .dress-rarity.r-legendary { background: linear-gradient(135deg, #F5C842, #D9A00F); color: #2E2000; box-shadow: none; }
-    .dress-lock { font-size: 0.75rem; color: var(--muted); }
+    /* Rarity tiers: --rc is the tier color for tile borders and badge text */
+    .r-bogey { --rc: var(--muted); --rc-rgb: var(--muted-rgb); }
+    .r-par { --rc: #6FE08F; --rc-rgb: 60,203,106; }
+    .r-birdie { --rc: #7FB0FF; --rc-rgb: 77,139,255; }
+    .r-eagle { --rc: #C4A6FF; --rc-rgb: 155,108,255; }
+    .r-albatross { --rc: #FFD84D; --rc-rgb: 255,200,40; }
+    :root[data-theme="light"] .r-par { --rc: #1D7A2E; --rc-rgb: 29,122,46; }
+    :root[data-theme="light"] .r-birdie { --rc: #1F57D6; --rc-rgb: 31,87,214; }
+    :root[data-theme="light"] .r-eagle { --rc: #5E33B0; --rc-rgb: 94,51,176; }
+    :root[data-theme="light"] .r-albatross { --rc: #8A6400; --rc-rgb: 190,140,0; }
+    .dress-rarity { background: rgba(var(--rc-rgb),0.2); color: var(--rc); }
+    .dress-rarity.r-albatross { background: linear-gradient(135deg, #FFE680, #FFC21A); color: #3A2A00; box-shadow: 0 0 8px rgba(var(--gold-rgb),0.6); }
+    :root[data-theme="light"] .dress-rarity.r-albatross { background: linear-gradient(135deg, #F5C842, #D9A00F); color: #2E2000; box-shadow: none; }
+    .dress-tile.shop-piece { box-shadow: inset 0 0 0 2px rgba(var(--rc-rgb),0.6); }
+    .dress-tile.shop-piece.r-albatross { box-shadow: inset 0 0 0 2px rgba(var(--rc-rgb),0.75), 0 0 10px rgba(var(--rc-rgb),0.25); }
+    .dress-tile.shop-piece.selected, .dress-tile.shop-piece.selected:hover { box-shadow: inset 0 0 0 2px var(--glow), inset 0 0 0 4px rgba(var(--rc-rgb),0.6); }
+    .dress-lock, .dress-owned { display: inline-flex; align-items: center; gap: 3px; font-size: 0.75rem; color: var(--muted); }
+    .dress-lock b { color: var(--strong); }
+    .dress-owned { font-weight: 700; color: var(--good); }
+    .coin-ic { flex: none; width: 1em; height: 1em; vertical-align: -0.12em; }
+    .coin-badge { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 6px 12px; border-radius: 999px;
+      background: rgba(var(--gold-rgb),0.12); box-shadow: inset 0 0 0 1px rgba(var(--gold-rgb),0.45); font-size: 1rem; }
+    .coin-badge b { color: var(--strong); font-variant-numeric: tabular-nums; }
+    .coin-badge[hidden], .coin-note[hidden], .dress-try[hidden] { display: none; }
+    .coin-note { margin: 8px 0 0; padding: 8px 12px; border-radius: 10px; font-size: 0.9rem; color: var(--muted); background: var(--panel);
+      box-shadow: inset 0 0 0 1px rgba(var(--gold-rgb),0.3); }
+    .dress-shop-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; min-height: 44px; padding: 10px 20px;
+      background: var(--panel); color: var(--strong); box-shadow: inset 0 0 0 2px rgba(var(--gold-rgb),0.6); }
+    .dress-shop-btn:hover { background: rgba(var(--gold-rgb),0.15); }
+    .dress-shop-btn .coin-ic { width: 18px; height: 18px; }
+    /* Try-on bar: above the action bar while an unowned piece is on */
+    .dress-try { flex: none; width: 100%; max-width: 932px; margin: 0 auto; padding: 8px 16px 0; display: flex; flex-direction: column; gap: 8px; background: var(--bg); }
+    .dress-try-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 10px 12px; border-radius: 12px;
+      background: var(--panel); box-shadow: inset 0 0 0 1px rgba(var(--gold-rgb),0.4); text-align: left; }
+    .dress-try-info { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .dress-try-info .dress-rarity, .pshop-name .dress-rarity { position: static; }
+    .dress-try-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .dress-try-btns button { min-height: 40px; padding: 8px 14px; }
+    .dress-try-note { font-size: 0.85rem; color: var(--muted); }
+    .dress-buy, .pshop-buy { display: inline-flex; align-items: center; gap: 5px; }
+    /* Pro Shop */
+    .pshop { z-index: 10; } /* same layer as .dress and .modal: later in the DOM wins, so popups stay on top */
+    .pshop .crabby-desk { margin: 12px 0 4px; }
+    .pshop-layout { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+    .pshop-stage { position: relative; display: flex; flex-direction: column; align-items: center; padding: 6px 0 4px; }
+    .pshop-fig { width: min(150px, 40vw); animation: none; }
+    .pshop-pedestal { width: 170px; }
+    .pshop-detail { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 12px; margin-top: 12px; min-height: 48px; width: 100%; }
+    .pshop-detail button { min-height: 44px; padding: 10px 18px; }
+    .pshop-name { display: flex; align-items: center; gap: 8px; width: 100%; justify-content: center; }
+    .pshop-name b { font-size: 1.05rem; color: var(--strong); }
+    .pshop-price { display: inline-flex; align-items: center; gap: 5px; font-size: 1.05rem; }
+    .pshop-price b { color: var(--strong); }
+    .pshop-hint { margin: 0; font-size: 0.9rem; color: var(--muted); }
+    .pshop-tabs { padding-top: 4px; gap: 6px; }
+    .pshop-tabs .dress-tab { flex: 1 1 0; min-width: 0; padding: 10px 4px; }
+    @media (max-width: 420px) { .pshop-tabs .dress-tab { font-size: 0.9rem; } }
+    .pshop-grid { margin-top: 4px; }
+    @media (min-width: 720px) {
+      .pshop-layout { flex-direction: row; align-items: flex-start; gap: 28px; }
+      .pshop-stage { position: sticky; top: 0; flex: none; width: 260px; }
+      .pshop-shelf { flex: 1; min-width: 0; }
+      .pshop .dress-tabs.pshop-tabs { display: flex; }
+      .pshop .pshop-tabs .dress-tab { min-width: 0; }
+    }
     .dress-actions { flex: none; display: flex; gap: 10px; background: var(--bg); box-shadow: 0 -1px 0 rgba(var(--muted-rgb),0.2);
       padding-top: 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
     .dress-actions button { flex: 1; min-height: 44px; padding: 12px 8px; }
@@ -918,6 +990,30 @@
     .ps-pts { font-weight: 700; color: var(--glow); white-space: nowrap; }
     .ps-math { font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
     .ps-run { margin-top: 2px; }
+    .coin-tap { cursor: pointer; }
+    .coin-tap:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; border-radius: 8px; }
+    .coin-menu { position: fixed; z-index: 3000; min-width: 170px; padding: 6px; border-radius: 12px; background: var(--panel);
+      border: 1px solid rgba(92,225,255,0.35); box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
+    .modal.coin-modal { z-index: 3001; }
+    .coin-bundles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0; }
+    .coin-bundle { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 18px 8px 10px;
+      background: var(--bg); border: 1px solid rgba(92,225,255,0.3); border-radius: 12px; text-align: center; }
+    .coin-bundle.best { border-color: #FFD84D; box-shadow: 0 0 12px rgba(255,216,77,0.25); }
+    .cb-tag { position: absolute; top: -9px; left: 50%; transform: translateX(-50%); background: #FFD84D; color: #1A1C26;
+      font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+    .cb-coins { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .cb-coins b { font-family: "Bungee", sans-serif; font-size: 1.3rem; }
+    .cb-sub { font-size: 0.75rem; color: var(--muted); min-height: 2em; }
+    .coin-bundle button { width: 100%; padding: 10px 0; }
+    .coin-ways { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; }
+    .coin-way { display: flex; gap: 12px; align-items: flex-start; }
+    .coin-way p { margin: 2px 0 0; color: var(--muted); font-size: 0.92rem; }
+    @media (max-width: 380px) { .coin-bundles { grid-template-columns: minmax(0, 1fr); } }
+    .coin-bundle button { margin-top: auto; }
+    .locked-feature { opacity: 0.55; }
+    .switch.locked-feature::before, .btn-ghost.locked-feature::before { content: "\1F512  "; }
+    .cd-i { display: inline-grid; place-items: center; width: 1.25em; height: 1.25em; margin: 0 0.15em; vertical-align: -0.2em;
+      border: 2px solid var(--glow); border-radius: 50%; color: var(--glow); font-weight: 700; font-size: 0.85em; line-height: 1; }
   </style>
   <meta name="description" content="Party games, side bets, seasons and tournaments for your golf crew.">
   <meta property="og:type" content="website">
@@ -949,8 +1045,12 @@
   </svg></h1>
   <p>Golf is hard, let's make it harder</p>
   <div class="home-actions home-only">
-    <button id="create-round">Start a new round</button>
-    <button id="join-code" class="btn-ghost">Join with a code</button>
+    <button id="play-now" type="button">Play Now</button>
+    <div id="play-choices" hidden>
+      <button id="create-round">Start a new round</button>
+      <button id="join-code" class="btn-ghost">Join with a code</button>
+    </div>
+    <button id="char-btn" type="button" class="btn-ghost">Customize Character</button>
     <button id="seasons-btn" class="btn-ghost">Seasons</button>
     <button id="tournaments-btn" class="btn-ghost">Tournaments</button>
     <button id="recent-btn" class="btn-ghost">Recent rounds</button>

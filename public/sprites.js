@@ -39,9 +39,18 @@ const PX = (() => {
              drop: 1, cut: [[4, 10, 1, 1], [11, 10, 1, 1]] },
   };
 
-  const R = (x, y, w, h, t) => ({ x, y, w, h, t });
+  // cls: an optional CSS class for animated pixels (px-blink, px-glow, px-flame, px-twinkle; styled in index.html)
+  const R = (x, y, w, h, t, cls) => ({ x, y, w, h, t, cls });
   Object.values(POSES).forEach(p => ["arms", "hands", "shoulders", "short", "front", "cut"].forEach(k => { if (p[k]) p[k] = p[k].map(a => R(...a)); }));
-  const DOTS = (pts, t) => pts.map(([x, y]) => R(x, y, 1, 1, t));
+  const DOTS = (pts, t, cls) => pts.map(([x, y]) => R(x, y, 1, 1, t, cls));
+  // One row at the hand end of each arm (top for raised arms), for sleeve cuffs
+  const cuffs = (p, t) => p.arms.map(r => R(r.x, r.y < 10 ? r.y : r.y + r.h - 1, r.w, 1, t));
+
+  // Rarity tiers, cheapest first. Bogey gear is free and everyone owns it. Prices for the rest live only in the
+  // shop_items table (supabase/pro-shop.sql).
+  const RARITY = [{ id: "bogey", name: "Bogey" }, { id: "par", name: "Par" }, { id: "birdie", name: "Birdie" },
+    { id: "eagle", name: "Eagle" }, { id: "albatross", name: "Albatross" }];
+  const SPARK = "#FFF6C2", NEON_PINK = "#FF3DF2", NEON_MINT = "#39FFB0", LASER = "#5CE1FF", CHICKEN = "#FFE14D", BEAK = "#FF9F43";
 
   // ---------- Wardrobe ----------
   const HAIR = [
@@ -63,59 +72,131 @@ const PX = (() => {
   const shortSleeves = p => p.short.map(r => ({ ...r, t: "t" }));
   const longSleeves = p => p.arms.map(r => ({ ...r, t: "t" })).concat(p.shoulders.map(r => ({ ...r, t: "t" })));
   const SHIRTS = [
-    { id: "tee", name: "Tee", rarity: "common", draw: p => [R(4, 10, 8, 6, "t"), R(11, 10, 1, 6, "T"), ...shortSleeves(p), R(7, 10, 2, 1, "S")] },
-    { id: "polo", name: "Polo", rarity: "common", draw: p => [R(4, 10, 8, 6, "t"), R(11, 10, 1, 6, "T"), ...shortSleeves(p), R(5, 10, 2, 1, "a"), R(9, 10, 2, 1, "a"), R(7, 10, 2, 2, "T"), R(7, 10, 2, 1, "S")] },
-    { id: "stripe", name: "Striped", rarity: "common", draw: p => [R(4, 10, 8, 6, "t"), ...shortSleeves(p), R(4, 11, 8, 1, "a"), R(4, 13, 8, 1, "a"), R(4, 15, 8, 1, "a"), R(7, 10, 2, 1, "S")] },
-    { id: "hoodie", name: "Hoodie", rarity: "rare", draw: p => [R(4, 10, 8, 6, "t"), R(11, 10, 1, 6, "T"), ...longSleeves(p), R(5, 9, 6, 1, "T"), R(7, 9, 2, 1, "S"), R(5, 13, 6, 2, "T"),
+    { id: "tee", name: "Tee", rarity: "bogey", draw: p => [R(4, 10, 8, 6, "t"), R(11, 10, 1, 6, "T"), ...shortSleeves(p), R(7, 10, 2, 1, "S")] },
+    { id: "polo", name: "Polo", rarity: "bogey", draw: p => [R(4, 10, 8, 6, "t"), R(11, 10, 1, 6, "T"), ...shortSleeves(p), R(5, 10, 2, 1, "a"), R(9, 10, 2, 1, "a"), R(7, 10, 2, 2, "T"), R(7, 10, 2, 1, "S")] },
+    { id: "stripe", name: "Striped", rarity: "bogey", draw: p => [R(4, 10, 8, 6, "t"), ...shortSleeves(p), R(4, 11, 8, 1, "a"), R(4, 13, 8, 1, "a"), R(4, 15, 8, 1, "a"), R(7, 10, 2, 1, "S")] },
+    { id: "hoodie", name: "Hoodie", rarity: "bogey", draw: p => [R(4, 10, 8, 6, "t"), R(11, 10, 1, 6, "T"), ...longSleeves(p), R(5, 9, 6, 1, "T"), R(7, 9, 2, 1, "S"), R(5, 13, 6, 2, "T"),
         ...DOTS([[6, 10], [6, 11], [9, 10], [9, 11]], "W")] },
-    { id: "argyle", name: "Argyle vest", rarity: "rare", draw: p => {
+    { id: "argyle", name: "Argyle vest", rarity: "bogey", draw: p => {
         const out = [R(4, 10, 8, 6, "t"), ...p.short.map(r => ({ ...r, t: "W" })), R(6, 10, 4, 1, "W"), R(7, 10, 2, 1, "S")];
         for (let y = 11; y <= 15; y++) for (let x = 4; x <= 11; x++) if ((x + y) % 4 === 0 || (x - y + 40) % 4 === 0) out.push(R(x, y, 1, 1, "a"));
         return out; } },
-    { id: "hawaii", name: "Hawaiian", rarity: "epic", draw: p => [R(4, 10, 8, 6, "t"), ...shortSleeves(p), R(6, 10, 4, 1, "S"), R(7, 11, 2, 1, "S"),
+    { id: "hawaii", name: "Hawaiian", rarity: "bogey", draw: p => [R(4, 10, 8, 6, "t"), ...shortSleeves(p), R(6, 10, 4, 1, "S"), R(7, 11, 2, 1, "S"),
         ...DOTS([[5, 11], [10, 12], [6, 14], [9, 15], [4, 13], [11, 14]], "y"), ...DOTS([[8, 13], [5, 15], [10, 10]], "W")] },
+    // Pro Shop
+    { id: "rugby", name: "Rugby stripe", rarity: "par", draw: p => [R(4, 10, 8, 6, "t"), ...longSleeves(p), ...cuffs(p, "W"), R(4, 12, 8, 2, "a"), R(4, 15, 8, 1, "a"),
+        R(5, 10, 2, 1, "W"), R(9, 10, 2, 1, "W"), R(7, 10, 2, 1, "S"), R(7, 11, 2, 1, "W"), R(8, 11, 1, 1, "k")] },
+    { id: "bowling", name: "Bowling shirt", rarity: "birdie", draw: p => [R(4, 10, 8, 6, "t"), R(11, 10, 1, 6, "T"), ...shortSleeves(p),
+        R(5, 11, 1, 5, "a"), R(10, 11, 1, 5, "a"), R(4, 10, 3, 1, "W"), R(9, 10, 3, 1, "W"), R(7, 10, 2, 1, "S"), R(7, 11, 1, 1, "S"),
+        ...DOTS([[8, 12], [8, 14]], "W"), R(6, 12, 1, 2, "W"), R(6, 12, 1, 1, "r")] },
+    { id: "windbreaker", name: "Neon windbreaker", rarity: "eagle", draw: p => [R(4, 10, 8, 6, "t"), R(11, 10, 1, 6, "T"), ...longSleeves(p), ...cuffs(p, NEON_PINK),
+        R(5, 9, 6, 1, "T"), R(7, 9, 2, 1, "S"), R(7, 10, 1, 4, "x"),
+        ...DOTS([[4, 11], [5, 12], [6, 13], [7, 14], [8, 14], [9, 13], [10, 12], [11, 11]], NEON_PINK),
+        ...DOTS([[4, 12], [5, 13], [6, 14], [7, 15], [8, 15], [9, 14], [10, 13], [11, 12]], NEON_MINT)] },
+    // Lapels and bow tie take the shirt color, so the round color still shows
+    { id: "tux", name: "Gold sequin tux", rarity: "albatross", draw: p => [R(4, 10, 8, 6, "g"), R(11, 10, 1, 6, "G"),
+        ...p.arms.map(r => ({ ...r, t: "g" })), ...p.shoulders.map(r => ({ ...r, t: "g" })), ...cuffs(p, "W"),
+        R(7, 11, 2, 5, "W"), R(5, 11, 2, 1, "t"), R(6, 12, 1, 2, "t"), R(9, 11, 2, 1, "t"), R(9, 12, 1, 2, "t"),
+        R(6, 10, 4, 1, "t"), R(7, 10, 2, 1, "T"), ...DOTS([[8, 12], [8, 14]], "k"),
+        ...DOTS([[4, 11], [10, 14], [5, 15]], SPARK, "px-twinkle"), ...DOTS([[11, 12], [4, 14], [10, 15]], SPARK, "px-twinkle2")] },
   ];
   const PANTS = [
-    { id: "slacks", name: "Slacks", rarity: "common", draw: () => [R(4, 16, 8, 1, "k"), R(7, 16, 2, 1, "x"), R(4, 17, 3, 5, "p"), R(9, 17, 3, 5, "p"), R(7, 17, 2, 1, "p"), R(6, 17, 1, 5, "P"), R(11, 17, 1, 5, "P")] },
-    { id: "shorts", name: "Shorts", rarity: "common", draw: () => [R(4, 16, 8, 1, "k"), R(7, 16, 2, 1, "x"), R(4, 17, 3, 2, "p"), R(9, 17, 3, 2, "p"), R(7, 17, 2, 1, "p"), R(6, 17, 1, 2, "P"), R(11, 17, 1, 2, "P")] },
-    { id: "joggers", name: "Joggers", rarity: "common", draw: () => [R(4, 16, 8, 1, "P"), R(4, 17, 3, 5, "p"), R(9, 17, 3, 5, "p"), R(7, 17, 2, 1, "p"), R(4, 21, 3, 1, "P"), R(9, 21, 3, 1, "P"), ...DOTS([[7, 17], [8, 17]], "W")] },
-    { id: "plaid", name: "Plaid", rarity: "rare", draw: () => [R(4, 16, 8, 1, "k"), R(7, 16, 2, 1, "x"), R(4, 17, 3, 5, "p"), R(9, 17, 3, 5, "p"), R(7, 17, 2, 1, "p"),
+    { id: "slacks", name: "Slacks", rarity: "bogey", draw: () => [R(4, 16, 8, 1, "k"), R(7, 16, 2, 1, "x"), R(4, 17, 3, 5, "p"), R(9, 17, 3, 5, "p"), R(7, 17, 2, 1, "p"), R(6, 17, 1, 5, "P"), R(11, 17, 1, 5, "P")] },
+    { id: "shorts", name: "Shorts", rarity: "bogey", draw: () => [R(4, 16, 8, 1, "k"), R(7, 16, 2, 1, "x"), R(4, 17, 3, 2, "p"), R(9, 17, 3, 2, "p"), R(7, 17, 2, 1, "p"), R(6, 17, 1, 2, "P"), R(11, 17, 1, 2, "P")] },
+    { id: "joggers", name: "Joggers", rarity: "bogey", draw: () => [R(4, 16, 8, 1, "P"), R(4, 17, 3, 5, "p"), R(9, 17, 3, 5, "p"), R(7, 17, 2, 1, "p"), R(4, 21, 3, 1, "P"), R(9, 21, 3, 1, "P"), ...DOTS([[7, 17], [8, 17]], "W")] },
+    { id: "plaid", name: "Plaid", rarity: "bogey", draw: () => [R(4, 16, 8, 1, "k"), R(7, 16, 2, 1, "x"), R(4, 17, 3, 5, "p"), R(9, 17, 3, 5, "p"), R(7, 17, 2, 1, "p"),
         R(4, 18, 3, 1, "q"), R(9, 18, 3, 1, "q"), R(4, 20, 3, 1, "q"), R(9, 20, 3, 1, "q"), R(5, 17, 1, 5, "q"), R(10, 17, 1, 5, "q")] },
+    // Pro Shop
+    { id: "cargo", name: "Cargo shorts", rarity: "par", draw: () => [R(4, 16, 8, 1, "k"), R(7, 16, 2, 1, "x"), R(4, 17, 3, 3, "p"), R(9, 17, 3, 3, "p"), R(7, 17, 2, 1, "p"),
+        R(6, 17, 1, 3, "P"), R(11, 17, 1, 3, "P"), R(4, 18, 2, 2, "P"), R(10, 18, 2, 2, "P"), R(4, 18, 2, 1, "q"), R(10, 18, 2, 1, "q")] },
+    { id: "pastel", name: "Pastel plaid", rarity: "birdie", draw: () => [R(4, 16, 8, 1, "W"), R(7, 16, 2, 1, "y"), R(4, 17, 3, 5, "v"), R(9, 17, 3, 5, "v"), R(7, 17, 2, 1, "v"),
+        R(5, 17, 1, 5, "W"), R(10, 17, 1, 5, "W"), R(4, 18, 3, 1, "V"), R(9, 18, 3, 1, "V"), R(4, 20, 3, 1, "V"), R(9, 20, 3, 1, "V")] },
+    { id: "flames", name: "Flame pants", rarity: "eagle", draw: () => {
+        const out = [R(4, 16, 8, 1, "k"), R(7, 16, 2, 1, "x"), R(4, 17, 3, 5, "p"), R(9, 17, 3, 5, "p"), R(7, 17, 2, 1, "p"), R(6, 17, 1, 5, "P"), R(11, 17, 1, 5, "P")];
+        // flames lick up from the cuffs, tallest on the outside of each leg
+        [[4, 1], [9, -1]].forEach(([x, d]) => {
+          const outer = d > 0 ? x : x + 2, inner = d > 0 ? x + 2 : x;
+          out.push(R(x, 21, 3, 1, "#E0301E"), R(x, 20, 3, 1, "#FF7A1A"), R(x + 1, 20, 1, 1, "#FFD84D"),
+            R(outer, 19, 1, 1, "#FF7A1A"), R(inner, 19, 1, 1, "#FFD84D"), R(outer, 18, 1, 1, "#FFD84D"));
+        });
+        return out; } },
+    { id: "disco", name: "Disco bell-bottoms", rarity: "albatross", draw: () => [R(4, 16, 8, 1, "k"), R(7, 16, 2, 1, "W"), R(4, 17, 3, 5, "g"), R(9, 17, 3, 5, "g"),
+        R(7, 17, 2, 1, "g"), R(6, 17, 1, 4, "G"), R(11, 17, 1, 4, "G"), R(3, 21, 4, 1, "g"), R(9, 21, 4, 1, "g"), R(3, 20, 1, 1, "g"), R(12, 20, 1, 1, "g"),
+        ...DOTS([[5, 18], [11, 21]], SPARK, "px-twinkle"), ...DOTS([[10, 19], [4, 20]], SPARK, "px-twinkle2")] },
   ];
   const SHOES = [
-    { id: "sneakers", name: "Sneakers", rarity: "common", draw: () => [R(3, 22, 4, 1, "o"), R(9, 22, 4, 1, "o"), R(3, 23, 4, 1, "n"), R(9, 23, 4, 1, "n"), R(5, 22, 1, 1, "W"), R(10, 22, 1, 1, "W")] },
-    { id: "spikes", name: "Golf spikes", rarity: "common", draw: () => [R(3, 22, 4, 1, "W"), R(9, 22, 4, 1, "W"), R(4, 22, 2, 1, "o"), R(10, 22, 2, 1, "o"), R(3, 23, 4, 1, "k"), R(9, 23, 4, 1, "k")] },
-    { id: "boots", name: "Boots", rarity: "rare", draw: () => [R(4, 20, 3, 2, "o"), R(9, 20, 3, 2, "o"), R(3, 22, 4, 1, "o"), R(9, 22, 4, 1, "o"), R(3, 23, 4, 1, "O"), R(9, 23, 4, 1, "O")] },
+    { id: "sneakers", name: "Sneakers", rarity: "bogey", draw: () => [R(3, 22, 4, 1, "o"), R(9, 22, 4, 1, "o"), R(3, 23, 4, 1, "n"), R(9, 23, 4, 1, "n"), R(5, 22, 1, 1, "W"), R(10, 22, 1, 1, "W")] },
+    { id: "spikes", name: "Golf spikes", rarity: "bogey", draw: () => [R(3, 22, 4, 1, "W"), R(9, 22, 4, 1, "W"), R(4, 22, 2, 1, "o"), R(10, 22, 2, 1, "o"), R(3, 23, 4, 1, "k"), R(9, 23, 4, 1, "k")] },
+    { id: "boots", name: "Boots", rarity: "bogey", draw: () => [R(4, 20, 3, 2, "o"), R(9, 20, 3, 2, "o"), R(3, 22, 4, 1, "o"), R(9, 22, 4, 1, "o"), R(3, 23, 4, 1, "O"), R(9, 23, 4, 1, "O")] },
+    // Pro Shop
+    { id: "hightops", name: "High-tops", rarity: "par", draw: () => [R(4, 20, 3, 2, "o"), R(9, 20, 3, 2, "o"), R(3, 22, 4, 1, "o"), R(9, 22, 4, 1, "o"),
+        R(3, 23, 4, 1, "n"), R(9, 23, 4, 1, "n"), R(3, 22, 1, 1, "n"), R(12, 22, 1, 1, "n"), R(4, 21, 1, 1, "O"), R(11, 21, 1, 1, "O"),
+        ...DOTS([[5, 20], [5, 21], [10, 20], [10, 21]], "W")] },
+    { id: "wingtips", name: "Two-tone wingtips", rarity: "birdie", draw: () => [R(3, 22, 4, 1, "W"), R(9, 22, 4, 1, "W"),
+        ...DOTS([[3, 22], [6, 22], [9, 22], [12, 22]], "o"), R(3, 23, 4, 1, "O"), R(9, 23, 4, 1, "O")] },
+    { id: "lightup", name: "Light-up sneakers", rarity: "eagle", draw: () => [R(3, 22, 4, 1, "o"), R(9, 22, 4, 1, "o"), R(5, 22, 1, 1, "W"), R(10, 22, 1, 1, "W"),
+        ...DOTS([[3, 23], [5, 23], [10, 23], [12, 23]], LASER, "px-blink"), ...DOTS([[4, 23], [6, 23], [9, 23], [11, 23]], "#FF5CA8", "px-blink2")] },
+    // The grid ends at the soles, so the exhaust comes out of nozzles on the outside heels
+    { id: "rocket", name: "Rocket boots", rarity: "albatross", draw: () => [R(4, 19, 3, 3, "x"), R(9, 19, 3, 3, "x"), R(6, 19, 1, 3, "#8A93A8"), R(11, 19, 1, 3, "#8A93A8"),
+        R(4, 20, 3, 1, "o"), R(9, 20, 3, 1, "o"), R(3, 22, 4, 1, "x"), R(9, 22, 4, 1, "x"), R(3, 23, 4, 1, "#5B6478"), R(9, 23, 4, 1, "#5B6478"),
+        R(2, 22, 1, 2, "k"), R(13, 22, 1, 2, "k"), R(1, 23, 1, 1, "#FFD84D", "px-flame"), R(14, 23, 1, 1, "#FFD84D", "px-flame"),
+        R(0, 23, 1, 1, "#FF7A1A", "px-flame2"), R(15, 23, 1, 1, "#FF7A1A", "px-flame2")] },
   ];
   const HATS = [
-    { id: null, name: "None", rarity: "common", draw: () => [] },
-    { id: "cap", name: "Cap", rarity: "common", draw: () => [R(4, 0, 8, 3, "c"), R(4, 0, 1, 1, "_"), R(11, 0, 1, 1, "_"), R(7, 0, 2, 1, "C"), R(3, 3, 10, 1, "C")] },
-    { id: "bucket", name: "Bucket hat", rarity: "common", draw: () => [R(5, -1, 6, 2, "c"), R(4, 1, 8, 2, "c"), R(3, 3, 10, 1, "C")] },
-    { id: "visor", name: "Visor", rarity: "common", draw: () => [R(4, 3, 8, 1, "c"), R(3, 4, 10, 1, "C")] },
-    { id: "beanie", name: "Beanie", rarity: "rare", draw: () => [R(4, 0, 8, 3, "c"), R(4, 0, 1, 1, "_"), R(11, 0, 1, 1, "_"), R(4, 3, 8, 1, "C"), R(7, -2, 2, 2, "W")] },
-    { id: "tophat", name: "Top hat", rarity: "epic", draw: () => [R(5, -3, 6, 5, "k"), R(5, 0, 6, 1, "c"), R(3, 2, 10, 1, "k")] },
-    { id: "crown", name: "Crown", rarity: "legendary", draw: () => [R(4, 0, 8, 2, "g"), R(4, 1, 8, 1, "G"), R(4, -1, 1, 1, "g"), R(7, -2, 2, 2, "g"), R(11, -1, 1, 1, "g"), R(5, 1, 1, 1, "r"), R(10, 1, 1, 1, "r"), R(7, 0, 2, 1, "r")] },
+    { id: null, name: "None", rarity: "bogey", draw: () => [] },
+    { id: "cap", name: "Cap", rarity: "bogey", draw: () => [R(4, 0, 8, 3, "c"), R(4, 0, 1, 1, "_"), R(11, 0, 1, 1, "_"), R(7, 0, 2, 1, "C"), R(3, 3, 10, 1, "C")] },
+    { id: "bucket", name: "Bucket hat", rarity: "bogey", draw: () => [R(5, -1, 6, 2, "c"), R(4, 1, 8, 2, "c"), R(3, 3, 10, 1, "C")] },
+    { id: "visor", name: "Visor", rarity: "bogey", open: true, draw: () => [R(4, 3, 8, 1, "c"), R(3, 4, 10, 1, "C")] },
+    { id: "beanie", name: "Beanie", rarity: "bogey", draw: () => [R(4, 0, 8, 3, "c"), R(4, 0, 1, 1, "_"), R(11, 0, 1, 1, "_"), R(4, 3, 8, 1, "C"), R(7, -2, 2, 2, "W")] },
+    { id: "tophat", name: "Top hat", rarity: "eagle", draw: () => [R(5, -3, 6, 5, "k"), R(5, 0, 6, 1, "c"), R(3, 2, 10, 1, "k")] },
+    // Pro Shop
+    { id: "trucker", name: "Trucker cap", rarity: "par", draw: () => [R(4, -1, 8, 4, "c"), R(4, -1, 1, 1, "_"), R(11, -1, 1, 1, "_"), R(5, -1, 6, 3, "W"),
+        R(7, 0, 2, 1, "c"), ...DOTS([[4, 1], [11, 1]], "C"), R(3, 3, 10, 1, "C")] },
+    { id: "tam", name: "Pom-pom tam", rarity: "birdie", draw: () => [R(4, -1, 8, 1, "c"), R(3, 0, 10, 2, "c"), R(2, 1, 1, 1, "c"), R(13, 1, 1, 1, "c"),
+        R(4, 2, 8, 1, "C"), ...DOTS([[5, 0], [9, 0], [3, 1], [7, 1], [11, 1]], "d"), R(7, -3, 2, 2, "r"), R(7, -3, 1, 1, "#FF8FA3")] },
+    { id: "viking", name: "Viking helmet", rarity: "eagle", draw: () => [R(5, -2, 6, 1, "x"), R(4, -1, 8, 3, "x"), R(4, -1, 1, 1, "_"), R(11, -1, 1, 1, "_"),
+        R(7, -2, 2, 4, "c"), R(9, -1, 1, 1, "W"), R(3, 2, 10, 1, "#7C869C"), ...DOTS([[4, 2], [6, 2], [9, 2], [11, 2]], "k"),
+        R(2, 0, 2, 2, "#F3E6C4"), R(1, -2, 1, 2, "#F3E6C4"), R(1, -3, 1, 1, "#C9B27C"),
+        R(12, 0, 2, 2, "#F3E6C4"), R(14, -2, 1, 2, "#F3E6C4"), R(14, -3, 1, 1, "#C9B27C")] },
+    { id: "crown", name: "Crown", rarity: "albatross", draw: () => [R(4, 0, 8, 2, "g"), R(4, 1, 8, 1, "G"), R(4, -1, 1, 1, "g"), R(7, -2, 2, 2, "g"), R(11, -1, 1, 1, "g"), R(5, 1, 1, 1, "r"), R(10, 1, 1, 1, "r"), R(7, 0, 2, 1, "r")] },
   ];
   const ITEMS = [
-    { id: null, name: "None", rarity: "common", draw: () => [] },
-    { id: "driver", name: "Driver", rarity: "common", draw: (p, h) => p.up
+    { id: null, name: "None", rarity: "bogey", draw: () => [] },
+    { id: "driver", name: "Driver", rarity: "bogey", draw: (p, h) => p.up
         ? [R(h.x + 1, h.y - 6, 1, 7, "x"), R(h.x + 1, h.y - 7, 2, 1, "k"), R(h.x + 2, h.y - 8, 1, 1, "k")]
         : [R(h.x + 2, h.y - 1, 1, 7, "x"), R(h.x + 2, h.y + 6, 2, 1, "k"), R(h.x + 3, h.y + 5, 1, 1, "k")] },
-    { id: "putter", name: "Putter", rarity: "common", draw: (p, h) => p.up
+    { id: "putter", name: "Putter", rarity: "bogey", draw: (p, h) => p.up
         ? [R(h.x + 1, h.y - 6, 1, 7, "x"), R(h.x, h.y - 7, 3, 1, "y")]
         : [R(h.x + 2, h.y - 1, 1, 7, "x"), R(h.x + 1, h.y + 6, 3, 1, "y")] },
-    { id: "coffee", name: "Coffee", rarity: "common", draw: (p, h) => p.up
+    { id: "coffee", name: "Coffee", rarity: "bogey", draw: (p, h) => p.up
         ? [R(h.x, h.y - 3, 2, 3, "W"), R(h.x, h.y - 4, 2, 1, "k"), R(h.x, h.y - 2, 2, 1, "b")]
         : [R(h.x + 2, h.y - 2, 2, 3, "W"), R(h.x + 2, h.y - 3, 2, 1, "k"), R(h.x + 2, h.y - 1, 2, 1, "b"), R(h.x + 3, h.y - 5, 1, 1, "y"), R(h.x + 2, h.y - 6, 1, 1, "y")] },
-    { id: "flag", name: "Pin flag", rarity: "rare", draw: (p, h) => p.up
+    { id: "flag", name: "Pin flag", rarity: "bogey", draw: (p, h) => p.up
         ? [R(h.x + 1, h.y - 7, 1, 9, "W"), R(h.x + 2, h.y - 7, 2, 3, "f"), R(h.x + 2, h.y - 6, 1, 1, "F")]
         : [R(h.x + 2, h.y - 13, 1, 20, "W"), R(h.x + 3, h.y - 13, 2, 3, "f"), R(h.x + 3, h.y - 12, 1, 1, "F")] },
-    { id: "trophy", name: "Trophy", rarity: "legendary", draw: (p, h) => p.up
+    // Pro Shop
+    { id: "umbrella", name: "Golf umbrella", rarity: "par", draw: (p, h) => p.up
+        ? [R(h.x + 1, h.y - 3, 1, 3, "x"), R(h.x - 2, h.y - 4, 7, 1, "f"), R(h.x - 1, h.y - 5, 5, 1, "f"), R(h.x, h.y - 6, 3, 1, "f"),
+           R(h.x - 2, h.y - 3, 1, 1, "F"), R(h.x + 1, h.y - 3, 1, 1, "x"), R(h.x + 4, h.y - 3, 1, 1, "F"),
+           ...DOTS([[h.x - 1, h.y - 4], [h.x + 3, h.y - 4], [h.x, h.y - 5], [h.x + 2, h.y - 5], [h.x + 1, h.y - 6]], "W")]
+        : [R(h.x + 1, h.y - 1, 2, 1, "k"), R(h.x + 2, h.y, 1, 2, "x"), R(h.x + 1, h.y + 2, 3, 3, "f"), R(h.x + 2, h.y + 2, 1, 3, "W"),
+           R(h.x + 2, h.y + 5, 1, 1, "f"), R(h.x + 2, h.y + 6, 1, 1, "x")] },
+    // Held by the feet: raised stiff overhead, or dangling head-down
+    { id: "chicken", name: "Rubber chicken", rarity: "birdie", draw: (p, h) => p.up
+        ? [R(h.x + 1, h.y - 1, 1, 1, BEAK), R(h.x, h.y - 4, 3, 3, CHICKEN), R(h.x + 2, h.y - 3, 1, 2, "#E0B92E"), R(h.x + 1, h.y - 5, 1, 1, CHICKEN),
+           R(h.x + 1, h.y - 6, 2, 1, CHICKEN), R(h.x + 2, h.y - 6, 1, 1, "k"), R(h.x + 3, h.y - 6, 1, 1, BEAK), R(h.x, h.y - 6, 1, 1, "r")]
+        : [R(h.x + 2, h.y - 1, 2, 1, BEAK), R(h.x + 2, h.y, 1, 1, BEAK), R(h.x + 1, h.y + 1, 3, 3, CHICKEN), R(h.x + 3, h.y + 2, 1, 2, "#E0B92E"),
+           R(h.x + 2, h.y + 4, 1, 2, CHICKEN), R(h.x + 1, h.y + 6, 2, 1, CHICKEN), R(h.x + 1, h.y + 6, 1, 1, "k"), R(h.x + 3, h.y + 6, 1, 1, BEAK),
+           R(h.x + 1, h.y + 7, 2, 1, "r")] },
+    { id: "laser", name: "Laser putter", rarity: "eagle", draw: (p, h) => p.up
+        ? [R(h.x + 1, h.y - 5, 1, 6, LASER, "px-glow"), R(h.x, h.y - 6, 3, 1, "k"), R(h.x + 1, h.y - 6, 1, 1, NEON_PINK, "px-glow")]
+        : [R(h.x + 2, h.y - 1, 1, 7, LASER, "px-glow"), R(h.x + 1, h.y + 6, 3, 1, "k"), R(h.x + 2, h.y + 6, 1, 1, NEON_PINK, "px-glow")] },
+    { id: "trophy", name: "Trophy", rarity: "albatross", draw: (p, h) => p.up
         ? [R(h.x - 1, h.y - 5, 4, 3, "g"), R(h.x - 2, h.y - 5, 1, 2, "G"), R(h.x + 3, h.y - 5, 1, 2, "G"), R(h.x, h.y - 2, 2, 1, "G"), R(h.x - 1, h.y - 1, 4, 1, "b")]
         : [R(h.x + 2, h.y - 4, 3, 3, "g"), R(h.x + 2, h.y - 1, 3, 1, "G"), R(h.x + 3, h.y, 1, 1, "G"), R(h.x + 2, h.y + 1, 3, 1, "b")] },
   ];
-  // Store hooks: every piece has a rarity and a price (null = free for now; see outfitOwned in outfits.js)
-  [HAIR, FACE, SHIRTS, PANTS, SHOES, HATS, ITEMS].forEach(list => list.forEach(it => { it.rarity = it.rarity || "common"; it.price = null; }));
+  // Every piece has a rarity; anything above Bogey is sold in the Pro Shop (see outfitOwned in outfits.js)
+  [HAIR, FACE, SHIRTS, PANTS, SHOES, HATS, ITEMS].forEach(list => list.forEach(it => { it.rarity = it.rarity || "bogey"; }));
 
   const DEFAULT = { skin: SKINS[1], eyes: EYES[0], hair: "short", hairColor: HAIRC[1], face: "none",
     shirt: "polo", shirtColor: CLOTH[0], pants: "slacks", pantsColor: CLOTH[10], shoes: "spikes", shoeColor: CLOTH[2],
@@ -124,6 +205,7 @@ const PX = (() => {
   function render(o, poseName = "idle") {
     const p = POSES[poseName] || POSES.idle;
     const grid = Array.from({ length: H }, () => Array(W).fill(null));
+    const fx = Array.from({ length: H }, () => Array(W).fill(null)); // CSS class per pixel, for animated ones
     const clothAccent = c => lum(c) > 0.6 ? "#1F3B73" : tint(c, 0.65);
     const pal = {
       s: o.skin, S: shade(o.skin, 0.86), m: shade(o.skin, 0.62), L: tint(o.skin, 0.45),
@@ -131,7 +213,7 @@ const PX = (() => {
       t: o.shirtColor, T: shade(o.shirtColor), a: clothAccent(o.shirtColor), y: "#FFD84D",
       p: o.pantsColor, P: shade(o.pantsColor), q: clothAccent(o.pantsColor),
       o: o.shoeColor, O: shade(o.shoeColor, 0.6), n: "#E6EAF2",
-      c: o.hatColor, C: shade(o.hatColor),
+      c: o.hatColor, C: shade(o.hatColor), d: clothAccent(o.hatColor), v: tint(o.pantsColor, 0.55), V: tint(o.pantsColor, 0.25),
       g: "#FFD84D", G: "#C99A1E", r: "#FF3B5C", k: "#1A1C26", W: "#F2F5FA", x: "#B8C2D6", b: "#7A4A2A", f: "#FF3B5C", F: "#C21F3C",
     };
     const put = list => list.forEach(r => {
@@ -139,6 +221,7 @@ const PX = (() => {
         const gx = xx + OX, gy = yy + OY;
         if (gx < 1 || gy < 1 || gx >= W - 1 || gy >= H - 1) continue;
         grid[gy][gx] = r.t === "_" ? null : (pal[r.t] || r.t);
+        fx[gy][gx] = r.t === "_" ? null : r.cls || null;
       }
     });
     const find = (list, id) => list.find(i => i.id === id) || list[0];
@@ -153,7 +236,16 @@ const PX = (() => {
     put(head([R(6, 5, 1, 2, "e"), R(9, 5, 1, 2, "e"), R(5, 4, 2, 1, "H"), R(9, 4, 2, 1, "H"), R(7, 7, 2, 1, "m")]));
     // hair (trimmed under hats)
     let hair = find(HAIR, o.hair).draw();
-    if (o.hat) hair = hair.filter(r => r.y >= 1).map(r => r);
+    // Hide hair down to the hat's lowest row (its brim), so none pokes out beside the crown. Open-top hats (visor)
+    // only trim the top row.
+    if (o.hat) {
+      const hat = find(HATS, o.hat);
+      const top = hat.open ? 0 : Math.max(...hat.draw(p).map(r => r.y + r.h - 1));
+      hair = hair.map(r => {
+        const y0 = Math.max(r.y, top + 1);
+        return y0 < r.y + r.h ? { ...r, y: y0, h: r.y + r.h - y0 } : null;
+      }).filter(Boolean);
+    }
     put(head(hair));
     put(head(find(FACE, o.face).draw()));
     put(find(PANTS, o.pants).draw(p));
@@ -175,11 +267,11 @@ const PX = (() => {
     for (let y = 0; y < H; y++) {
       let x = 0;
       while (x < W) {
-        const c = out[y][x];
+        const c = out[y][x], f = fx[y][x];
         if (!c) { x++; continue; }
         let x2 = x + 1;
-        while (x2 < W && out[y][x2] === c) x2++;
-        rects += '<rect x="' + x + '" y="' + y + '" width="' + (x2 - x) + '" height="1" fill="' + c + '"/>';
+        while (x2 < W && out[y][x2] === c && fx[y][x2] === f) x2++;
+        rects += '<rect' + (f ? ' class="' + f + '"' : "") + ' x="' + x + '" y="' + y + '" width="' + (x2 - x) + '" height="1" fill="' + c + '"/>';
         x = x2;
       }
     }
@@ -200,5 +292,5 @@ const PX = (() => {
     return s;
   }
 
-  return { W, H, SKINS, EYES, HAIRC, CLOTH, HAIR, FACE, SHIRTS, PANTS, SHOES, HATS, ITEMS, DEFAULT, POSES, render, svg };
+  return { W, H, RARITY, SKINS, EYES, HAIRC, CLOTH, HAIR, FACE, SHIRTS, PANTS, SHOES, HATS, ITEMS, DEFAULT, POSES, render, svg };
 })();

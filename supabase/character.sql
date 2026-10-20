@@ -1,4 +1,4 @@
--- Character creator: outfits on player rows. Safe to run more than once.
+-- Character creator: outfits on player rows. Safe to run more than once (then re-run pro-shop.sql).
 
 -- 1. Each player row carries the outfit it was created with. Null = plain stick figure (old rows).
 alter table public.players add column if not exists outfit jsonb;
@@ -24,9 +24,6 @@ begin
       new.outfit := case when new.color is not null then v || jsonb_build_object('color', new.color) else v end;
     end if;
   end if;
-  -- Future store: strip any item ids the user doesn't own here, e.g.
-  --   remove keys whose value isn't in (select item_id from user_items where user_id = new.user_id)
-  -- (price-free starter items are always allowed).
   return new;
 end $$;
 
@@ -34,12 +31,5 @@ drop trigger if exists players_fill_outfit on public.players;
 create trigger players_fill_outfit before insert on public.players
   for each row execute function public.players_fill_outfit();
 
--- 3. Future store (NOT created yet). Sketch only:
---   create table public.user_items (
---     user_id uuid references auth.users on delete cascade,
---     item_id text not null,              -- matches OUTFIT_ITEMS[].id in public/outfits.js
---     acquired_at timestamptz default now(),
---     primary key (user_id, item_id)
---   );
---   create table public.token_balances (user_id uuid primary key references auth.users on delete cascade, tokens int not null default 0);
--- outfitOwned() in public/outfits.js is the client hook that would read user_items.
+-- 3. The Pro Shop lives in pro-shop.sql, which replaces players_fill_outfit with a version that also strips
+-- unowned shop gear. If you re-run this file, re-run pro-shop.sql after it.

@@ -10,10 +10,31 @@ const OUTFIT_COLOR_FIELDS = { skin: PX.SKINS, eyes: PX.EYES, hairColor: PX.HAIRC
 
 const DEFAULT_OUTFIT = { v: 2, ...PX.DEFAULT };
 
-// Everything is free for now (price null). When the store ships, this checks the user's user_items rows
-// (and the token balance for buying) instead of returning true. Keep the signature: the dressing room calls it.
-function outfitOwned(id, user) {
-  return true;
+// Every piece by id, with its slot. Ids are unique across slots (shop_items.id in supabase/pro-shop.sql uses them).
+const OUTFIT_PIECES = {};
+Object.entries(OUTFIT_SLOTS).forEach(([slot, list]) => list.forEach(it => { if (it.id != null) OUTFIT_PIECES[it.id] = { slot, piece: it }; }));
+const RARITY_RANK = Object.fromEntries(PX.RARITY.map((r, i) => [r.id, i]));
+const RARITY_NAME = Object.fromEntries(PX.RARITY.map(r => [r.id, r.name]));
+const isShopPiece = id => id != null && !!OUTFIT_PIECES[id] && OUTFIT_PIECES[id].piece.rarity !== "bogey";
+
+// Pro Shop state, filled by loadShop() in app.js from the database. The server decides prices, balances and
+// ownership; this is only a read-only copy for drawing the screens. prices: { id: { price, active } }.
+const SHOP = { userId: null, signedIn: false, ready: false, failed: false, prices: {}, owned: new Set(), balance: 0 };
+
+// Bogey gear (and "None") is free for everyone; shop gear needs a user_items row
+function outfitOwned(id) {
+  return !isShopPiece(id) || SHOP.owned.has(id);
+}
+// The outfit with every unowned shop piece swapped for that slot's default. The players_fill_outfit trigger does
+// the same on the server, so a round never shows gear the player hasn't bought.
+function ownedOutfit(o) {
+  const out = { ...o };
+  Object.keys(OUTFIT_SLOTS).forEach(slot => { if (!outfitOwned(out[slot])) out[slot] = DEFAULT_OUTFIT[slot]; });
+  return out;
+}
+// Names of the unowned shop pieces in an outfit
+function unownedPieces(o) {
+  return Object.keys(OUTFIT_SLOTS).filter(slot => !outfitOwned(o[slot])).map(slot => OUTFIT_PIECES[o[slot]].piece.name);
 }
 
 const isHex = c => typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c);

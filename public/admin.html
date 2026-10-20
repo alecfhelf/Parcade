@@ -31,6 +31,15 @@
     th { color: var(--muted); font-weight: 600; }
     .wrap { overflow-x: auto; }
     a { color: var(--glow); }
+    .grant { display: grid; grid-template-columns: 2fr 1fr 2fr auto; gap: 10px; align-items: end; background: var(--panel); border-radius: 10px; padding: 14px; }
+    .grant label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+    .grant input { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; padding: 9px 10px; min-width: 0; }
+    .grant button:disabled { opacity: 0.6; cursor: default; }
+    .ok { color: #7CFF6B; font-weight: 600; }
+    .plus { color: #7CFF6B; font-weight: 700; }
+    .minus { color: #FF7A90; font-weight: 700; }
+    #grant-msg { margin: 8px 0 0; min-height: 1.3em; }
+    @media (max-width: 640px) { .grant { grid-template-columns: 1fr 1fr; } .grant .wide { grid-column: 1 / -1; } }
   </style>
 </head>
 <body>
@@ -122,6 +131,69 @@
     out.append(wrap);
   }
 
+  // Coins: give or take with admin_grant_coins, and the latest ledger rows (supabase/pro-shop.sql)
+  function coinsSection() {
+    const box = el("div");
+    box.append(el("h2", null, "Give coins"));
+    const form = el("form", "grant");
+    const field = (label, type, attrs, cls) => {
+      const l = el("label", cls, label);
+      const i = el("input");
+      i.type = type;
+      Object.assign(i, attrs);
+      l.append(i);
+      form.append(l);
+      return i;
+    };
+    const email = field("Email", "email", { required: true, placeholder: "player@example.com", autocomplete: "off" }, "wide");
+    const amount = field("Amount (negative takes away)", "number", { required: true, step: 1, placeholder: "50" });
+    const reason = field("Reason", "text", { placeholder: "Won the club championship", maxLength: 120 }, "wide");
+    const go = el("button", null, "Give coins");
+    go.type = "submit";
+    form.append(go);
+    const msg = el("p", "muted");
+    msg.id = "grant-msg";
+    const ledger = el("div", "wrap");
+    form.onsubmit = async e => {
+      e.preventDefault();
+      const n = parseInt(amount.value, 10);
+      if (!n) { msg.className = "bad"; msg.textContent = "Enter a whole number other than 0."; return; }
+      go.disabled = true;
+      msg.className = "muted";
+      msg.textContent = "Working...";
+      const { data, error } = await db.rpc("admin_grant_coins", { p_email: email.value.trim(), p_amount: n, p_reason: reason.value.trim() });
+      go.disabled = false;
+      if (error) { msg.className = "bad"; msg.textContent = error.message; return; }
+      msg.className = "ok";
+      // Taking away stops at 0, so report the balance rather than the amount asked for
+      msg.textContent = "Done. " + email.value.trim() + " now has " + data + (data === 1 ? " coin." : " coins.");
+      amount.value = "";
+      reason.value = "";
+      loadLedger(ledger);
+    };
+    box.append(form, msg, el("h2", null, "Recent coin activity"), ledger);
+    out.append(box);
+    loadLedger(ledger);
+  }
+
+  async function loadLedger(box) {
+    box.innerHTML = "";
+    const { data, error } = await db.rpc("admin_coin_ledger", { p_limit: 50 });
+    if (error) { box.append(el("p", "bad", /does not exist|could not find/i.test(error.message) ? "Run supabase/pro-shop.sql first." : error.message)); return; }
+    if (!data.length) { box.append(el("p", "muted", "Nothing yet.")); return; }
+    const t = el("table");
+    const head = el("tr");
+    ["When", "Account", "Coins", "Reason", "Balance now"].forEach(x => head.append(el("th", null, x)));
+    t.append(head);
+    data.forEach(r => {
+      const tr = el("tr");
+      tr.append(el("td", null, new Date(r.created_at).toLocaleString()), el("td", null, r.email),
+        el("td", r.amount > 0 ? "plus" : "minus", (r.amount > 0 ? "+" : "") + r.amount), el("td", null, r.reason), el("td", null, String(r.balance ?? 0)));
+      t.append(tr);
+    });
+    box.append(t);
+  }
+
   async function load() {
     out.innerHTML = "";
     const { data: { session } } = await db.auth.getSession();
@@ -132,6 +204,7 @@
     const { data, error } = await db.rpc("admin_stats");
     if (error) { out.append(el("p", "bad", /not authorized/i.test(error.message) ? "This account isn't an admin." : error.message)); return; }
     render(data);
+    coinsSection();
   }
   document.getElementById("refresh").onclick = load;
   load();
