@@ -6,6 +6,14 @@ function el(tag, props = {}, ...kids) {
   return e;
 }
 const h3el = (text) => el("h3", { textContent: text });
+// Each account's player row from its most recent round, so standings can show the character it last played as
+function latestPlayerRows(rounds, players) {
+  const order = new Map(rounds.map(r => [r.id, r.created_at || ""]));
+  const out = new Map();
+  players.slice().sort((a, b) => String(order.get(a.round_id)).localeCompare(String(order.get(b.round_id))))
+    .forEach(p => { if (p.user_id) out.set(p.user_id, p); });
+  return out;
+}
 
 function pageShell(title, subtitle) {
   document.querySelectorAll(".home-only").forEach(x => (x.style.display = "none"));
@@ -349,6 +357,7 @@ async function loadSeason(code) {
         const key = uid ? "u:" + uid : "n:" + r.pl.name.trim().toLowerCase();
         if (!totals.has(key)) totals.set(key, { name: uid && memberById.has(uid) ? memberById.get(uid).name : r.pl.name, pts: 0, wins: 0, rounds: 0 });
         const t = totals.get(key);
+        t.pl = r.pl;
         t.pts += r.pts;
         t.rounds += 1;
         if (r.place === 0) t.wins += 1;
@@ -359,7 +368,7 @@ async function loadSeason(code) {
     if (!rows.length) { standings.append(el("li", { textContent: "No one here yet." })); return; }
     rows.forEach((t, i) => {
       standings.append(el("li", {},
-        el("span", { textContent: (i + 1) + ". " + t.name }),
+        el("span", {}, (i + 1) + ". ", ...(t.pl ? [figureEl(t.pl)] : []), t.name),
         el("span", { textContent: t.pts + " pts, " + t.wins + (t.wins === 1 ? " win" : " wins") })));
     });
   }
@@ -711,7 +720,7 @@ async function loadSeasonV2(box, season, acct) {
     const counts = new Map();
     (entries || []).forEach(e => counts.set(e.user_id, (counts.get(e.user_id) || 0) + 1));
     data = {
-      members: members || [], entries: entries || [], counts,
+      members: members || [], entries: entries || [], counts, figOf: latestPlayerRows(rounds, players),
       rows: scoreSeason({ format: season.format, count: season.rounds_count, members: members || [], entries: scored }),
       status: seasonStatus(season, members || [], counts),
     };
@@ -772,8 +781,9 @@ async function loadSeasonV2(box, season, acct) {
       const hh = row.h2h;
       if (hh.w + hh.l + hh.t) bits.push("Head-to-head: " + hh.w + "-" + hh.l + (hh.t ? "-" + hh.t : ""));
       const li = el("li", { className: "sv2-row" },
-        el("div", {}, el("span", { textContent: (row.place + 1) + ". " + row.member.name }), el("span", { className: "detail", textContent: bits.join(" · ") })),
-        el("span", { textContent: fmt1(row.points) + " pts" }));
+        el("div", {}, el("span", {}, (row.place + 1) + ". ", ...(data.figOf.has(row.member.user_id) ? [figureEl(data.figOf.get(row.member.user_id))] : []), row.member.name), el("span", { className: "detail", textContent: bits.join(" · ") })),
+        el("button", { type: "button", className: "link-btn sv2-ptsbtn", textContent: fmt1(row.points) + " pts \u203A",
+          onclick: e => { e.stopPropagation(); pointsSummary(row); } }));
       li.setAttribute("aria-expanded", String(open.has(row.member.user_id)));
       li.onclick = () => {
         if (open.has(row.member.user_id)) open.delete(row.member.user_id); else open.add(row.member.user_id);
@@ -818,6 +828,49 @@ async function loadSeasonV2(box, season, acct) {
     });
     return ul;
   }
+
+  function pointsSummary(row) {
+    const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+    const wrap = mk("div", "modal"), panel = mk("div", "modal-panel ps-panel");
+    const close = () => wrap.remove();
+    wrap.onclick = e => { if (e.target === wrap) close(); };
+    panel.append(mk("h2", null, row.member.name + "'s points"));
+    const n = row.counted.size, all = row.rounds.length;
+    const startH = row.rounds.length ? row.rounds[0].hBefore : row.h;
+    panel.append(mk("p", "ps-total", fmt1(row.points) + " points"),
+      mk("p", "waiting", (all ? n + " of " + all + (all === 1 ? " round counts" : " rounds count") : "No rounds yet") +
+        " \u00B7 Season handicap " + hcpText(row.h) + (all && ssR1x(startH) !== ssR1x(row.h) ? " (started at " + hcpText(startH) + ")" : "")),
+      mk("p", "ps-how", "How points work: play to your handicap and you get 10. Every stroke better adds 2, every stroke worse takes 2 away. Each round scores between 0 and 30."));
+    let running = 0;
+    const list = mk("div", "ps-list");
+    row.rounds.forEach(r => {
+      const counts = row.counted.has(r);
+      if (counts) running = Math.round((running + r.points) * 10) / 10;
+      const diff = Math.round((r.hBefore - r.roundRating) * 10) / 10;
+      const raw = Math.round((10 + 2 * (r.hBefore - r.roundRating)) * 10) / 10;
+      const card = mk("div", "ps-card" + (counts ? "" : " off"));
+      const top = mk("div", "ps-top");
+      top.append(mk("b", null, r.round.name), mk("span", "ps-pts", fmt1(r.points) + " pts"));
+      card.append(top, mk("span", "detail", shortDate(r.date) + " \u00B7 " + courseName(r.course)));
+      card.append(mk("p", null, "Shot " + r.gross + (r.adjusted !== r.gross ? " (" + r.adjusted + " after the blow-up hole cap)" : "") + "."));
+      card.append(mk("p", null, "Handicap going in " + hcpText(r.hBefore) + ". Played like a " + fmt1(r.roundRating) +
+        (diff > 0 ? ", " + fmt1(diff) + " better than usual." : diff < 0 ? ", " + fmt1(-diff) + " worse than usual." : ", right on their handicap.")));
+      card.append(mk("p", "ps-math", "10 " + (diff < 0 ? "\u2212" : "+") + " 2 \u00D7 " + fmt1(Math.abs(diff)) + " = " + fmt1(raw) +
+        (raw !== r.points ? " \u2192 " + fmt1(r.points) + (raw > r.points ? " (30 max)" : " (0 minimum)") : "") + " pts"));
+      const b = diffBadge(r.diff);
+      if (b) card.append(b);
+      card.append(mk("span", "detail ps-run", counts ? "Running total: " + fmt1(running) + " pts" : "Doesn't count. Only the best " + season.rounds_count + " rounds count."));
+      list.append(card);
+    });
+    if (!row.rounds.length) list.append(mk("p", "waiting", "No rounds added yet."));
+    const done = mk("button", null, "Done");
+    done.style.cssText = "width:100%;margin-top:14px";
+    done.onclick = close;
+    panel.append(list, done);
+    wrap.append(panel);
+    document.body.append(wrap);
+  }
+  const ssR1x = v => Math.round(Number(v || 0) * 10) / 10;
 
   function renderAdd() {
     addArea.innerHTML = "";
@@ -900,14 +953,28 @@ async function loadSeasonV2(box, season, acct) {
     ownerArea.append(h3el("Commissioner tools"), el("p", { className: "waiting", textContent: "Starting handicaps. Fix anybody who fibbed." }));
     const ul = el("ul", { className: "player-list" });
     data.members.forEach(m => {
-      ul.append(el("li", {},
+      const st = data.rows.find(r => r.member.user_id === m.user_id);
+      const nR = data.counts.get(m.user_id) || 0;
+      const facts = [m.handicap != null ? "Handicap " + hcpText(Number(m.handicap)) : "No handicap yet",
+        fmt1(st ? st.points : 0) + " pts", nR + (nR === 1 ? " round" : " rounds")];
+      ul.append(el("li", { className: "owner-row" },
         el("div", {}, el("span", { textContent: m.name + (m.user_id === acct.id ? " (you)" : "") }),
-          el("span", { className: "detail", textContent: m.handicap != null ? "Handicap " + hcpText(Number(m.handicap)) : "No handicap yet" })),
+          el("span", { className: "detail", textContent: facts.join(" \u00B7 ") })),
         el("button", { className: "link-btn", textContent: "Edit", onclick: async () => {
           const h = await askSeasonHandicap(m.name, m.handicap);
           if (h == null) return;
           const { error } = await db.from("season_members").update({ handicap: h }).eq("season_id", season.id).eq("user_id", m.user_id);
           if (error) { toast("Error: " + error.message); return; }
+          refresh();
+        } }),
+        m.user_id === acct.id ? el("span") : el("button", { className: "link-btn danger", textContent: "Remove", onclick: async () => {
+          const n = (data.entries || []).filter(e => e.user_id === m.user_id).length;
+          const ok = await pickFrom("Remove " + m.name + " from the season?" + (n ? " Their " + n + (n === 1 ? " round comes" : " rounds come") + " off the standings." : ""),
+            [{ label: "Remove " + m.name, value: true }]);
+          if (!ok) return;
+          const { error } = await db.rpc("remove_season_member", { p_season: season.id, p_user: m.user_id });
+          if (error) { toast("Error: " + error.message); return; }
+          toast(m.name + " was removed.");
           refresh();
         } })));
     });

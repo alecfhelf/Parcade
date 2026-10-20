@@ -108,7 +108,10 @@ function potSetup(opts) {
     <div class="money-places">
       ${["1st", "2nd", "3rd"].map((l, i) => `<label class="money-field"><span>${l} ($)</span><input data-k="p${i}" type="number" inputmode="decimal" min="0"><small class="money-each"></small></label>`).join("")}
     </div>
-    <button type="button" class="link-btn money-split">Fill in a ${opts.split.join(" / ")} split</button>
+    <div class="money-presets" role="group" aria-label="Payout split"></div>
+    <div class="money-custom" hidden>
+      ${["1st", "2nd", "3rd"].map((l, i) => `<label class="money-field"><span>${l} %</span><input data-k="c${i}" type="number" inputmode="decimal" min="0" max="100" step="1"></label>`).join("")}
+    </div>
     <p class="money-check"></p>`;
   const q = sel => box.querySelector(sel);
   const buyI = q('[data-k="buy"]'), placeI = [0, 1, 2].map(i => q('[data-k="p' + i + '"]'));
@@ -118,8 +121,33 @@ function potSetup(opts) {
   if (opts.buyIn) buyI.value = opts.buyIn;
   if (opts.payouts) placeI.forEach((inp, i) => (inp.value = opts.payouts[i] != null ? Number(opts.payouts[i]) : ""));
   // Saved amounts that match the default split still follow the pot when it changes
-  let edited = !opts.auto || (!!opts.payouts && opts.payouts.join() !== potSplit(pot(), opts.split).join());
-  const fill = () => potSplit(pot(), opts.split).forEach((v, i) => (placeI[i].value = pot() ? v : ""));
+  let split = opts.split.slice(), mode = "preset";
+  let edited = !opts.auto || (!!opts.payouts && opts.payouts.join() !== potSplit(pot(), split).join());
+  const fill = () => potSplit(pot(), split).forEach((v, i) => (placeI[i].value = pot() ? v : ""));
+  const PRESETS = [["Winner takes all", [100, 0, 0]], ["70 / 30", [70, 30, 0]], ["60 / 30 / 10", [60, 30, 10]],
+    ["50 / 30 / 20", [50, 30, 20]], ["50 / 25 / 25", [50, 25, 25]]];
+  const customI = [0, 1, 2].map(i => q('[data-k="c' + i + '"]'));
+  customI.forEach((inp, i) => (inp.value = split[i]));
+  const chips = PRESETS.map(([label, pcts]) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "money-chip"; b.textContent = label;
+    b.onclick = () => {
+      if (!pot()) { toast("Enter a buy-in first."); return; }
+      mode = "preset"; split = pcts.slice(); customI.forEach((inp, i) => (inp.value = pcts[i]));
+      fill(); edited = !opts.auto; changed();
+    };
+    return [b, pcts];
+  });
+  const customChip = document.createElement("button");
+  customChip.type = "button"; customChip.className = "money-chip"; customChip.textContent = "Custom %";
+  customChip.onclick = () => { mode = "custom"; changed(); customI[0].focus(); };
+  q(".money-presets").append(...chips.map(c => c[0]), customChip);
+  const customPcts = () => customI.map(i => { const v = parseFloat(i.value); return isNaN(v) || v < 0 ? 0 : v; });
+  customI.forEach(inp => (inp.oninput = () => {
+    split = customPcts();
+    if (split.reduce((a, b) => a + b, 0) === 100 && pot()) { fill(); edited = !opts.auto; }
+    changed();
+  }));
   const payouts = () => placeI.map(val);
   const diff = () => Math.round((pot() - payouts().reduce((a, b) => a + b, 0)) * 100) / 100;
   function sync() {
@@ -131,20 +159,19 @@ function potSetup(opts) {
       const v = payouts()[i];
       s.textContent = size > 1 && v ? moneyEach(v, size) + " each" : "";
     });
-    q(".money-split").style.display = opts.auto && !edited ? "none" : "";
+    const sameSplit = p => p.join() === split.join();
+    chips.forEach(([b, p]) => b.setAttribute("aria-pressed", String(mode === "preset" && sameSplit(p) && !(!opts.auto || edited) || (mode === "preset" && sameSplit(p) && payouts().join() === potSplit(pot(), p).join()))));
+    customChip.setAttribute("aria-pressed", String(mode === "custom"));
+    q(".money-custom").hidden = mode !== "custom";
     const d = diff(), check = q(".money-check");
-    check.textContent = !pot() ? "" : d === 0 ? "Payouts match the pot." : d > 0 ? moneyFmt(d) + " left to hand out." : "Payouts are " + moneyFmt(-d) + " over the pot.";
+    const pctSum = customPcts().reduce((a, b) => a + b, 0);
+    check.textContent = mode === "custom" && pctSum !== 100 ? "Percentages add up to " + pctSum + "%. Make them 100%."
+      : !pot() ? "" : d === 0 ? "Payouts match the pot." : d > 0 ? moneyFmt(d) + " left to hand out." : "Payouts are " + moneyFmt(-d) + " over the pot.";
     check.classList.toggle("bad", !!pot() && d !== 0);
   }
   const changed = () => { sync(); if (opts.onChange) opts.onChange(); };
   buyI.oninput = changed;
   placeI.forEach(inp => (inp.oninput = () => { edited = true; changed(); }));
-  q(".money-split").onclick = () => {
-    if (!pot()) { toast("Enter a buy-in first."); return; }
-    fill();
-    if (opts.auto) edited = false;
-    changed();
-  };
   sync();
   return {
     el: box, sync, pot, payouts,

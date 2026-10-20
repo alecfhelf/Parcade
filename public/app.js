@@ -60,9 +60,11 @@ function paintColor(el, prop, hex) {
 }
 (function injectThemeCSS() {
   // SVG art uses stroke/fill attributes; remap each fixed color to its light variant
-  const extra = ["#2E6BFF", "#E6C3A1", "#C9B27C", "#6FCF8A", "#F3E6C4", "#C9A24A", "#FF7A3D"].concat(OUTFIT_COLORS);
+  // (other art may use them). Pixel characters (svg.px, sprites.js) keep their own colors in both themes.
+  const extra = ["#2E6BFF", "#E6C3A1", "#C9B27C", "#6FCF8A", "#F3E6C4", "#C9A24A", "#FF7A3D", "#8A6A4A", "#F2F5FA", "#1B1030", "#C9D3E8",
+    "#E8EEF8", "#7A4FD1", "#FF7A3D", "#FFF3B0", "#D9DEE8", "#3FA35B", "#5B7FD1", "#6B4A2E", "#2B3245", "#EAF2FF"];
   const rules = PALETTE.map(p => p[0]).concat(extra).map(hex => {
-    const l = lightHex(hex), sel = ':root[data-theme="light"] ';
+    const l = lightHex(hex), sel = ':root[data-theme="light"] :not(.px) > ';
     return sel + '[stroke="' + hex + '" i] { stroke: ' + l + '; } ' + sel + '[fill="' + hex + '" i] { fill: ' + l + '; }';
   });
   const st = document.createElement("style");
@@ -117,30 +119,22 @@ function themeButton() {
   return b;
 }
 
-// figureEl(color | player, size, outfit | cheer, roomy). A player row brings its own color and outfit.
-// The round's color always wins over outfit.color, so figures match everything else colored by player.
-// Some outfit pieces poke past the 24 grid (the top hat reaches y -1.7, the driver x 23.9, spikes y 24.2) and draw
-// as overflow. roomy widens the viewBox to FIG_ROOM around the same 24 grid (size is still the grid's size) so
-// everything is inside the SVG: big figures that are redrawn in place need that, since browsers can leave overflow
-// painted outside an SVG's box behind after the figure is replaced.
-const FIG_ROOM = [-1, -2.5, 26, 27];
+// figureEl(color | player, size, outfit | pose, roomy). A player row brings its own color and outfit.
+// The round's color is the shirt color, so figures match everything else colored by player. extra === true is the
+// winner pose; a pose name ("cheer", "fist", ...) works too. size is the old 24 grid size: the pixel sprite is drawn
+// 1.25x that tall at its 22:30 ratio, about the same footprint. roomy is unused now (sprites never overflow).
 function figureEl(who, size = 18, extra, roomy) {
   const pl = who && typeof who === "object" ? who : null;
   const color = pl ? pl.color : who;
-  const cheer = extra === true;
+  const pose = extra === true ? "cheer" : typeof extra === "string" ? extra : "idle";
   const outfit = extra && typeof extra === "object" ? extra : pl && pl.outfit;
-  const c = PALETTE.some(p => p[0] === color) ? color : "#8A9BC4";
-  const arms = cheer ? "M12 10l-5-6M12 10l5-6" : "M12 11l-5-2M12 11l5-2";
-  // Outfits are built on OUTFIT_POSE (outfits.js), which matches this body; the cheering pose has no outfit
-  const L = outfit && !cheer ? outfitLayers(outfit, c, size < 22) : { sleeves: [] };
-  const w = document.createElement("span");
-  w.className = "stick";
-  const vb = roomy ? FIG_ROOM : [0, 0, 24, 24], k = size / 24;
-  w.innerHTML = '<svg width="' + n2(vb[2] * k) + '" height="' + n2(vb[3] * k) + '" viewBox="' + vb.join(" ") + '" overflow="visible" fill="none" stroke="' + c +
-    '" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="filter:drop-shadow(0 0 3px ' + c + ')">' +
-    '<circle cx="12" cy="5" r="3"/><path d="M12 8v7' + arms + 'M12 15l-4 6M12 15l4 6"/>' +
-    (L.pants || "") + (L.shoes || "") + L.sleeves.join("") + (L.shirt || "") + (L.hat || "") + (L.item || "") + '</svg>';
-  return w;
+  const h = Math.round(size * 1.25), w = Math.round(h * PX.W / PX.H);
+  const el = document.createElement("span");
+  el.className = "stick";
+  el.style.width = w + "px";
+  el.style.height = h + "px";
+  el.innerHTML = PX.svg(outfitFor(color, outfit), pose);
+  return el;
 }
 
 function holeAllowances(round, players) {
@@ -516,7 +510,7 @@ $("create-round").addEventListener("click", async () => {
   const vals = await ask("Start a new round", [
     { label: "Round name", placeholder: "Saturday Showdown" },
     { label: "Your name", placeholder: "What your crew calls you", max: 20, value: myName },
-    { label: "Pick your stick figure", type: "colors", selected: fit.color, outfit: fit }
+    { label: "Shirt color for this round", type: "colors", selected: fit.shirtColor, outfit: fit }
   ], "Tee it up", null, null, CRABBY_LINES.welcome);
   if (!vals) return;
   const [roundName, playerName, color] = vals;
@@ -530,7 +524,7 @@ $("create-round").addEventListener("click", async () => {
     if (e1) throw e1;
     const pc = color === "-" ? null : color;
     const { error: e2 } = await insertPlayer({ round_id: round.id, name: playerName.trim(), color: pc, usual_score: usual, hcp: hcpNum,
-      outfit: { ...fit, color: pc || fit.color } });
+      outfit: { ...fit, shirtColor: pc || fit.shirtColor } });
     if (e2) throw e2;
     openRound(round.code);
   } catch (err) {
@@ -565,7 +559,7 @@ function modeGrid(opts) {
   const showDesc = (key) => {
     preview.textContent = !key ? "Hover over a game for a quick description. Tap the i for the full rules."
       : off[key] ? MODES[key].name + " isn't available: " + off[key]
-      : MODES[key].name + ": " + MODES[key].desc;
+      : MODES[key].name + ": " + ((opts.descs && opts.descs[key]) || MODES[key].desc);
   };
   const tiles = {};
   opts.modes.forEach(key => {
@@ -591,7 +585,7 @@ function modeGrid(opts) {
       draw();
       if (opts.onPick) opts.onPick(key);
     };
-    const info = infoBtn("How " + m.name + " works", () => showRulesModal(m.name, [key, "round"]));
+    const info = infoBtn("How " + m.name + " works", () => (opts.info ? opts.info(key) : showRulesModal(m.name, [key, "round"])));
     info.type = "button";
     info.classList.add("info-corner");
     cell.append(tile, info);
@@ -637,7 +631,30 @@ async function loadRound(code) {
   const user = await ensureUser();
   const fetchRound = () => db.from("rounds").select("*").eq("code", code.toUpperCase()).maybeSingle();
   let { data: round } = await fetchRound();
-  if (!round) { endRoundLoading(); box.textContent = "Round not found. Check the code or ask for a new link."; return; }
+  if (!round) {
+    // Maybe it's a season or tournament code
+    const c = code.toUpperCase();
+    const [{ data: sea }, { data: tn }] = await Promise.all([
+      db.from("seasons").select("code").eq("code", c).maybeSingle(),
+      db.from("tournaments").select("code").eq("code", c).maybeSingle()
+    ]);
+    if (sea) { location.replace("/?s=" + c); return; }
+    if (tn) { location.replace("/?t=" + c); return; }
+    endRoundLoading();
+    const h1 = document.querySelector("h1");
+    h1.textContent = "No match";
+    const sub = document.querySelector("h1 + p");
+    if (sub) sub.textContent = "Code " + c;
+    const msg = document.createElement("p");
+    msg.className = "waiting";
+    msg.textContent = "That code doesn't match a round, season or tournament. Check for typos, or ask whoever invited you to send the link again.";
+    const home = document.createElement("button");
+    home.textContent = "Back to home";
+    home.style.cssText = "width:100%;margin-top:14px";
+    home.onclick = () => location.replace("/");
+    box.append(msg, home);
+    return;
+  }
 
   document.querySelector("h1").textContent = round.name;
   const sub = document.querySelector("h1 + p");
@@ -1908,7 +1925,7 @@ async function loadRound(code) {
   async function addOfflinePlayer() {
     const vals = await ask("Add a player", [
       { label: "Their name", placeholder: "What your crew calls them", max: 20 },
-      { label: "Pick their stick figure", type: "colors", taken: players.map(p => p.color) }
+      { label: "Shirt color for this round", type: "colors", taken: players.map(p => p.color) }
     ], "Add");
     if (!vals) return;
     let hc = { usual: null, hcp: null };
@@ -1919,7 +1936,7 @@ async function loadRound(code) {
       color: pc,
       usual_score: hc.usual,
       hcp: hc.hcp,
-      outfit: { ...DEFAULT_OUTFIT, color: pc || DEFAULT_OUTFIT.color },
+      outfit: { ...DEFAULT_OUTFIT, shirtColor: pc || DEFAULT_OUTFIT.shirtColor },
     });
     if (error) { toast(error.code === "23505" ? "That color's taken. Pick another." : error.message); return; }
     refresh();
@@ -3284,7 +3301,7 @@ async function loadRound(code) {
     const fit = await myOutfit();
     const vals = await ask("Join " + round.name, [
       { label: "Your name", placeholder: "What your crew calls you", max: 20, value: joinName },
-      { label: "Pick your stick figure", type: "colors", taken: players.map(p => p.color), selected: fit.color, outfit: fit }
+      { label: "Shirt color for this round", type: "colors", taken: players.map(p => p.color), selected: fit.shirtColor, outfit: fit }
     ], "I'm in");
     if (!vals) return;
     let hc = (await myHandicap()) || { usual: null, hcp: null };
@@ -3293,7 +3310,7 @@ async function loadRound(code) {
     await ensureUser();
     const pc = vals[1] === "-" ? null : vals[1];
     const { error } = await insertPlayer({ round_id: round.id, name: vals[0], color: pc, usual_score: hc.usual, hcp: hc.hcp,
-      outfit: { ...fit, color: pc || fit.color } });
+      outfit: { ...fit, shirtColor: pc || fit.shirtColor } });
     if (error && error.code === "23505") { toast("Someone just grabbed that color. Pick another."); refresh(); return; }
     if (error) { toast("Error: " + error.message); return; }
     refresh();
@@ -4080,11 +4097,11 @@ async function openProfile() {
   const chSec = section("Character");
   const chBtn = mk("button", "mini", "Customize");
   const chFig = mk("div", "profile-inline");
-  const drawFig = fit => { const old = chFig.querySelector(".stick"); if (old) old.remove(); chFig.prepend(figureEl(fit.color, 32, fit)); };
+  const drawFig = fit => { const old = chFig.querySelector(".stick"); if (old) old.remove(); chFig.prepend(figureEl(null, 32, fit)); };
   myOutfit().then(drawFig);
   chBtn.onclick = async () => drawFig(await openDressingRoom());
   chFig.append(chBtn);
-  chSec.append(row("Customize character", "Hats, shirts, pants, shoes and something to hold.", chFig));
+  chSec.append(row("Customize character", "Hair, clothes, hats, shoes and something to hold.", chFig));
 
   // Settings
   const setSec = section("Settings");
@@ -4159,7 +4176,17 @@ async function openProfile() {
 }
 
 // ---------- Dressing room ----------
-const DRESS_TABS = [["color", "Color"], ["hat", "Hats"], ["shirt", "Shirts"], ["pants", "Pants"], ["shoes", "Shoes"], ["item", "Items"]];
+// Wardrobe from briefs/character-lab.html: each tab is style tiles and/or color swatches.
+const DRESS_TABS = [["body", "Body"], ["hair", "Hair"], ["shirt", "Shirt"], ["pants", "Pants"], ["shoes", "Shoes"], ["hat", "Hats"], ["item", "Items"]];
+const DRESS_PANELS = {
+  body: [["swatch", "Skin tone", "skin"], ["swatch", "Eye color", "eyes"]],
+  hair: [["tiles", "Style", "hair"], ["swatch", "Hair color", "hairColor"], ["tiles", "Facial hair", "face"]],
+  shirt: [["tiles", "Style", "shirt"], ["swatch", "Color", "shirtColor"]],
+  pants: [["tiles", "Style", "pants"], ["swatch", "Color", "pantsColor"]],
+  shoes: [["tiles", "Style", "shoes"], ["swatch", "Color", "shoeColor"]],
+  hat: [["tiles", "Style", "hat"], ["swatch", "Color", "hatColor"]],
+  item: [["tiles", "Held item", "item"]],
+};
 function openDressingRoom() {
   return new Promise(async resolve => {
     const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -4167,7 +4194,7 @@ function openDressingRoom() {
     const u = session && session.user;
     let saved = await myOutfit();
     let cur = { ...saved };
-    let tab = "color";
+    let tab = "body", pose = "idle";
     const name = (await accountName()) || "Guest";
     const opener = document.activeElement;
 
@@ -4183,10 +4210,23 @@ function openDressingRoom() {
     const main = mk("div", "dress-main");
     const stage = mk("div", "dress-stage");
     const fig = mk("div", "dress-fig");
-    stage.append(fig, mk("div", "dress-pedestal"), mk("div", "dress-name", name));
+    fig.setAttribute("role", "img");
+    fig.setAttribute("aria-label", "Your character");
+    const seg = mk("div", "dress-seg");
+    seg.setAttribute("role", "group");
+    seg.setAttribute("aria-label", "Pose");
+    const poseBtns = [["idle", "Standing"], ["cheer", "Winner"]].map(([key, label]) => {
+      const b = mk("button", null, label);
+      b.type = "button";
+      b.dataset.pose = key;
+      b.onclick = () => { pose = key; draw(); };
+      return b;
+    });
+    seg.append(...poseBtns);
+    stage.append(fig, mk("div", "dress-pedestal"), mk("div", "dress-name", name), seg);
     const tabs = mk("div", "dress-tabs");
     tabs.setAttribute("role", "tablist");
-    tabs.setAttribute("aria-label", "Outfit slots");
+    tabs.setAttribute("aria-label", "Wardrobe");
     const tabBtns = DRESS_TABS.map(([key, label]) => {
       const b = mk("button", "dress-tab", label);
       b.type = "button";
@@ -4221,23 +4261,49 @@ function openDressingRoom() {
     scroller.append(body);
     wrap.append(top, scroller, actions);
 
-    const owned = id => outfitOwned(id, u);
+    const owned = id => id == null || outfitOwned(id, u);
     const dirty = () => JSON.stringify(cur) !== JSON.stringify(saved);
+    const sprite = (o, cls) => { const s = mk("span", cls); s.innerHTML = PX.svg(o, "idle"); return s; };
     function tile(label, figure, selected, onPick, opts = {}) {
-      const b = mk("button", "dress-tile" + (opts.compact ? " compact" : "") + (selected ? " selected" : ""));
+      const b = mk("button", "dress-tile" + (selected ? " selected" : ""));
       b.type = "button";
       b.setAttribute("aria-pressed", String(selected));
       b.setAttribute("aria-label", label + (opts.rarity ? ", " + opts.rarity : "") + (opts.locked ? ", coming soon" : ""));
-      b.append(figure);
-      if (!opts.compact) b.append(mk("span", "dress-tile-name", label));
+      b.append(figure, mk("span", "dress-tile-name", label));
       if (opts.rarity) b.append(mk("span", "dress-rarity r-" + opts.rarity, opts.rarity));
       if (opts.locked) { b.disabled = true; b.classList.add("locked"); b.append(mk("span", "dress-lock", "\u{1F512} Coming soon")); }
       b.onclick = onPick;
       return b;
     }
+    function group(title, content) {
+      const g = mk("div", "dress-group");
+      g.append(mk("h3", null, title), content);
+      return g;
+    }
+    function tilesFor(title, key) {
+      const row = mk("div", "dress-tiles");
+      // Hair and facial hair tiles go without the hat so the hair shows
+      const bare = key === "hair" || key === "face" ? { hat: null } : {};
+      OUTFIT_SLOTS[key].forEach(it => row.append(tile(it.name, sprite({ ...cur, ...bare, [key]: it.id }, "dress-px"), cur[key] === it.id,
+        () => { cur[key] = it.id; draw(); }, { rarity: it.name === "None" ? null : it.rarity, locked: !owned(it.id) })));
+      return group(title, row);
+    }
+    function swatchesFor(title, key) {
+      const row = mk("div", "dress-swatches");
+      OUTFIT_COLOR_FIELDS[key].forEach((c, i) => {
+        const b = mk("button", "dress-sw");
+        b.type = "button";
+        b.style.background = c;
+        b.setAttribute("aria-label", title + " " + (i + 1));
+        b.setAttribute("aria-pressed", String(cur[key].toUpperCase() === c.toUpperCase()));
+        b.onclick = () => { cur[key] = c; draw(); };
+        row.append(b);
+      });
+      return group(title, row);
+    }
     function draw() {
-      // Rebuilt from cur every time, with room for every piece so nothing paints outside the SVG
-      fig.replaceChildren(figureEl(cur.color, 240, cur, true));
+      fig.innerHTML = PX.svg(cur, pose);
+      poseBtns.forEach(b => b.setAttribute("aria-pressed", String(b.dataset.pose === pose)));
       tabBtns.forEach((b, i) => {
         const on = DRESS_TABS[i][0] === tab;
         b.classList.toggle("on", on);
@@ -4245,17 +4311,7 @@ function openDressingRoom() {
         b.tabIndex = on ? 0 : -1;
       });
       grid.setAttribute("aria-labelledby", "dress-tab-" + tab);
-      grid.innerHTML = "";
-      grid.classList.toggle("colors", tab === "color");
-      if (tab === "color") {
-        PALETTE.forEach(([hex, label]) => grid.append(tile(label, figureEl(hex, 44, cur, true), cur.color === hex,
-          () => { cur.color = hex; draw(); }, { compact: true })));
-      } else {
-        const solo = id => ({ ...DEFAULT_OUTFIT, color: cur.color, [tab]: id });
-        grid.append(tile("None", figureEl(cur.color, 56, solo(null), true), !cur[tab], () => { cur[tab] = null; draw(); }));
-        OUTFIT_ITEMS.filter(it => it.slot === tab).forEach(it => grid.append(tile(it.name, figureEl(cur.color, 56, solo(it.id), true),
-          cur[tab] === it.id, () => { cur[tab] = it.id; draw(); }, { rarity: it.rarity, locked: !owned(it.id) })));
-      }
+      grid.replaceChildren(...DRESS_PANELS[tab].map(([kind, title, key]) => kind === "tiles" ? tilesFor(title, key) : swatchesFor(title, key)));
       saveBtn.disabled = !dirty();
     }
     const saveBtn = btn("Save", "", async () => {
@@ -4270,11 +4326,9 @@ function openDressingRoom() {
     actions.append(
       btn("Randomize", "btn-ghost", () => {
         const pick = arr => arr[Math.floor(Math.random() * arr.length)];
-        const next = { color: pick(PALETTE)[0] };
-        OUTFIT_SLOTS.slice(1).forEach(slot => {
-          const ids = OUTFIT_ITEMS.filter(it => it.slot === slot && owned(it.id)).map(it => it.id);
-          next[slot] = Math.random() < 0.2 || !ids.length ? null : pick(ids);
-        });
+        const next = { v: 2 };
+        Object.entries(OUTFIT_SLOTS).forEach(([slot, list]) => { next[slot] = pick(list.filter(it => owned(it.id))).id; });
+        Object.entries(OUTFIT_COLOR_FIELDS).forEach(([k, list]) => { next[k] = pick(list); });
         cur = normalizeOutfit(next);
         draw();
       }),
@@ -4369,3 +4423,56 @@ function openDressingRoom() {
   document.addEventListener("click", close);
   document.addEventListener("keydown", e => { if (e.key === "Escape") close(); });
 })();
+
+// ---------- modal-x: close buttons, no accidental closes, no address autofill ----------
+(function popupHelpers() {
+  const KEEP_AUTOFILL = new Set(["email", "password"]);
+  const noAutofill = root => root.querySelectorAll("input, textarea").forEach(i => {
+    if (KEEP_AUTOFILL.has(i.type) || i.hasAttribute("data-autofill-ok")) return;
+    const a = i.getAttribute("autocomplete");
+    if (a && a !== "on" && a !== "off") return;
+    i.setAttribute("autocomplete", "off");
+    i.setAttribute("data-lpignore", "true");
+    i.setAttribute("data-1p-ignore", "true");
+    if (!i.name) i.name = "pc-" + Math.random().toString(36).slice(2, 8);
+  });
+  const addX = modal => {
+    const panel = modal.querySelector(".modal-panel");
+    if (!panel || panel.querySelector(":scope > .modal-x")) return;
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "modal-x";
+    x.setAttribute("aria-label", "Close");
+    x.textContent = "\u2715";
+    x.onclick = e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const btns = [...panel.querySelectorAll("button")].filter(b => b !== x);
+      const out = btns.find(b => /^(cancel|back|done|close|not now|skip)$/i.test(b.textContent.trim()));
+      if (out) { out.click(); return; }
+      modal.__xclose = true;
+      modal.click();
+      if (modal.isConnected) modal.remove();
+    };
+    panel.prepend(x);
+  };
+  new MutationObserver(muts => muts.forEach(m => m.addedNodes.forEach(n => {
+    if (n.nodeType !== 1) return;
+    noAutofill(n);
+    if (n.classList.contains("modal")) addX(n);
+    n.querySelectorAll && n.querySelectorAll(".modal").forEach(addX);
+  }))).observe(document.body, { childList: true, subtree: true });
+  noAutofill(document);
+  // Clicking the dim background doesn't close popups that have boxes to fill in
+  document.addEventListener("click", e => {
+    const m = e.target;
+    if (!m.classList || !m.classList.contains("modal") || m.__xclose) return;
+    if (m.querySelector("input, select, textarea")) { e.stopImmediatePropagation(); e.preventDefault(); }
+  }, true);
+})();
+
+// no-wheel-numbers: scrolling over a number box scrolls the page instead of changing the number
+document.addEventListener("wheel", e => {
+  const t = e.target;
+  if (t && t.tagName === "INPUT" && t.type === "number" && document.activeElement === t) t.blur();
+}, { passive: true, capture: true });

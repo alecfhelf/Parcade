@@ -13,10 +13,77 @@ const TN_GRID = ["party", "stroke", "skins", "match", "wolf", "bbb", "bestball",
 
 // { mode: one-line reason } for every mode that won't work with these settings
 function tnModeOff(size, schedule) {
-  const off = { caddy: "Caddies don't make a golf team.", wad: "Wad pots stay inside one group." };
-  if (size !== 1) off.wolf = "Only with 1 player per team.";
-  if (!(schedule === "over_time" && size <= 2)) off.bbb = "Over time, teams of 1 or 2 only.";
+  const off = { wolf: "Not for tournaments", caddy: "Not a team game", wad: "Not a team game" };
+  if (!(schedule === "over_time" && size <= 2)) off.bbb = "Over time, 1\u20132 per team";
   return off;
+}
+
+// Full tournament rules for one game, shown from the i button in tournament setup
+function tnShowRules(key, schedule, size) {
+  const solo = size === 1;
+  const howMatch = { h: "How a bracket match works", list: [
+    "Each match is " + (solo ? "one golfer against another" : "one team of " + size + " against another") + ". The winner moves on in the bracket. The loser is out.",
+    schedule === "one_day"
+      ? "One day: everyone plays a normal 18 with their own team. Each bracket round is scored on its own stretch of holes (for example holes 1\u20136, then 7\u201312, then 13\u201318), so you keep playing while the bracket fills in."
+      : "Over time: each match is its own 9 or 18 hole round, played whenever both teams are ready.",
+    "With handicaps on, everyone plays off their net score, using strokes on the hardest holes.",
+    "If a match ends tied, the tiebreak the creator picked decides it."] };
+  const team = solo ? "you" : "your team";
+  const R = {
+    party: { h: "Party Mode in a tournament", list: [
+      (solo ? "You earn" : "Every golfer earns") + " hole points: 1 for finishing the hole plus 1 for every golfer in the match you beat.",
+      schedule === "one_day" ? "Challenge cards are off in one-day tournaments, since teams aren't in the same group." : "The challenge card on each hole adds or takes away points.",
+      solo ? "Most points at the end of the match wins." : "Teammates' points are added together. The team with more points wins the match."] },
+    stroke: { h: "Stroke Play in a tournament", list: [
+      solo ? "Your strokes on the match's holes are added up." : "Every golfer's strokes on the match's holes are added up into one team total.",
+      "The lower total wins the match.",
+      solo ? "" : "One blow-up hole hurts the whole team, so everybody counts."].filter(Boolean) },
+    skins: { h: "Skins in a tournament", list: [
+      "Each hole is worth one skin. The " + (solo ? "golfer" : "team") + " with the single best score on the hole wins it" + (solo ? "." : " (the best score from either team decides it)."),
+      "If the best score is tied, nobody wins and the skin carries to the next hole, so holes can stack up.",
+      "Most skins at the end of the match wins."] },
+    match: { h: "Match Play in a tournament", list: [
+      solo ? "Your score goes head to head with your opponent's on every hole." : "On every hole, each team's best score goes head to head.",
+      "Win the hole for 1 point. Tie it and both sides get half.",
+      "Most points at the end of the match wins."] },
+    bbb: { h: "Bingo Bango Bongo in a tournament", list: [
+      "Both " + (solo ? "golfers" : "teams") + " play in the same group, so this only works Over time with 1 or 2 per team.",
+      "Every hole has 3 points: first on the green, closest to the pin once everyone's on, and first in the cup.",
+      solo ? "Most points at the end of the match wins." : "Teammates' points are added together. The team with more points wins the match."] },
+    bestball: { h: "Best Ball in a tournament", list: [
+      solo ? "With one golfer per team, it's your score against your opponent's on each hole."
+        : "On each hole only " + team + "'s single best score counts. Everyone else on the team is off the hook.",
+      "The lower score wins the hole for a point. A tie is a push.",
+      "Most points at the end of the match wins."] },
+    vegas: { h: "Vegas in a tournament", list: solo
+      ? ["With one golfer per team, the lower score wins each hole by the difference (a 4 beats a 6 by 2 points).", "Most points at the end of the match wins."]
+      : ["On each hole your team's two best scores become one number, low score first. A 4 and a 5 make 45.",
+         "The lower number wins the hole by the difference (45 against 56 wins by 11).",
+         size > 2 ? "With more than 2 on a team, only the best two scores count." : "",
+         "Most points at the end of the match wins."].filter(Boolean) },
+  };
+  if (!R[key]) return showRulesModal(MODES[key].name, [key, "round"]);
+  RULES.tn_rules = [R[key], howMatch];
+  showRulesModal(MODES[key].name + " in a tournament", ["tn_rules"]);
+}
+
+// How each game is scored when two teams meet in a bracket match
+function tnModeDescs(schedule, size) {
+  const team = size === 1 ? "you" : "your team";
+  return {
+    party: (size === 1 ? "You earn" : "Every player earns") + " hole points: 1 for finishing plus 1 for each player you beat. " +
+      (schedule === "one_day" ? "Challenge cards are off in one-day tournaments. " : "Challenge cards add or take away points. ") +
+      (size === 1 ? "More points wins the match." : "Teammates' points are added together, and the team with more wins the match."),
+    stroke: (size === 1 ? "Your strokes" : "Every player's strokes") + " on the match's holes are added up. The lower total wins the match.",
+    skins: "Each hole goes to the team with the single best score. A tie carries that skin to the next hole. The team with more skins wins the match.",
+    match: "On each hole, " + (size === 1 ? "your score" : "each team's best score") + " goes head to head. Win the hole for 1 point, tie it for half. More points wins the match.",
+    wolf: "Every team is one golfer, so it's played like Stroke Play: the lower total on the match's holes wins.",
+    bbb: "Bingo, Bango and Bongo are up for grabs on every hole, 1 point each. " + (size === 1 ? "More points wins the match." : "Teammates' points are added together, and more points wins the match."),
+    bestball: size === 1 ? "With one golfer per team, it's your score against theirs on each hole. Win the hole for a point. More points wins the match."
+      : "Only " + team + "'s best score counts on each hole. Win the hole for a point. More points wins the match.",
+    vegas: size === 1 ? "With one golfer per team, the lower score wins each hole by the difference. More points wins the match."
+      : "Your team's two best scores make one number, low score first (a 4 and a 5 make 45). The lower number wins the hole by the difference. More points wins the match.",
+  };
 }
 
 // null if the mode works with these settings, otherwise why not
@@ -42,6 +109,32 @@ function tnInviteRow(code) {
   const row = el("div", {}, input, copy);
   row.style.cssText = "display:flex;gap:8px;margin-top:8px";
   return row;
+}
+
+// A player picks their own team. Returns true if something changed.
+async function pickOwnTeam(tournamentId, title) {
+  const [{ data: tn }, { data: teams }, { data: mems }, acct] = await Promise.all([
+    db.from("tournaments").select("team_size").eq("id", tournamentId).single(),
+    db.from("tournament_teams").select("id, name, color").eq("tournament_id", tournamentId).order("name"),
+    db.from("tournament_members").select("user_id, team_id").eq("tournament_id", tournamentId),
+    currentAccount()
+  ]);
+  if (!tn || !teams || !acct) return false;
+  const mine = (mems || []).find(m => m.user_id === acct.id);
+  const count = id => (mems || []).filter(m => m.team_id === id && m.user_id !== acct.id).length;
+  const opts = teams.map(tm => {
+    const n = count(tm.id), full = n >= tn.team_size, here = mine && mine.team_id === tm.id;
+    return { label: tm.name + (here ? " (you're here)" : full ? " (full)" : " (" + (tn.team_size - n) + (tn.team_size - n === 1 ? " spot left)" : " spots left)")),
+      value: tm.id, color: tm.color, disabled: full || here };
+  });
+  if (mine && mine.team_id) opts.push({ label: "Take me off my team", value: "off" });
+  else opts.push({ label: "Not sure yet", value: "later" });
+  const pick = await pickFrom(title || "Which team are you on?", opts);
+  if (!pick || pick === "later") return false;
+  const { error } = await db.from("tournament_members").update({ team_id: pick === "off" ? null : pick })
+    .eq("tournament_id", tournamentId).eq("user_id", acct.id);
+  if (error) { toast(error.message); return false; }
+  return true;
 }
 
 // ---------- List ----------
@@ -136,7 +229,7 @@ function tournamentForm(t, myName) {
       return el("div", { className: "stepper" }, down, val, up);
     };
 
-    const picker = modeGrid({ modes: TN_GRID, selected: s.mode, off: tnModeOff(s.team_size, s.schedule), onPick: k => { s.mode = k; redraw(); } });
+    const picker = modeGrid({ modes: TN_GRID, selected: s.mode, off: tnModeOff(s.team_size, s.schedule), descs: tnModeDescs(s.schedule, s.team_size), info: k => tnShowRules(k, s.schedule, s.team_size), onPick: k => { s.mode = k; redraw(); } });
     let offKey = null;
     draws.push(() => {
       // A setting change can knock out the picked mode (Wolf, then 2 per team). Unpick it so they choose again.
@@ -492,6 +585,8 @@ async function loadTournament(code) {
 
   const teamName = id => (id && S.teamOf.get(id) ? S.teamOf.get(id).name : "TBD");
   const teamColor = id => (id && S.teamOf.get(id) ? S.teamOf.get(id).color : null);
+  // A one-player team wears that player's outfit; bigger teams get the default outfit, all in the team color
+  const teamOutfit = id => { const solo = id ? S.roster(id) : []; return solo.length === 1 ? S.outfitOf.get(solo[0].user_id) || null : null; };
   const holesText = holes => (holes.length === 18 ? "18 holes" : t.schedule === "over_time" ? holes.length + " holes" : "Holes " + holes[0] + "-" + holes[holes.length - 1]);
   const unit = r => {
     const m = t.mode === "vegas" && t.team_size === 1 || t.mode === "wolf" ? "stroke" : t.mode;
@@ -664,11 +759,13 @@ async function loadTournament(code) {
     canvas.append(svg);
 
     L.heads.forEach(({ r, col }) => {
-      const hd = el("div", { className: "bk-head" + (hasMine(r) ? " mine" : "") },
+      const hd = el("button", { type: "button", className: "bk-head" + (hasMine(r) ? " mine" : "") },
         el("b", { textContent: roundName(R, r) }),
         el("span", { textContent: t.schedule === "one_day" ? holesText(S.holesFor({ round_no: r })) : "" }));
       hd.style.left = BK.PAD + col * (W + COL) + "px";
       hd.style.width = W + "px";
+      hd.setAttribute("aria-label", "Go to the " + roundName(R, r));
+      hd.onclick = () => jumpToRound(r, col);
       canvas.append(hd);
     });
     if (L.third) {
@@ -699,13 +796,21 @@ async function loadTournament(code) {
     bracketArea.append(el("div", { className: "bk-wrap" }, tools, view));
 
     bkWidth = view.clientWidth;
-    const z = bkMode === "manual" ? bkZoom : bkMode === "fit" ? fitZoom(view, L) : Math.min(1, Math.max(BK_MIN, fitZoom(view, L)));
+    const z = bkMode === "manual" ? bkZoom : fitZoom(view, L);
     applyZoom(view, sizer, canvas, L, z, zoomText);
-    if (bkFocus) {
-      bkFocus = false;
-      if (target) scrollToPos(view, target);
-      else if (L.two) view.scrollLeft = (view.scrollWidth - view.clientWidth) / 2;
-    } else if (keep) { view.scrollLeft = keep.l; view.scrollTop = keep.t; }
+    if (bkFocus) { bkFocus = false; view.scrollLeft = 0; view.scrollTop = 0; }
+    else if (keep) { view.scrollLeft = keep.l; view.scrollTop = keep.t; }
+
+    // Tap a round name: zoom to full size and jump to that column
+    function jumpToRound(r, col) {
+      bkMode = "manual";
+      applyZoom(view, sizer, canvas, L, 1, zoomText);
+      const x = BK.PAD + col * (BK.W + BK.COL);
+      let top = Infinity;
+      L.pos.forEach(p => { if (p.match.round_no === r && !p.match.is_third_place && p.x === x) top = Math.min(top, p.y); });
+      view.scrollTo({ left: Math.max(0, x - BK.PAD), top: top === Infinity ? 0 : Math.max(0, top - BK.HEAD), behavior: "smooth" });
+      view.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
   }
 
   const fitZoom = (view, L) => Math.min(1, (view.clientWidth - 2) / L.w);
@@ -753,8 +858,8 @@ async function loadTournament(code) {
     const line = (id, side) => {
       const rowEl = el("div", { className: "bk-row" });
       if (!id && d.status === "bye") { rowEl.classList.add("bye"); rowEl.append(el("span", { className: "bk-seed" }), el("span", { className: "bk-name", textContent: "Bye" })); return rowEl; }
-      const dot = el("span", { className: "bk-dot" });
-      if (id) { if (teamColor(id)) paintColor(dot, "background", teamColor(id)); else dot.style.background = "var(--muted)"; }
+      const dot = id ? figureEl(teamColor(id), 12, teamOutfit(id) || undefined) : el("span", { className: "bk-dot" });
+      if (id) dot.classList.add("bk-fig");
       rowEl.append(el("span", { className: "bk-seed", textContent: id ? S.seedOf.get(id) || "" : "" }), dot, el("span", { className: "bk-name", textContent: id ? teamName(id) : "TBD" }));
       if (!id) rowEl.classList.add("tbd");
       if (r && r.holesDone) rowEl.append(el("span", { className: "bk-score", textContent: String(side === "a" ? r.a : r.b) }));
@@ -918,8 +1023,7 @@ async function loadTournament(code) {
     cols.forEach(({ ids, i }) => {
       if (!ids.length || !ids[0]) return;
       const col = tnEl("div", "podium-col place-" + (i + 1));
-      const solo = S.roster(ids[0]);
-      col.append(podiumFigure(teamColor(ids[0]), i, solo.length === 1 ? S.outfitOf.get(solo[0].user_id) : null), tnEl("div", "podium-name", ids.map(teamName).join(" & ")),
+      col.append(podiumFigure(teamColor(ids[0]), i, teamOutfit(ids[0])), tnEl("div", "podium-name", ids.map(teamName).join(" & ")),
         tnEl("div", "podium-score", ids.flatMap(id => S.roster(id).map(p => p.name)).join(", ")), tnEl("div", "podium-block", ["1st", "2nd", "3rd"][i]));
       podium.append(col);
     });
@@ -1084,7 +1188,10 @@ async function loadTournament(code) {
           if (error) { toast(error.message); return; }
           navTo("/?tournaments");
         } });
-        membersArea.append(edit, leave);
+        const teamBtn = el("button", { textContent: S.me.team_id ? "Switch teams" : "Pick my team",
+          onclick: async () => { if (await pickOwnTeam(t.id, S.me.team_id ? "Switch to which team?" : "Which team are you on?")) refresh(); } });
+        teamBtn.style.cssText = "width:100%;margin-top:10px";
+        membersArea.append(teamBtn, edit, leave);
       }
     }
   }
@@ -1255,6 +1362,7 @@ async function tournamentPreview(box, code, acct) {
     const { error } = await db.from("tournament_members").insert({ tournament_id: p.id, name: vals[0], hcp, usual_score: Math.round(72 + hcp) });
     if (error) { toast("Error: " + error.message); return; }
     toast("You're in.", true);
+    await pickOwnTeam(p.id);
     loadTournament(code);
   } });
   b.style.cssText = "width:100%;margin-top:10px";
