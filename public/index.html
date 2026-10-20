@@ -833,6 +833,18 @@
     .dress-rarity { background: rgba(var(--rc-rgb),0.2); color: var(--rc); }
     .dress-rarity.r-albatross { background: linear-gradient(135deg, #FFE680, #FFC21A); color: #3A2A00; box-shadow: 0 0 8px rgba(var(--gold-rgb),0.6); }
     :root[data-theme="light"] .dress-rarity.r-albatross { background: linear-gradient(135deg, #F5C842, #D9A00F); color: #2E2000; box-shadow: none; }
+    /* Albatross: a light sweep across the gold and a pulsing glow */
+    .dress-rarity.r-albatross {
+      background-image: linear-gradient(110deg, transparent 35%, rgba(255,255,255,0.9) 50%, transparent 65%), linear-gradient(135deg, #FFE680, #FFC21A);
+      background-size: 250% 100%, 100% 100%; background-repeat: no-repeat;
+      animation: alba-shine 2.6s ease-in-out infinite, alba-glow 2.6s ease-in-out infinite;
+    }
+    :root[data-theme="light"] .dress-rarity.r-albatross {
+      background-image: linear-gradient(110deg, transparent 35%, rgba(255,255,255,0.85) 50%, transparent 65%), linear-gradient(135deg, #F5C842, #D9A00F);
+    }
+    @keyframes alba-shine { 0% { background-position: 160% 0, 0 0; } 55%, 100% { background-position: -60% 0, 0 0; } }
+    @keyframes alba-glow { 0%, 100% { box-shadow: 0 0 6px rgba(255,200,40,0.45); } 50% { box-shadow: 0 0 14px rgba(255,216,77,0.95), 0 0 3px #fff; } }
+    @media (prefers-reduced-motion: reduce) { .dress-rarity.r-albatross { animation: none; } }
     .dress-tile.shop-piece { box-shadow: inset 0 0 0 2px rgba(var(--rc-rgb),0.6); }
     .dress-tile.shop-piece.r-albatross { box-shadow: inset 0 0 0 2px rgba(var(--rc-rgb),0.75), 0 0 10px rgba(var(--rc-rgb),0.25); }
     .dress-tile.shop-piece.selected, .dress-tile.shop-piece.selected:hover { box-shadow: inset 0 0 0 2px var(--glow), inset 0 0 0 4px rgba(var(--rc-rgb),0.6); }

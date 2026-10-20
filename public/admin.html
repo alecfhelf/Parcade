@@ -38,6 +38,7 @@
     .ok { color: #7CFF6B; font-weight: 600; }
     .plus { color: #7CFF6B; font-weight: 700; }
     .minus { color: #FF7A90; font-weight: 700; }
+    .acct-search { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; padding: 9px 12px; width: 100%; max-width: 360px; box-sizing: border-box; margin-bottom: 10px; }
     #grant-msg { margin: 8px 0 0; min-height: 1.3em; }
     @media (max-width: 640px) { .grant { grid-template-columns: 1fr 1fr; } .grant .wide { grid-column: 1 / -1; } }
   </style>
@@ -104,8 +105,7 @@
     out.innerHTML = "";
     const cards = el("div", "cards");
     [["Accounts", d.accounts], ["Guests", d.guests], ["New accounts (7 days)", d.accounts_7d], ["Rounds", d.rounds],
-     ["Rounds (7 days)", d.rounds_7d], ["Avg players per round", d.avg_players ?? 0], ["Scores entered", d.scores],
-     ["Chat messages", d.messages], ["Seasons", d.seasons], ["Money rounds", d.money_rounds], ["Side bets", d.bets],
+     ["Rounds (7 days)", d.rounds_7d], ["Avg players per round", d.avg_players ?? 0], ["Seasons", d.seasons], ["Money rounds", d.money_rounds], ["Side bets", d.bets],
      ["Settled bet dollars", money(d.bet_dollars)]].forEach(([label, v]) => {
       const c = el("div", "card");
       c.append(el("b", null, String(v)), el("span", null, label));
@@ -115,20 +115,38 @@
     daily(d.daily);
     bars("Game modes", d.by_mode, MODE_NAMES);
     bars("Round status", d.by_status, STATUS_NAMES);
-    out.append(el("h2", null, "Recent rounds"));
-    const wrap = el("div", "wrap");
+  }
+
+  // Accounts with an email, newest first, searchable by email (admin_accounts)
+  function accountsSection() {
+    out.append(el("h2", null, "Accounts"));
+    const search = el("input");
+    search.type = "search";
+    search.placeholder = "Search by email";
+    search.className = "acct-search";
+    const list = el("div", "wrap");
+    let timer = null;
+    search.oninput = () => { clearTimeout(timer); timer = setTimeout(() => loadAccounts(list, search.value.trim()), 250); };
+    out.append(search, list);
+    loadAccounts(list, "");
+  }
+
+  async function loadAccounts(box, q) {
+    const { data, error } = await db.rpc("admin_accounts", { p_search: q, p_limit: 100 });
+    box.innerHTML = "";
+    if (error) { box.append(el("p", "bad", /does not exist|could not find/i.test(error.message) ? "Run the admin_accounts SQL first." : error.message)); return; }
+    if (!data.length) { box.append(el("p", "muted", q ? "No accounts match." : "No accounts yet.")); return; }
     const t = el("table");
     const head = el("tr");
-    ["Round", "Mode", "Status", "Players", "Created"].forEach(x => head.append(el("th", null, x)));
+    ["Email", "Name", "Joined", "Last sign in", "Rounds", "Coins"].forEach(x => head.append(el("th", null, x)));
     t.append(head);
-    (d.recent || []).forEach(r => {
+    data.forEach(r => {
       const tr = el("tr");
-      [r.name, MODE_NAMES[r.mode || "none"] || r.mode, STATUS_NAMES[r.status] || r.status, String(r.players),
-       new Date(r.created_at).toLocaleString()].forEach(x => tr.append(el("td", null, x)));
+      [r.email, r.name || "", new Date(r.created_at).toLocaleDateString(), r.last_sign_in_at ? new Date(r.last_sign_in_at).toLocaleDateString() : "",
+       String(r.rounds), String(r.coins)].forEach(x => tr.append(el("td", null, x)));
       t.append(tr);
     });
-    wrap.append(t);
-    out.append(wrap);
+    box.append(t);
   }
 
   // Coins: give or take with admin_grant_coins, and the latest ledger rows (supabase/pro-shop.sql)
@@ -204,6 +222,7 @@
     const { data, error } = await db.rpc("admin_stats");
     if (error) { out.append(el("p", "bad", /not authorized/i.test(error.message) ? "This account isn't an admin." : error.message)); return; }
     render(data);
+    accountsSection();
     coinsSection();
   }
   document.getElementById("refresh").onclick = load;

@@ -3406,7 +3406,7 @@ if (!roundCode) {
   Sound.music(true);
 }
 if (roundCode) loadRound(roundCode);
-else ensureUser()
+else Promise.resolve()
   .then(() => { $("status").textContent = ""; renderAccount(); })
   .catch(err => { $("status").textContent = "Error: " + err.message; });
 
