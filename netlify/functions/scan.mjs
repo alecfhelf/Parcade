@@ -7,6 +7,11 @@ const PROMPT = `Read this golf scorecard photo. Reply with ONLY a JSON object an
  "tees": [{"tee_name": string, "gender": "Male" or "Female" or null, "yardage": total yards as an integer or null, "course_rating": number or null, "slope": integer or null}]}
 Use null for anything you cannot read clearly. Do not guess.
 If the image is not a golf scorecard, reply {"error": "not a scorecard"}.`;
+const MINI_PROMPT = `Read this mini-golf (putt-putt) scorecard photo. Reply with ONLY a JSON object and no other text, in this shape:
+{"name": course name or null,
+ "pars": [the par for each hole in order, 9 or 18 integers from 1 to 9]}
+If the card has more than one course on it, use the first one. Use null for anything you cannot read clearly. Do not guess.
+If the image is not a mini-golf or golf scorecard, reply {"error": "not a scorecard"}.`;
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { "content-type": "application/json", "cache-control": "no-store" }
@@ -33,6 +38,7 @@ export default async (req) => {
   const body = await req.json().catch(() => ({}));
   const image = typeof body.image === "string" ? body.image : "";
   if (!image || image.length > 5000000) return json({ error: "That photo is too big or empty." }, 400);
+  const mini = body.mini === true;
 
   let text = "";
   try {
@@ -43,7 +49,7 @@ export default async (req) => {
         model: MODEL, max_tokens: 1024,
         messages: [{ role: "user", content: [
           { type: "image", source: { type: "base64", media_type: "image/jpeg", data: image } },
-          { type: "text", text: PROMPT }
+          { type: "text", text: mini ? MINI_PROMPT : PROMPT }
         ] }]
       })
     });
@@ -60,6 +66,16 @@ export default async (req) => {
   if (out.error) return json({ error: "That doesn't look like a scorecard." }, 422);
 
   const raw = Array.isArray(out.pars) ? out.pars.map(int) : [];
+  if (mini) {
+    if (raw.length !== 9 && raw.length !== 18) return json({ error: "Couldn't find 9 or 18 holes. Get the whole card in the photo." }, 422);
+    const ok = p => p >= 1 && p <= 9;
+    // Same bar as real golf (14 of 18), scaled for 9-hole cards
+    if (raw.filter(ok).length < Math.ceil(raw.length * 14 / 18)) return json({ error: "Too blurry to read the pars. Try a clearer photo." }, 422);
+    return json({
+      name: typeof out.name === "string" ? out.name.trim().slice(0, 80) : null,
+      pars: raw.map(p => (ok(p) ? p : 2))
+    });
+  }
   if (raw.length !== 18) return json({ error: "Parcade needs all 18 holes. Get the whole card in the photo." }, 422);
   const good = raw.filter(p => p >= 3 && p <= 6).length;
   if (good < 14) return json({ error: "Too blurry to read the pars. Try a clearer photo." }, 422);

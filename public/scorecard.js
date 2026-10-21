@@ -16,6 +16,7 @@ function pickFrom(title, options) {
     options.forEach(o => {
       const b = scEl("button", "mode-tile", o.label);
       if (o.color !== undefined) b.prepend(figureEl(o.color));
+      if (o.tag) b.append(" ", scEl("span", "mini-tag", o.tag));
       b.disabled = !!o.disabled;
       b.onclick = () => close(o.value);
       list.append(b);
@@ -187,7 +188,8 @@ function renderCaddyResults(box, { round, players, scores, user, preds, mulls, b
 
   const addWrap = scEl("div");
   box.append(addWrap);
-  renderAddToSeason(addWrap, round, players);
+  // Mini-golf scores don't count toward seasons
+  if (!round.mini) renderAddToSeason(addWrap, round, players);
 }
 
 function renderScorecard(box, { round, players, scores, results, user, picks, preds, mulls, bets, wads, course }) {
@@ -290,7 +292,9 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
     pl: r.pl, v: pointsMode ? r.total : -(r.strokes - Math.floor(r.thru * (allow[r.pl.id] || 0) + 1e-9)) }));
   renderMoneySection(box, { round, players, entries, bets: bets || [], user, override: wadMode ? wadMoney(round, players, wads || []) : null });
 
-  box.append(scEl("h3", null, "Scorecard"));
+  const scHead = scEl("h3", null, "Scorecard");
+  if (round.mini) scHead.append(" ", scEl("span", "mini-tag", "Mini-golf"));
+  box.append(scHead);
   if (!holes.length) {
     box.append(scEl("p", "waiting", "No scores were entered."));
   } else {
@@ -321,7 +325,8 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
 
   const addWrap = scEl("div");
   box.append(addWrap);
-  renderAddToSeason(addWrap, round, players);
+  // Mini-golf scores don't count toward seasons
+  if (!round.mini) renderAddToSeason(addWrap, round, players);
 }
 
 function renderAddToSeason(wrap, round, players) {

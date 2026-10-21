@@ -411,7 +411,7 @@ function tnCoursePicker() {
         const { data: { session } } = await db.auth.getSession();
         const uid = session && session.user && session.user.id;
         const [own, ext] = await Promise.all([
-          db.from("courses").select("*").neq("source", "api").eq("created_by", uid).ilike("name", "%" + q.replace(/[%_\\]/g, "") + "%").limit(5),
+          db.from("courses").select("*").neq("source", "api").eq("mini", false).eq("created_by", uid).ilike("name", "%" + q.replace(/[%_\\]/g, "") + "%").limit(5),
           fetch("/.netlify/functions/courses?q=" + encodeURIComponent(q)).then(r => (r.ok ? r.json() : {})).then(j => j.courses || []).catch(() => []),
         ]);
         if (my !== seq) return;

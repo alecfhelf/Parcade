@@ -472,7 +472,7 @@ async function loadSeason(code) {
     if (!myIds.length) { list.append(el("li", { textContent: "Play a round and it shows up here." })); return; }
     const { data: rounds } = await db.from("rounds").select("*").in("id", myIds).order("created_at", { ascending: false });
     await loadRoundRanks((rounds || []).map(r => r.id));
-    (rounds || []).forEach(r => {
+    (rounds || []).filter(r => !r.mini).forEach(r => {
       list.append(el("li", {},
         el("span", { textContent: r.name }),
         el("button", { className: "link-btn", textContent: "Add", onclick: async () => {
@@ -895,7 +895,7 @@ async function loadSeasonV2(box, season, acct) {
     const { data: rounds } = ids.length
       ? await db.from("rounds").select("*").in("id", ids).eq("status", "finished").order("created_at", { ascending: false })
       : { data: [] };
-    const finished = rounds || [];
+    const finished = (rounds || []).filter(r => !r.mini);
     const fresh = finished.filter(r => !taken.has(r.id));
     const inRange = fresh.filter(r => season.format === "rounds"
       ? new Date(r.created_at) > new Date(me.joined_at)

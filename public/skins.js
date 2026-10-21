@@ -4,7 +4,7 @@ function skinsState(round, players, scores) {
   const totals = {}, holes = {};
   players.forEach(p => (totals[p.id] = 0));
   let carry = 0;
-  for (let h = 1; h <= 18; h++) {
+  for (let h = 1; h <= holesIn(round); h++) {
     const pot = carry + 1;
     const info = { pot, winner: null, result: null };
     holes[h] = info;

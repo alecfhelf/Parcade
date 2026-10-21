@@ -15,7 +15,7 @@ function bestBallState(round, players, scores, groupNo) {
   if (!t.valid) return out;
   const allow = holeAllowances(round, players);
   const scoreOf = (p, h) => scores.find(x => x.player_id === p.id && x.hole === h && x.strokes);
-  for (let h = 1; h <= 18; h++) {
+  for (let h = 1; h <= holesIn(round); h++) {
     const s1 = t[1].map(p => scoreOf(p, h)), s2 = t[2].map(p => scoreOf(p, h));
     if ([...s1, ...s2].some(x => !x)) { out.holes[h] = null; continue; }
     const n1 = Math.min(...s1.map(x => netOf(x, allow))), n2 = Math.min(...s2.map(x => netOf(x, allow)));
@@ -45,7 +45,7 @@ function vegasState(round, players, scores, groupNo) {
   const allow = holeAllowances(round, players);
   const val = x => Math.max(1, Math.round(netOf(x, allow)));
   const scoreOf = (p, h) => scores.find(x => x.player_id === p.id && x.hole === h && x.strokes);
-  for (let h = 1; h <= 18; h++) {
+  for (let h = 1; h <= holesIn(round); h++) {
     const s1 = t[1].map(p => scoreOf(p, h)), s2 = t[2].map(p => scoreOf(p, h));
     if ([...s1, ...s2].some(x => !x)) { out.holes[h] = null; continue; }
     const a = s1.map(val), b = s2.map(val);

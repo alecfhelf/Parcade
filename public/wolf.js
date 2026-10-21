@@ -13,8 +13,9 @@ function wolfState(round, players, scores, picks, groupNo) {
   const table = n === 3 ? WOLF_PTS3 : WOLF_PTS;
   const allow = holeAllowances(round, players);
   const scoreOf = (id, h) => scores.find(x => x.player_id === id && x.hole === h && x.strokes);
-  for (let h = 1; h <= 18; h++) {
-    const lastPlaceRule = n === 4 && h >= 17;
+  const last = holesIn(round);
+  for (let h = 1; h <= last; h++) {
+    const lastPlaceRule = n === 4 && h >= last - 1;
     const wolf = lastPlaceRule
       ? order.slice().sort((a, b) => out.totals[a.id] - out.totals[b.id] || order.indexOf(a) - order.indexOf(b))[0]
       : order[(h - 1) % n];

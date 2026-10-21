@@ -150,6 +150,10 @@ function holeAllowances(round, players) {
 }
 const ROUND_RANKS = {};
 let ACTIVE_RANKS = null;
+// Holes in a round: 18, or 9 for a 9-hole mini-golf card. Set when the round's course loads.
+const ROUND_HOLES = {};
+const holesIn = round => ROUND_HOLES[round.id] || 18;
+const MINI_TAG = () => { const t = document.createElement("span"); t.className = "mini-tag"; t.textContent = "Mini-golf"; return t; };
 const strokesOn = (a, hole) => {
   if (ACTIVE_RANKS) {
     const total = Math.round(a * 18), rank = ACTIVE_RANKS[hole - 1];
@@ -396,6 +400,20 @@ const CHALLENGES = [
   ["If you only use your driver, you get +2", 2, "multi"],
   ["If you only use your irons, you get +2", 2, "multi"],
 ];
+// Mini-golf deck: drop the cards that need a real course, add some putt-putt ones
+const REAL_COURSE_ONLY = ["Longest Tee Shot", "Longest Tee Shot in the Fairway", "Longest Second Shot", "Longest Drive, Any Lie",
+  "First Putt Closest to the Hole", "Fewest Putts", "CURSE: Shortest Tee Shot", "CURSE: Most Putts",
+  "If you only use your driver, you get +2", "If you only use your irons, you get +2", "If you only use your putter, you get +2"];
+const MINI_CHALLENGES = CHALLENGES.filter(c => !REAL_COURSE_ONLY.includes(c[0])).concat([
+  ["Best Bank Shot", 2],
+  ["Closest After the Obstacle", 1],
+  ["CURSE: Ball Leaves the Course", -1],
+  ["CURSE: Most Obstacle Hits", -1],
+  ["If you hole out off a wall, you get +2", 2, "multi"],
+  ["If you putt one-handed the whole hole, you get +2", 2, "multi"],
+  ["If you putt with your other hand, you get +2", 2, "multi"],
+]);
+const deckFor = round => (round && round.mini ? MINI_CHALLENGES : CHALLENGES);
 
 const LINES = {
   birdie: [
@@ -461,7 +479,7 @@ const LINES = {
 
 function scoreLine(name, n, hole, par) {
   let pool;
-  if (par >= 3) {
+  if (par) {
     const d = n - par;
     pool = n === 1 ? LINES.ace : d <= -3 ? LINES.albatross : d === -2 ? LINES.eagle : d === -1 ? LINES.birdie
       : d === 3 ? LINES.triple : d >= 4 ? LINES.blowup : null;
@@ -474,16 +492,16 @@ function scoreLine(name, n, hole, par) {
     .replaceAll("{par}", String(par)).replaceAll("{over}", String(n - par));
 }
 
-function challengeFor(code, hole) {
+function challengeFor(code, hole, deck = CHALLENGES) {
   let seed = 0;
   for (const c of code) seed = (Math.imul(seed, 31) + c.charCodeAt(0)) >>> 0;
-  const order = CHALLENGES.map((_, i) => i);
+  const order = deck.map((_, i) => i);
   for (let i = order.length - 1; i > 0; i--) {
     seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
     const j = seed % (i + 1);
     [order[i], order[j]] = [order[j], order[i]];
   }
-  const [text, pts, multi] = CHALLENGES[order[(hole - 1) % order.length]];
+  const [text, pts, multi] = deck[order[(hole - 1) % order.length]];
   return { text, pts, multi: !!multi };
 }
 
@@ -504,10 +522,12 @@ async function ensureUser() {
   return userPromise;
 }
 
-$("create-round").addEventListener("click", async () => {
+$("create-round").addEventListener("click", () => startRound(false));
+$("create-mini").addEventListener("click", () => startRound(true));
+async function startRound(mini) {
   const myName = await accountName();
   const fit = await myOutfit();
-  const vals = await ask("Start a new round", [
+  const vals = await ask(mini ? "Start a mini-golf round" : "Start a new round", [
     { label: "Round name", placeholder: "Saturday Showdown" },
     { label: "Your name", placeholder: "What your crew calls you", max: 20, value: myName }
   ], "Tee it up", null, null, CRABBY_LINES.welcome);
@@ -515,12 +535,12 @@ $("create-round").addEventListener("click", async () => {
   const [roundName, playerName] = vals;
   const color = fit.shirtColor || "-";
   const hcp = false;
-  const mineHc = await myHandicap();
+  const mineHc = mini ? null : await myHandicap();
   const usual = mineHc ? mineHc.usual : null, hcpNum = mineHc ? mineHc.hcp : null;
   try {
     await ensureUser();
     const { data: round, error: e1 } = await db.from("rounds")
-      .insert({ name: roundName.trim(), handicap: hcp }).select().single();
+      .insert({ name: roundName.trim(), handicap: hcp, ...(mini ? { mini: true } : {}) }).select().single();
     if (e1) throw e1;
     const pc = color === "-" ? null : color;
     const { error: e2 } = await insertPlayer({ round_id: round.id, name: playerName.trim(), color: pc, usual_score: usual, hcp: hcpNum,
@@ -530,7 +550,7 @@ $("create-round").addEventListener("click", async () => {
   } catch (err) {
     $("status").textContent = "Error: " + err.message;
   }
-});
+}
 
 const MODES = {
   party: { name: "Party Mode", desc: "Points every hole plus a random challenge card. Bonuses, curses, and bragging rights." },
@@ -658,6 +678,7 @@ async function loadRound(code) {
   }
 
   document.querySelector("h1").textContent = round.name;
+  if (round.mini) document.querySelector("h1").append(" ", MINI_TAG());
   const sub = document.querySelector("h1 + p");
   const link = location.origin + "/?r=" + round.code;
 
@@ -673,6 +694,20 @@ async function loadRound(code) {
   const isWad = () => round.mode === "wad";
   const isWolf = () => round.mode === "wolf";
   const isStab = () => round.mode === "stableford";
+  // Guests' mini-golf cards live on the round (rounds.mini_course), never in the courses table
+  const guestCard = () => round.mini && !window.__signedIn;
+  const cardOnRound = () => ({ id: null, mini: true, name: round.mini_course.name, pars: round.mini_course.pars });
+  async function keepCardOnRound(m) {
+    const mini_course = { name: m.name, pars: m.pars };
+    const { error } = await db.from("rounds").update({ mini_course, course_id: null }).eq("id", round.id);
+    if (error) { toast(error.message); return null; }
+    round.mini_course = mini_course;
+    round.course_id = null;
+    course = cardOnRound();
+    ROUND_RANKS[round.id] = null;
+    ROUND_HOLES[round.id] = course.pars.length === 9 ? 9 : 18;
+    return course;
+  }
   const h3 = (text) => { const el = document.createElement("h3"); el.textContent = text; return el; };
 
   // ---------- Lobby ----------
@@ -758,7 +793,11 @@ async function loadRound(code) {
     startBtn.style.width = "100%";
     const SIZES = [["1", "1 player"], ["2", "2 players"], ["3", "3 players"], ["4", "4 players"], ["5", "5 or more"]];
     const sizeFits = { "1": n => n === 1, "2": n => n === 2, "3": n => n === 3, "4": n => n === 4, "5": n => n >= 5 };
-    const MODES_FOR = { "1": ["stroke", "stableford", "party"], "2": ["party", "stroke", "stableford", "skins", "match", "wad", "caddy"], "3": ["party", "stroke", "stableford", "skins", "match", "wolf", "bbb", "wad", "caddy"], "4": ["party", "stroke", "stableford", "skins", "match", "wolf", "bbb", "bestball", "vegas", "wad", "caddy"], "5": ["party", "stroke", "stableford", "skins", "match", "wolf", "bbb", "bestball", "vegas", "wad", "caddy"] };
+    const MODES_ALL = { "1": ["stroke", "stableford", "party"], "2": ["party", "stroke", "stableford", "skins", "match", "wad", "caddy"], "3": ["party", "stroke", "stableford", "skins", "match", "wolf", "bbb", "wad", "caddy"], "4": ["party", "stroke", "stableford", "skins", "match", "wolf", "bbb", "bestball", "vegas", "wad", "caddy"], "5": ["party", "stroke", "stableford", "skins", "match", "wolf", "bbb", "bestball", "vegas", "wad", "caddy"] };
+    const modeRules = key => showRulesModal(MODES[key].name, [key, "round"], deckFor(round), holesIn(round), round.mini);
+    // Mini-golf: no "first on the green" (bbb), every shot is a putt (wad), everyone's playing (caddy)
+    const MINI_HIDDEN = ["bbb", "wad", "caddy"];
+    const MODES_FOR = Object.fromEntries(Object.entries(MODES_ALL).map(([k, list]) => [k, round.mini ? list.filter(m => !MINI_HIDDEN.includes(m)) : list]));
     const SIZE_NOTES = {
       "1": "Just you and the course. Kinda sad, but great for keeping score.",
       "2": "Head to head. Nowhere to hide.",
@@ -828,7 +867,7 @@ async function loadRound(code) {
       const head = h3("Game mode");
       head.style.marginTop = "28px";
       roomGame.append(head);
-      const picker = modeGrid({ modes: MODES_FOR[pickedSize], selected: pickedMode, off: guestModeLock(), onPick: key => {
+      const picker = modeGrid({ modes: MODES_FOR[pickedSize], selected: pickedMode, off: guestModeLock(), info: modeRules, onPick: key => {
         pickedMode = key;
         renderModes();
         updateStart();
@@ -889,6 +928,7 @@ async function loadRound(code) {
       refresh();
     };
     hcRow.append(hcTxt, hcSwitch);
+    if (round.mini) hcRow.style.display = "none";
     hostArea.append(hcRow);
     syncHc();
     syncOd();
@@ -932,10 +972,15 @@ async function loadRound(code) {
         const r = await fetch("/.netlify/functions/scan", {
           method: "POST",
           headers: { "content-type": "application/json", authorization: "Bearer " + (session ? session.access_token : "") },
-          body: JSON.stringify({ image })
+          body: JSON.stringify(round.mini ? { image, mini: true } : { image })
         });
         const out = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(out.error || "Couldn't read that one. Try a clearer photo.");
+        if (round.mini) {
+          const m = await parsModal({ mini: true, name: out.name, pars: out.pars });
+          if (m) saveCourse({ ...m, source: "photo" });
+          return;
+        }
         let tee = null;
         if (out.tees && out.tees.length > 1) {
           tee = await teeModal(out.name || "Your scorecard", out.tees);
@@ -948,10 +993,11 @@ async function loadRound(code) {
         toast(e.message || "Couldn't read that one. Try a clearer photo.");
       } finally {
         cScan.disabled = false;
-        cScan.textContent = "Scan a scorecard photo";
+        cScan.textContent = round.mini ? "Scan the scorecard" : "Scan a scorecard photo";
       }
     };
-    courseArea.append(h3("What course are you playing?"), cCurrent, cSearch, cResults, cManual, cScan, cFile, cSkip);
+    if (round.mini) courseArea.append(h3("What mini-golf course?"), cCurrent, cScan, cManual, cFile, cSkip);
+    else courseArea.append(h3("What course are you playing?"), cCurrent, cSearch, cResults, cManual, cScan, cFile, cSkip);
     hostArea.append(courseArea);
     const parTotal = c => c.pars.reduce((a, b) => a + b, 0);
     const courseLabel = c => c.name + (c.tee_name ? " (" + c.tee_name + " tees)" : "");
@@ -973,6 +1019,7 @@ async function loadRound(code) {
       round.course_id = c.id;
       course = c;
       ROUND_RANKS[round.id] = Array.isArray(c.hcp_index) && c.hcp_index.length === 18 ? c.hcp_index : null;
+      ROUND_HOLES[round.id] = round.mini && c.pars.length === 9 ? 9 : 18;
       renderCourseCurrent();
       setStep("confirm");
     }
@@ -1004,6 +1051,10 @@ async function loadRound(code) {
       } catch (e) { return []; }
     }
     async function saveCourse(row) {
+      if (guestCard()) {
+        if (await keepCardOnRound(row)) { renderCourseCurrent(); setStep("confirm"); }
+        return;
+      }
       const { data, error } = await db.from("courses").insert(row).select().single();
       if (error) { toast(error.message); return; }
       selectCourse(data);
@@ -1068,7 +1119,7 @@ async function loadRound(code) {
         if (q.length < 3) return;
         cResults.append(note("Searching..."));
         const [own, ext] = await Promise.all([
-          db.from("courses").select("*").neq("source", "api").eq("created_by", user.id).ilike("name", "%" + q.replace(/[%_\\]/g, "") + "%")
+          db.from("courses").select("*").neq("source", "api").eq("mini", false).eq("created_by", user.id).ilike("name", "%" + q.replace(/[%_\\]/g, "") + "%")
             .order("created_at", { ascending: false }).limit(5),
           apiSearch(q)
         ]);
@@ -1085,17 +1136,21 @@ async function loadRound(code) {
       }, 300);
     };
     cManual.onclick = async () => {
-      const c = await parsModal(cSearch.value.trim());
-      if (!c) return;
-      const { data, error } = await db.from("courses").insert(c).select().single();
-      if (error) { toast(error.message); return; }
-      selectCourse(data);
+      const c = await parsModal(round.mini ? { mini: true, name: "" } : cSearch.value.trim());
+      if (c) saveCourse(c);
     };
     cSkip.onclick = () => setStep("size");
+    if (round.mini) {
+      cScan.textContent = "Scan the scorecard";
+      cManual.textContent = "Enter holes manually";
+      cScan.style.marginTop = "0";
+      cSkip.textContent = "Skip, no scorecard";
+    }
     if (!window.__signedIn) {
       cSearch.disabled = true;
       cSearch.placeholder = "Sign in to search courses";
-      [cManual, cScan].forEach(b => { b.classList.add("locked-feature"); b.onclick = () => needAccount("courses"); });
+      // Guests can still type in a mini-golf card. It stays on the round.
+      (round.mini ? [cScan] : [cManual, cScan]).forEach(b => { b.classList.add("locked-feature"); b.onclick = () => needAccount("courses"); });
     }
 
     const confirmArea = document.createElement("div");
@@ -1113,7 +1168,8 @@ async function loadRound(code) {
       if (facts) confirmArea.append(mkEl("p", "waiting", facts));
       const hasHcp = Array.isArray(c.hcp_index) && c.hcp_index.length === 18;
       const sum = (a, b, e) => a.slice(b, e).reduce((x, y) => x + (y || 0), 0);
-      [[0, 9, "Out"], [9, 18, "In"]].forEach(([b, e, label]) => {
+      const nineOnly = c.pars.length === 9;
+      (nineOnly ? [[0, 9, "Tot"]] : [[0, 9, "Out"], [9, 18, "In"]]).forEach(([b, e, label]) => {
         const wrap = mkEl("div", "sc-wrap");
         const t = mkEl("table", "sc-table confirm-table");
         const row = (head, vals, tot, cls) => {
@@ -1129,13 +1185,19 @@ async function loadRound(code) {
         wrap.append(t);
         confirmArea.append(wrap);
       });
-      confirmArea.append(mkEl("p", "waiting", "Total par " + sum(c.pars, 0, 18) + (hasHcp ? "" : ". No hole handicaps, so strokes spread evenly.")));
+      confirmArea.append(mkEl("p", "waiting", (nineOnly ? "9 holes, total par " : "Total par ") + sum(c.pars, 0, 18)
+        + (hasHcp || c.mini ? "" : ". No hole handicaps, so strokes spread evenly.")));
       const ok = mkEl("button", null, "Looks right");
       ok.style.cssText = "width:100%;margin-top:12px";
       ok.onclick = () => setStep("size");
       const fix = mkEl("button", "btn-ghost", "Fix something");
       fix.style.cssText = "width:100%;margin-top:10px";
       fix.onclick = async () => {
+        if (c.mini) {
+          const m = await parsModal({ mini: true, name: c.name, pars: c.pars });
+          if (m) saveCourse({ ...m, source: c.source || "manual" });
+          return;
+        }
         const m = await parsModal({ name: c.name, location: c.location, tee_name: c.tee_name, pars: c.pars, hcp_index: c.hcp_index, showHcp: true });
         if (!m) return;
         saveCourse({ ...m, rating: c.rating, slope: c.slope, yardage: c.yardage, tee_gender: c.tee_gender,
@@ -1153,9 +1215,11 @@ async function loadRound(code) {
         const flip = arr => (Array.isArray(arr) && arr.length === 18 ? arr.slice(9).concat(arr.slice(0, 9)) : null);
         saveCourse({ name: swapName, location: c.location, tee_name: c.tee_name, pars: flip(c.pars), hcp_index: flip(c.hcp_index),
           rating: c.rating, slope: c.slope, yardage: c.yardage, tee_gender: c.tee_gender, rating_source: c.rating_source,
-          external_id: c.external_id, source: c.source || "manual" });
+          external_id: c.external_id, source: c.source || "manual", ...(c.mini ? { mini: true } : {}) });
       };
-      confirmArea.append(ok, fix, swap, other);
+      confirmArea.append(ok, fix);
+      if (!nineOnly) confirmArea.append(swap);
+      confirmArea.append(other);
     }
 
     const mullArea = document.createElement("div");
@@ -1249,7 +1313,7 @@ async function loadRound(code) {
       back.onclick = () => { pickedSize = null; pickedMode = null; renderModes(); updateStart(); setStep("size"); };
       modeArea.append(back, h3("Pick a game mode for " + label.toLowerCase()));
       slideIn(modeArea);
-      const picker = modeGrid({ modes: MODES_FOR[pickedSize], selected: pickedMode, off: guestModeLock(), onPick: key => {
+      const picker = modeGrid({ modes: MODES_FOR[pickedSize], selected: pickedMode, off: guestModeLock(), info: modeRules, onPick: key => {
         pickedMode = key;
         updateStart();
         caddyNote.style.display = key === "caddy" ? "block" : "none";
@@ -1308,7 +1372,8 @@ async function loadRound(code) {
     lobby.prepend(stepBar);
     function guideLine() {
       const st = lobby.dataset.step;
-      if (st === "course") return window.__signedIn ? CRABBY_LINES.course : CRABBY_LINES.courseGuest;
+      if (st === "course") return round.mini ? (window.__signedIn ? CRABBY_LINES.courseMini : CRABBY_LINES.courseMiniGuest)
+        : window.__signedIn ? CRABBY_LINES.course : CRABBY_LINES.courseGuest;
       if (st === "confirm") return CRABBY_LINES.confirm;
       if (st === "size") return CRABBY_LINES.size;
       if (st === "setup") return CRABBY_LINES.setup;
@@ -1683,7 +1748,7 @@ async function loadRound(code) {
   function showTab(key) {
     activeTab = key;
     if (key === "course") renderCoursePanel();
-    if (key === "rules") { panels.rules.innerHTML = ""; renderRules(panels.rules, [RULES[round.mode] ? round.mode : "party", "round"]); }
+    if (key === "rules") { panels.rules.innerHTML = ""; renderRules(panels.rules, [RULES[round.mode] ? round.mode : "party", "round"], deckFor(round), holesIn(round), round.mini); }
     if (key === "chat") { unread = 0; updateChatTab(); setTimeout(() => (chatList.scrollTop = chatList.scrollHeight), 0); }
     Object.entries(panels).forEach(([k, el]) => (el.style.display = k === key ? "block" : "none"));
     Object.entries(tabBtns).forEach(([k, b]) => b.classList.toggle("active", k === key));
@@ -2023,9 +2088,10 @@ async function loadRound(code) {
     if (round.course_id && (!course || course.id !== round.course_id)) {
       const { data: cd } = await db.from("courses").select("*").eq("id", round.course_id).maybeSingle();
       course = cd || null;
-    }
+    } else if (!round.course_id && round.mini_course) course = cardOnRound();
     ROUND_RANKS[round.id] = course && course.id === round.course_id && Array.isArray(course.hcp_index)
       && course.hcp_index.length === 18 ? course.hcp_index : null;
+    ROUND_HOLES[round.id] = round.mini && course && course.id === round.course_id && course.pars.length === 9 ? 9 : 18;
     const { data: pmData } = await db.from("player_mulligans").select("*").eq("round_id", round.id);
     pmulls = pmData || [];
     players = p.data || [];
@@ -2055,7 +2121,7 @@ async function loadRound(code) {
         if (!data) return;
         const modeName = (MODES[data.mode] || {}).name || "this mode";
         const bits = [];
-        if (data.coin) bits.push("+1 coin for finishing 18 holes");
+        if (data.coin) bits.push("+1 coin for finishing " + holesIn(round) + " holes");
         if (data.bonus) bits.push("+" + data.bonus + " bonus for your first round of " + modeName + "!");
         if (bits.length) { setTimeout(() => Sound.play("coin"), 900); toast(bits.join(" ") + " \u{1FA99}", true); }
         else if (data.daily) toast("You already earned today's round coin. Come back tomorrow.");
@@ -2083,8 +2149,8 @@ async function loadRound(code) {
     if (finished) renderScorecard(scoreArea, { round, players, scores, results, user, picks, preds, mulls, bets, wads, course });
       if (me && round.host_id === user.id) {
         const golfers = players.filter(p => p.role !== "caddy");
-        const all18 = golfers.length && golfers.every(p => scores.some(x => x.player_id === p.id && x.hole === 18 && x.strokes));
-        if (!all18) {
+        const allDone = golfers.length && golfers.every(p => scores.some(x => x.player_id === p.id && x.hole === holesIn(round) && x.strokes));
+        if (!allDone) {
           const cont = document.createElement("button");
           cont.textContent = "Continue round";
           cont.style.cssText = "width:100%;margin:8px 0 18px";
@@ -2094,7 +2160,7 @@ async function loadRound(code) {
             const mine = scores.filter(x => x.strokes && gp.some(p => p.id === x.player_id));
             const last = mine.length ? Math.max(...mine.map(x => x.hole)) : 0;
             const done = last && gp.every(p => mine.some(x => x.player_id === p.id && x.hole === last));
-            const target = !last ? 1 : done ? Math.min(last + 1, 18) : last;
+            const target = !last ? 1 : done ? Math.min(last + 1, holesIn(round)) : last;
             const { error } = await db.from("rounds").update({ status: "playing" }).eq("id", round.id);
             if (error) { toast(error.message); cont.disabled = false; return; }
             round.status = "playing";
@@ -2198,6 +2264,7 @@ async function loadRound(code) {
     const gnums = [...new Set(players.map(p => p.group_no))].sort((a, b) => a - b);
     const ch3 = document.createElement("h3");
     ch3.textContent = "Scorecards";
+    if (round.mini) ch3.append(" ", MINI_TAG());
     cardsInfo.append(ch3);
     gnums.forEach(g => {
       const gp = players.filter(p => p.group_no === g && p.role !== "caddy");
@@ -2205,7 +2272,7 @@ async function loadRound(code) {
       const sc = scores.filter(x => x.strokes && gp.some(p => p.id === x.player_id));
       const maxH = sc.length ? Math.max(...sc.map(x => x.hole)) : 0;
       let cur = 1;
-      while (cur < 18 && gp.every(p => sc.some(x => x.player_id === p.id && x.hole === cur))) cur++;
+      while (cur < holesIn(round) && gp.every(p => sc.some(x => x.player_id === p.id && x.hole === cur))) cur++;
       const lbl = document.createElement("p");
       lbl.className = "waiting";
       lbl.style.margin = "8px 0 4px";
@@ -2291,14 +2358,14 @@ async function loadRound(code) {
       showHoleRecap(doneHole).then(() => maybeIntro(prog));
     } else if (me) drawCard();
     if (me && lastProgress !== null && players.filter(p => p.group_no === me.group_no && p.role !== "caddy")
-      .every(p => scores.some(x => x.player_id === p.id && x.hole === 18 && x.strokes))) showHoleRecap(18);
+      .every(p => scores.some(x => x.player_id === p.id && x.hole === holesIn(round) && x.strokes))) showHoleRecap(holesIn(round));
     lastProgress = prog;
   }
 
   const myScores = () => (me ? scores.filter(x => x.player_id === me.id) : []);
 
   function setHole(h) {
-    hole = Math.min(groupProgressHole(), 18, Math.max(1, h));
+    hole = Math.min(groupProgressHole(), holesIn(round), Math.max(1, h));
     scoringFor = null;
     const ex = myScores().find(x => x.hole === hole);
     strokes = ex ? ex.strokes : 4;
@@ -2312,7 +2379,7 @@ async function loadRound(code) {
     const g = me ? me.group_no : 1;
     const group = players.filter(p => p.group_no === g && p.role !== "caddy");
     let h = 1;
-    while (h < 18 && group.length && group.every(p => scores.some(x => x.player_id === p.id && x.hole === h && x.strokes))) h++;
+    while (h < holesIn(round) && group.length && group.every(p => scores.some(x => x.player_id === p.id && x.hole === h && x.strokes))) h++;
     return h;
   }
 
@@ -2322,9 +2389,9 @@ async function loadRound(code) {
     const key = "parful-intro-" + round.id + "-" + h;
     try { if (localStorage.getItem(key)) return; localStorage.setItem(key, "1"); } catch (e) {}
     introRunning = true;
-    let ch = isParty() ? challengeFor(round.code, h) : null;
-    let idx = ch ? CHALLENGES.findIndex(c => c[0] === ch.text) : -1;
-    let items;
+    let ch = isParty() ? challengeFor(round.code, h, deckFor(round)) : null;
+    let idx = ch ? deckFor(round).findIndex(c => c[0] === ch.text) : -1;
+    let items = isParty() ? deckFor(round) : undefined;
     if (isCaddy()) {
       const pr0 = relevantPairs(me.group_no)[0];
       if (pr0) {
@@ -2382,8 +2449,9 @@ async function loadRound(code) {
     }
 
     const strip = $("hole-strip");
-    if (!strip.childElementCount) {
-      for (let n = 1; n <= 18; n++) {
+    if (strip.childElementCount !== holesIn(round)) {
+      strip.innerHTML = "";
+      for (let n = 1; n <= holesIn(round); n++) {
         const b = document.createElement("button");
         b.className = "hole-chip";
         b.dataset.h = n;
@@ -2483,7 +2551,7 @@ async function loadRound(code) {
     if (isWolf()) drawWolf(myGroup, isLeader);
     $("ch-box").style.display = isParty() ? "block" : "none";
     if (!isParty()) return;
-    const ch = challengeFor(round.code, hole);
+    const ch = challengeFor(round.code, hole, deckFor(round));
     $("ch-text").textContent = ch.multi ? ch.text : ch.text + " (" + (ch.pts > 0 ? "+" : "") + ch.pts + ")";
     const resAll = results.filter(r => r.hole === hole && r.group_no === myGroup);
     const res = resAll[0];
@@ -2944,7 +3012,7 @@ async function loadRound(code) {
     const n = info.pot, word = n === 1 ? " skin" : " skins";
     $("skins-pot").textContent = "💰 " + n + word + " on this hole";
     $("skins-result").textContent = info.result === "won" ? info.winner.name + " took " + n + word + "."
-      : info.result === "carry" ? (hole === 18 ? "Tie on 18. Those skins go unclaimed." : "Tie. " + (n === 1 ? "The skin carries" : "All " + n + " skins carry") + " to the next hole.")
+      : info.result === "carry" ? (hole === holesIn(round) ? "Tie on " + hole + ". Those skins go unclaimed." : "Tie. " + (n === 1 ? "The skin carries" : "All " + n + " skins carry") + " to the next hole.")
       : "Lowest score alone takes it. Tie, and it carries over.";
   }
 
@@ -2962,7 +3030,7 @@ async function loadRound(code) {
     const info = st.holes[hole];
     const byId = id => players.find(p => p.id === id);
     const nm = id => (byId(id) ? byId(id).name : "?");
-    $("wolf-name").textContent = "🐺 " + info.wolf.name + (hole >= 17 && info.tee.length === 4 ? " (last place gets the Wolf)" : "");
+    $("wolf-name").textContent = "🐺 " + info.wolf.name + (hole >= holesIn(round) - 1 && info.tee.length === 4 ? " (last place gets the Wolf)" : "");
     $("wolf-tee").textContent = "Tee order: " + info.tee.map(p => p.name).join(", ");
     const pick = info.pick;
     const iAmWolf = !!me && me.id === info.wolf.id;
@@ -3084,6 +3152,7 @@ async function loadRound(code) {
     const isHost = round.host_id === user.id;
     const h = document.createElement("h3");
     h.textContent = course ? course.name + (course.tee_name ? " (" + course.tee_name + " tees)" : "") : "No course picked";
+    if (round.mini) h.append(" ", MINI_TAG());
     p.append(h);
     if (course && Array.isArray(course.pars)) {
       const wrap = document.createElement("div");
@@ -3096,7 +3165,7 @@ async function loadRound(code) {
         [label, ...vals].forEach(v => { const td = document.createElement("td"); td.textContent = v == null ? "-" : v; tr.append(td); });
         t.append(tr);
       };
-      row("Hole", Array.from({ length: 18 }, (_, i) => i + 1), "sc-meta");
+      row("Hole", course.pars.map((_, i) => i + 1), "sc-meta");
       row("Par", course.pars);
       if (Array.isArray(course.hcp_index) && course.hcp_index.length === 18) row("Hdcp", course.hcp_index, "sc-meta");
       wrap.append(t);
@@ -3117,16 +3186,25 @@ async function loadRound(code) {
 
   async function fixPars() {
     const old = course;
-    const m = await parsModal(old ? { name: old.name, location: old.location, tee_name: old.tee_name, pars: old.pars, hcp_index: old.hcp_index } : "");
+    const m = round.mini
+      ? await parsModal({ mini: true, name: old ? old.name : "", pars: old ? old.pars : null, lockHoles: holesIn(round) })
+      : await parsModal(old ? { name: old.name, location: old.location, tee_name: old.tee_name, pars: old.pars, hcp_index: old.hcp_index } : "");
     if (!m) return;
-    const keep = old ? { rating: old.rating, slope: old.slope, yardage: old.yardage, tee_gender: old.tee_gender,
+    const keep = old && !round.mini ? { rating: old.rating, slope: old.slope, yardage: old.yardage, tee_gender: old.tee_gender,
       rating_source: old.rating_source, external_id: old.external_id, source: old.source } : {};
-    const { data, error } = await db.from("courses").insert({ ...m, ...keep }).select().single();
-    if (error) { toast(error.message); return; }
-    const up = await db.from("rounds").update({ course_id: data.id }).eq("id", round.id);
-    if (up.error) { toast(up.error.message); return; }
-    round.course_id = data.id;
-    course = data;
+    let data;
+    if (guestCard()) {
+      data = await keepCardOnRound(m);
+      if (!data) return;
+    } else {
+      const ins = await db.from("courses").insert({ ...m, ...keep }).select().single();
+      if (ins.error) { toast(ins.error.message); return; }
+      data = ins.data;
+      const up = await db.from("rounds").update({ course_id: data.id }).eq("id", round.id);
+      if (up.error) { toast(up.error.message); return; }
+      round.course_id = data.id;
+      course = data;
+    }
     let body;
     if (old) {
       const diffs = data.pars.map((pp, i) => (pp !== old.pars[i] ? "hole " + (i + 1) + " is now a par " + pp : null)).filter(Boolean);
@@ -3173,7 +3251,7 @@ async function loadRound(code) {
       const info = skinsState(round, players, scores).holes[h];
       const n = info.pot, word = n === 1 ? " skin" : " skins";
       title = info.result === "won" ? nm(info.winner) + " took " + n + word
-        : h === 18 ? "Tie on 18. Those skins go unclaimed." : "Tie. " + n + word + " carry to hole " + (h + 1);
+        : h === holesIn(round) ? "Tie on " + h + ". Those skins go unclaimed." : "Tie. " + n + word + " carry to hole " + (h + 1);
       note = "Lowest score alone takes the skins. Any tie carries them over.";
     } else if (isMatch()) {
       const ms = matchState(round, players, scores, g);
@@ -3283,7 +3361,7 @@ async function loadRound(code) {
   }
 
   async function awardChallenge(playerId, multi) {
-    const ch = challengeFor(round.code, hole);
+    const ch = challengeFor(round.code, hole, deckFor(round));
     const g = me ? me.group_no : 1;
     const mine = results.filter(r => r.hole === hole && r.group_no === g);
     let error;
@@ -3576,10 +3654,10 @@ async function showRecentRounds() {
   const { data: mine } = await db.from("players").select("round_id").eq("user_id", uid);
   const ids = [...new Set((mine || []).map(x => x.round_id))];
   if (!ids.length) { toast("No rounds yet. Go play one."); return; }
-  const { data: rounds } = await db.from("rounds").select("id, name, code, status, created_at").in("id", ids).order("created_at", { ascending: false }).limit(5);
+  const { data: rounds } = await db.from("rounds").select("id, name, code, status, created_at, mini").in("id", ids).order("created_at", { ascending: false }).limit(5);
   const label = r => r.name + " (" + (r.status === "finished" ? "finished" : r.status === "playing" ? "in progress" : "not started") +
     ", " + new Date(r.created_at).toLocaleDateString() + ")";
-  const choice = await pickFrom("Your 5 most recent rounds", (rounds || []).map(r => ({ label: label(r), value: r })));
+  const choice = await pickFrom("Your 5 most recent rounds", (rounds || []).map(r => ({ label: label(r), value: r, tag: r.mini ? "Mini-golf" : null })));
   if (choice) openRound(choice.code);
 }
 const recentBtn = $("recent-btn");
@@ -3641,7 +3719,12 @@ db.auth.onAuthStateChange((event) => { if (event === "USER_UPDATED" || event ===
 function parsModal(prefill) {
   return new Promise(resolve => {
     const pre = prefill && typeof prefill === "object" ? prefill : { name: prefill || "" };
-    const pars = pre.pars && pre.pars.length === 18 ? pre.pars.slice() : Array(18).fill(4);
+    // Mini-golf: 9 or 18 holes, pars 1 to 9 (default 2), no location, tees or hole handicaps
+    const mini = !!pre.mini;
+    const [lo, hi, dflt] = mini ? [1, 9, 2] : [3, 6, 4];
+    const fits = n => pre.pars && pre.pars.length === n;
+    let pars = fits(18) || (mini && fits(9)) ? pre.pars.slice()
+      : Array(mini && pre.lockHoles === 9 ? 9 : 18).fill(dflt);
     const wrap = document.createElement("div");
     wrap.className = "modal";
     const stack = document.createElement("div");
@@ -3649,7 +3732,7 @@ function parsModal(prefill) {
     const panel = document.createElement("form");
     panel.className = "modal-panel";
     const h = document.createElement("h2");
-    h.textContent = pre.pars ? "Check the scorecard" : "Enter the course";
+    h.textContent = pre.pars ? "Check the scorecard" : mini ? "Enter the holes" : "Enter the course";
     panel.append(h);
     const field = (label, ph, max) => {
       const l = document.createElement("label");
@@ -3663,12 +3746,35 @@ function parsModal(prefill) {
       panel.append(l);
       return i;
     };
-    const nameI = field("Course name", "e.g. Pine Valley", 80);
+    const nameI = mini ? field("Course name (optional)", "Mini-golf", 80) : field("Course name", "e.g. Pine Valley", 80);
     nameI.value = pre.name || "";
-    const locI = field("City and state (optional)", "e.g. Austin, TX", 60);
-    const teeI = field("Tees (optional)", "e.g. White", 30);
-    locI.value = pre.location || "";
-    teeI.value = pre.tee_name || "";
+    const locI = mini ? null : field("City and state (optional)", "e.g. Austin, TX", 60);
+    const teeI = mini ? null : field("Tees (optional)", "e.g. White", 30);
+    if (!mini) {
+      locI.value = pre.location || "";
+      teeI.value = pre.tee_name || "";
+    }
+    const holeRow = document.createElement("div");
+    holeRow.className = "chip-row";
+    holeRow.style.marginBottom = "12px";
+    const drawHoleRow = () => holeRow.querySelectorAll("button").forEach(b => b.classList.toggle("selected", +b.dataset.n === pars.length));
+    if (mini && !pre.lockHoles) {
+      [9, 18].forEach(n => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.dataset.n = n;
+        b.textContent = n + " holes";
+        b.onclick = () => {
+          if (pars.length === n) return;
+          pars = n === 9 ? pars.slice(0, 9) : pars.concat(Array(9).fill(dflt));
+          drawHoleRow();
+          buildGrid();
+          sync();
+        };
+        holeRow.append(b);
+      });
+      drawHoleRow();
+    }
     const lbl = document.createElement("div");
     lbl.className = "field-label";
     lbl.textContent = "Pars (tap a hole to change it)";
@@ -3678,7 +3784,7 @@ function parsModal(prefill) {
     total.className = "par-total";
     const sync = () => {
       const out = pars.slice(0, 9).reduce((a, b) => a + b, 0), inn = pars.slice(9).reduce((a, b) => a + b, 0);
-      total.textContent = "Out " + out + ", In " + inn + ", Total " + (out + inn);
+      total.textContent = pars.length === 9 ? "Total " + out : "Out " + out + ", In " + inn + ", Total " + (out + inn);
     };
     const sels = [];
     const hcpPre = Array.isArray(pre.hcp_index) && pre.hcp_index.length === 18 ? pre.hcp_index : null;
@@ -3732,37 +3838,43 @@ function parsModal(prefill) {
       const first = pickerEl.querySelector(".hcp-opt:not(:disabled)");
       if (first) first.focus({ preventScroll: true });
     };
-    pars.forEach((_, i) => {
-      const cell = document.createElement("div");
-      cell.className = "par-cell";
-      const num = document.createElement("small");
-      num.textContent = i + 1;
-      const arrow = (txt, label) => {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "par-arrow";
-        b.textContent = txt;
-        b.setAttribute("aria-label", label + " hole " + (i + 1) + " par");
-        return b;
-      };
-      const up = arrow("\u25B2", "Raise"), down = arrow("\u25BC", "Lower");
-      const val = document.createElement("span");
-      val.className = "par-val";
-      const draw = () => { val.textContent = pars[i]; up.disabled = pars[i] >= 6; down.disabled = pars[i] <= 3; };
-      up.onclick = () => { if (pars[i] < 6) { pars[i]++; draw(); sync(); } };
-      down.onclick = () => { if (pars[i] > 3) { pars[i]--; draw(); sync(); } };
-      const s = { value: hcpPre ? String(hcpPre[i]) : "", btn: document.createElement("button") };
-      s.btn.type = "button";
-      s.btn.className = "par-hcp";
-      s.btn.setAttribute("aria-label", "Hole " + (i + 1) + " handicap");
-      s.btn.onclick = () => openPicker(s, i);
-      const sel = s.btn;
-      sels.push(s);
-      draw();
-      cell.append(num, up, val, down, sel);
-      grid.append(cell);
-    });
-    refreshHcp();
+    const buildGrid = () => {
+      closePicker();
+      grid.innerHTML = "";
+      sels.length = 0;
+      pars.forEach((_, i) => {
+        const cell = document.createElement("div");
+        cell.className = "par-cell";
+        const num = document.createElement("small");
+        num.textContent = i + 1;
+        const arrow = (txt, label) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "par-arrow";
+          b.textContent = txt;
+          b.setAttribute("aria-label", label + " hole " + (i + 1) + " par");
+          return b;
+        };
+        const up = arrow("\u25B2", "Raise"), down = arrow("\u25BC", "Lower");
+        const val = document.createElement("span");
+        val.className = "par-val";
+        const draw = () => { val.textContent = pars[i]; up.disabled = pars[i] >= hi; down.disabled = pars[i] <= lo; };
+        up.onclick = () => { if (pars[i] < hi) { pars[i]++; draw(); sync(); } };
+        down.onclick = () => { if (pars[i] > lo) { pars[i]--; draw(); sync(); } };
+        const s = { value: hcpPre ? String(hcpPre[i]) : "", btn: document.createElement("button") };
+        s.btn.type = "button";
+        s.btn.className = "par-hcp";
+        s.btn.setAttribute("aria-label", "Hole " + (i + 1) + " handicap");
+        s.btn.onclick = () => openPicker(s, i);
+        const sel = s.btn;
+        sels.push(s);
+        draw();
+        cell.append(num, up, val, down, sel);
+        grid.append(cell);
+      });
+      refreshHcp();
+    };
+    buildGrid();
     const hcpToggle = document.createElement("button");
     hcpToggle.type = "button";
     hcpToggle.className = "link-btn";
@@ -3773,8 +3885,9 @@ function parsModal(prefill) {
       lbl.textContent = on ? "Pars, then hole handicap (1 = hardest hole)" : "Pars";
     };
     hcpToggle.onclick = () => { closePicker(); grid.classList.toggle("show-hcp"); drawToggle(); };
-    if (hcpPre || pre.showHcp) grid.classList.add("show-hcp");
+    if (!mini && (hcpPre || pre.showHcp)) grid.classList.add("show-hcp");
     drawToggle();
+    if (mini) hcpToggle.style.display = "none";
     const err = document.createElement("p");
     err.className = "modal-error";
     err.setAttribute("role", "alert");
@@ -3788,7 +3901,8 @@ function parsModal(prefill) {
     ok.type = "submit";
     ok.textContent = "Save course";
     row.append(cancel, ok);
-    panel.append(lbl, grid, total, hcpToggle, err, row);
+    panel.append(holeRow, lbl, grid, total, hcpToggle, err, row);
+    if (!holeRow.childElementCount) holeRow.remove();
     stack.append(panel);
     wrap.append(stack);
     document.body.append(wrap);
@@ -3797,6 +3911,10 @@ function parsModal(prefill) {
     cancel.onclick = () => close(null);
     panel.onsubmit = (e) => {
       e.preventDefault();
+      if (mini) {
+        close({ name: nameI.value.trim() || "Mini-golf", location: null, tee_name: null, pars: pars.slice(), hcp_index: null, source: "manual", mini: true });
+        return;
+      }
       const name = nameI.value.trim();
       if (name.length < 2) { err.textContent = "Give the course a name."; nameI.focus(); return; }
       let hcp_index = null;
@@ -4830,7 +4948,8 @@ document.addEventListener("wheel", e => {
   if (play) play.onclick = async () => {
     const pick = await pickFrom("Let's play", [
       { label: "Start a new round", value: "create-round" },
-      { label: "Join with a code", value: "join-code" }
+      { label: "Join with a code", value: "join-code" },
+      { label: "Play Mini-golf", value: "create-mini" }
     ]);
     if (pick) document.getElementById(pick).click();
   };

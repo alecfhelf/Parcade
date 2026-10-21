@@ -29,7 +29,7 @@ function matchState(round, players, scores, groupNo) {
   const allow = holeAllowances(round, players);
   const scoreOf = (p, h) => scores.find(x => x.player_id === p.id && x.hole === h && x.strokes);
   const statusNow = (played, final) => {
-    const left = 18 - played;
+    const left = holesIn(round) - played;
     if (grp.length === 2) {
       const diff = out.won[grp[0].id] - out.won[grp[1].id];
       return final && diff === 0 ? "Match halved" : matchStatusText(diff, left, grp[0], grp[1]);
@@ -37,7 +37,7 @@ function matchState(round, players, scores, groupNo) {
     return matchMultiText(grp, out.won, left, final);
   };
   let played = 0;
-  for (let h = 1; h <= 18; h++) {
+  for (let h = 1; h <= holesIn(round); h++) {
     out.holes[h] = { before: statusNow(played, false), result: null };
     const hs = grp.map(p => scoreOf(p, h));
     if (hs.some(x => !x)) continue;
@@ -59,7 +59,7 @@ function matchState(round, players, scores, groupNo) {
     played++;
     if (!out.clinched) {
       const w = grp.map(p => out.won[p.id]).sort((a, b) => b - a);
-      if (played === 18) { out.clinched = true; out.status = statusNow(played, true); }
+      if (played === holesIn(round)) { out.clinched = true; out.status = statusNow(played, true); }
     }
   }
   if (!out.clinched) out.status = statusNow(played, false);
