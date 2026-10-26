@@ -86,10 +86,11 @@ function crabbyEl(size = 120) {
 
 const CRABBY_LINES = {
   welcome: "Welcome to the course, I'm Crabby. Nice shoes. Your mom pick 'em out? Name your round, type your name, pick a color, then hit Tee it up.",
-  courseGuest: "Sorry Bud, this feature is for signed-in users only.",
+  courseGuest: "Course lookup is a Club Member perk, bud. Hit Skip and just play.",
   course: "What course are you on? Search for it, or punch in the pars yourself. I'm not a mind reader.",
   courseMini: "Mini-golf, huh? Snap the scorecard or punch in the holes yourself. Windmills not included.",
-  courseMiniGuest: "Punch in the holes yourself. Scanning the card is for signed-in folks. Windmills not included.",
+  courseMiniGuest: "Scanning the card is a Club Member perk. Hit Skip and putt. Windmills not included.",
+  clubPerk: "That's a Club Member perk, bud.",
   setup: "House rules time. One phone or many? Handicaps? Money on the line? Mulligans for the weak? Choose wisely.",
   confirm: "Check the card. If a par is wrong, now is the time. Once balls are flying I am not hearing it.",
   size: "How many of you are playing? Tap a number. Counting's the easy part, trust me.",

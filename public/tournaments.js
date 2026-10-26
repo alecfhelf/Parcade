@@ -175,6 +175,7 @@ async function joinTournamentByCode() {
 }
 
 async function startTournament() {
+  await loadClub();
   const form = await tournamentForm(null, await accountName());
   if (!form) return;
   const hcp = await askSeasonHandicap(null);
@@ -194,6 +195,11 @@ function tournamentForm(t, myName) {
       third_place: false, tiebreak: "card_off", buy_in: 0, payouts: null, course_id: null,
     };
     let course = null;
+    // Free accounts get Stroke Play, no course and no buy-in (the database checks too). An existing setting stays.
+    const club = tier() === "club";
+    const clubLock = clubModeLock();
+    if (t) delete clubLock[t.mode];
+    const modeOff = () => ({ ...clubLock, ...tnModeOff(s.team_size, s.schedule) });
     const wrap = el("div", { className: "modal" });
     const panel = el("form", { className: "modal-panel" });
     const field = (label, input) => el("label", {}, el("span", { textContent: label }), input);
@@ -208,11 +214,14 @@ function tournamentForm(t, myName) {
       if (typeof hint === "function") draws.push(() => (h.textContent = hint())); else h.textContent = hint || "";
       return r;
     };
-    const choice = (key, opts) => {
+    // locked: { value: what } for options that are Club perks
+    const choice = (key, opts, locked) => {
       const box = el("div", { className: "fmt-pick" });
       box.setAttribute("role", "radiogroup");
       opts.forEach(([v, text]) => {
-        const b = el("button", { type: "button", className: "switch", textContent: text, onclick: () => { s[key] = v; redraw(); } });
+        const what = locked && s[key] !== v && locked[v];
+        const b = el("button", { type: "button", className: "switch" + (what ? " locked-feature" : ""), textContent: text,
+          onclick: () => { if (what) { needClub(what); return; } s[key] = v; redraw(); } });
         b.setAttribute("role", "radio");
         draws.push(() => { b.classList.toggle("on", s[key] === v); b.setAttribute("aria-checked", String(s[key] === v)); });
         box.append(b);
@@ -229,11 +238,12 @@ function tournamentForm(t, myName) {
       return el("div", { className: "stepper" }, down, val, up);
     };
 
-    const picker = modeGrid({ modes: TN_GRID, selected: s.mode, off: tnModeOff(s.team_size, s.schedule), descs: tnModeDescs(s.schedule, s.team_size), info: k => tnShowRules(k, s.schedule, s.team_size), onPick: k => { s.mode = k; redraw(); } });
+    const picker = modeGrid({ modes: TN_GRID, selected: s.mode, off: modeOff(), descs: tnModeDescs(s.schedule, s.team_size), info: k => tnShowRules(k, s.schedule, s.team_size),
+      onLocked: k => { if (clubLock[k] && !tnModeOff(s.team_size, s.schedule)[k]) needClub(MODES[k].name); }, onPick: k => { s.mode = k; redraw(); } });
     let offKey = null;
     draws.push(() => {
       // A setting change can knock out the picked mode (Wolf, then 2 per team). Unpick it so they choose again.
-      const off = tnModeOff(s.team_size, s.schedule);
+      const off = modeOff();
       if (s.mode && off[s.mode]) { s.mode = null; picker.setPicked(null); }
       const key = Object.keys(off).sort().join();
       if (key !== offKey) { offKey = key; picker.setOff(off); }
@@ -241,7 +251,10 @@ function tournamentForm(t, myName) {
 
     const courseBtn = el("button", { type: "button", className: "btn-ghost" });
     courseBtn.style.cssText = "width:100%;margin-bottom:14px;padding:12px";
+    const courseLocked = !club;
+    if (courseLocked) courseBtn.classList.add("locked-feature");
     courseBtn.onclick = async () => {
+      if (courseLocked) { needClub("course lookup"); return; }
       const c = await tnCoursePicker();
       if (!c) return;
       course = c;
@@ -251,7 +264,7 @@ function tournamentForm(t, myName) {
     const clearCourse = el("button", { type: "button", className: "link-btn", textContent: "No course", onclick: () => { course = null; s.course_id = null; redraw(); } });
     clearCourse.style.cssText = "margin:-8px 0 12px";
     draws.push(() => {
-      courseBtn.textContent = s.course_id ? "Course: " + (course ? courseName(course) : "picked") + " (change)" : "Pick a course" + (s.schedule === "one_day" ? " (required)" : " (optional)");
+      courseBtn.textContent = s.course_id ? "Course: " + (course ? courseName(course) : "picked") + " (change)" : "Pick a course" + (courseLocked ? "" : s.schedule === "one_day" ? " (required)" : " (optional)");
       clearCourse.style.display = s.course_id ? "" : "none";
     });
     if (s.course_id) db.from("courses").select("*").eq("id", s.course_id).maybeSingle().then(({ data }) => { course = data; redraw(); });
@@ -262,7 +275,9 @@ function tournamentForm(t, myName) {
       payers: () => s.team_count * s.team_size,
       payerText: n => s.team_count + " teams of " + s.team_size + ", " + n + " players",
       teamSize: () => s.team_size });
-    const moneySw = el("button", { type: "button", className: "switch", onclick: () => { money = !money; redraw(); } });
+    const moneyLocked = !club && !money;
+    const moneySw = el("button", { type: "button", className: "switch" + (moneyLocked ? " locked-feature" : ""),
+      onclick: () => { if (moneyLocked) { needClub("Play for money"); return; } money = !money; redraw(); } });
     moneySw.setAttribute("role", "switch");
     moneySw.setAttribute("aria-label", "Play for money");
     const moneyOpts = el("div", {}, pot.el,
@@ -304,7 +319,7 @@ function tournamentForm(t, myName) {
       row("Teams", () => s.team_count + " teams, " + T_roundsText(s.team_count), stepper("team_count", 4, 64, "teams")),
       row("Players per team", () => (s.team_size === 1 ? "Every player for themselves" : s.team_size + " players a team"), stepper("team_size", 1, 4, "players")),
       row("Schedule", () => (s.schedule === "one_day" ? "One 18. Each bracket round is a chunk of holes." : "Every match is its own round."),
-        choice("schedule", [["one_day", "One day"], ["over_time", "Over time"]])),
+        choice("schedule", [["one_day", "One day"], ["over_time", "Over time"]], courseLocked ? { one_day: "the one-day format (it needs a course)" } : null)),
       holesRow,
       courseBtn, clearCourse,
       row("Handicaps", "Strokes from the best player in the whole tournament", choice("handicap", [[true, "On"], [false, "Off"]])),
@@ -354,7 +369,7 @@ async function tnApiCourse(c) {
   toast("Grabbing the scorecard...", true);
   let d = null;
   try {
-    const r = await fetch("/.netlify/functions/courses?id=" + encodeURIComponent(c.id));
+    const r = await authedFetch("/.netlify/functions/courses?id=" + encodeURIComponent(c.id));
     if (r.ok) d = await r.json();
   } catch (e) {}
   const location = [(c.city || "").trim(), c.state].filter(Boolean).join(", ") || null;
@@ -412,7 +427,7 @@ function tnCoursePicker() {
         const uid = session && session.user && session.user.id;
         const [own, ext] = await Promise.all([
           db.from("courses").select("*").neq("source", "api").eq("mini", false).eq("created_by", uid).ilike("name", "%" + q.replace(/[%_\\]/g, "") + "%").limit(5),
-          fetch("/.netlify/functions/courses?q=" + encodeURIComponent(q)).then(r => (r.ok ? r.json() : {})).then(j => j.courses || []).catch(() => []),
+          authedFetch("/.netlify/functions/courses?q=" + encodeURIComponent(q)).then(r => (r.ok ? r.json() : {})).then(j => j.courses || []).catch(() => []),
         ]);
         if (my !== seq) return;
         results.innerHTML = "";
@@ -1277,6 +1292,7 @@ async function loadTournament(code) {
   }
 
   async function editSettings() {
+    await loadClub();
     const form = await tournamentForm(t);
     if (!form) return;
     const { error } = await db.from("tournaments").update(form.row).eq("id", t.id);

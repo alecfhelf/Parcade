@@ -41,6 +41,8 @@
     .acct-search { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; padding: 9px 12px; width: 100%; max-width: 360px; box-sizing: border-box; margin-bottom: 10px; }
     #grant-msg { margin: 8px 0 0; min-height: 1.3em; }
     @media (max-width: 640px) { .grant { grid-template-columns: 1fr 1fr; } .grant .wide { grid-column: 1 / -1; } }
+    .comp-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+    .comp-toggle input { width: 18px; height: 18px; accent-color: #FFD84D; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -101,10 +103,15 @@
     out.append(box);
   }
 
+  // Emails of current Club Members (admin_club_members, supabase/club.sql). null when that SQL hasn't run yet.
+  let clubEmails = null;
+  // Emails with a free (comped) membership from the admin page (admin_comp_emails)
+  let compEmails = new Set();
+
   function render(d) {
     out.innerHTML = "";
     const cards = el("div", "cards");
-    [["Accounts", d.accounts], ["Guests", d.guests], ["New accounts (7 days)", d.accounts_7d], ["Rounds", d.rounds],
+    [["Accounts", d.accounts], ["Club Members", clubEmails ? clubEmails.size : "-"], ["Guests", d.guests], ["New accounts (7 days)", d.accounts_7d], ["Rounds", d.rounds],
      ["Rounds (7 days)", d.rounds_7d], ["Avg players per round", d.avg_players ?? 0], ["Seasons", d.seasons], ["Money rounds", d.money_rounds], ["Side bets", d.bets],
      ["Settled bet dollars", money(d.bet_dollars)]].forEach(([label, v]) => {
       const c = el("div", "card");
@@ -138,11 +145,34 @@
     if (!data.length) { box.append(el("p", "muted", q ? "No accounts match." : "No accounts yet.")); return; }
     const t = el("table");
     const head = el("tr");
-    ["Email", "Name", "Joined", "Last sign in", "Rounds", "Coins"].forEach(x => head.append(el("th", null, x)));
+    ["Email", "Name", "Club", "Joined", "Last sign in", "Rounds", "Coins"].forEach(x => head.append(el("th", null, x)));
     t.append(head);
     data.forEach(r => {
       const tr = el("tr");
-      [r.email, r.name || "", new Date(r.created_at).toLocaleDateString(), r.last_sign_in_at ? new Date(r.last_sign_in_at).toLocaleDateString() : "",
+      const em = (r.email || "").toLowerCase();
+      const clubCell = el("td");
+      if (clubEmails && clubEmails.has(em) && !compEmails.has(em)) clubCell.append(el("span", "ok", "Paid"));
+      else {
+        // Free membership toggle
+        const lab = el("label", "comp-toggle");
+        const box = el("input");
+        box.type = "checkbox";
+        box.checked = compEmails.has(em);
+        box.setAttribute("aria-label", "Free Club membership for " + r.email);
+        const txt = el("span", null, box.checked ? "Free" : "Off");
+        box.onchange = async () => {
+          box.disabled = true;
+          const { error } = await db.rpc("admin_set_comp", { p_email: r.email, p_on: box.checked });
+          box.disabled = false;
+          if (error) { box.checked = !box.checked; alert(error.message); return; }
+          if (box.checked) compEmails.add(em); else compEmails.delete(em);
+          txt.textContent = box.checked ? "Free" : "Off";
+        };
+        lab.append(box, txt);
+        clubCell.append(lab);
+      }
+      tr.append(el("td", null, r.email), el("td", null, r.name || ""), clubCell);
+      [new Date(r.created_at).toLocaleDateString(), r.last_sign_in_at ? new Date(r.last_sign_in_at).toLocaleDateString() : "",
        String(r.rounds), String(r.coins)].forEach(x => tr.append(el("td", null, x)));
       t.append(tr);
     });
@@ -221,7 +251,12 @@
     await db.auth.refreshSession();
     const { data, error } = await db.rpc("admin_stats");
     if (error) { out.append(el("p", "bad", /not authorized/i.test(error.message) ? "This account isn't an admin." : error.message)); return; }
+    const club = await db.rpc("admin_club_members");
+    clubEmails = club.error ? null : new Set((club.data || []).map(r => (r.email || "").toLowerCase()));
+    const comps = await db.rpc("admin_comp_emails");
+    compEmails = new Set(comps.error ? [] : (comps.data || []).map(e => String(e).toLowerCase()));
     render(data);
+    if (club.error) out.append(el("p", "bad", /does not exist|could not find/i.test(club.error.message) ? "Run supabase/club.sql to see Club Members." : club.error.message));
     accountsSection();
     coinsSection();
   }

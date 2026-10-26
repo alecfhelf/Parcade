@@ -1,3 +1,5 @@
+import { isClubMember } from "../lib/supa.mjs";
+
 const MODEL = "claude-haiku-4-5-20251001";
 const PROMPT = `Read this golf scorecard photo. Reply with ONLY a JSON object and no other text, in this shape:
 {"name": course name or null,
@@ -34,6 +36,8 @@ export default async (req) => {
     console.error("scan auth check failed:", code, who ? (await who.text()).slice(0, 200) : "");
     return json({ error: "Session check failed (" + code + "). Refresh and try again." }, 401);
   }
+  // Every scan costs real money, so the database has to say this is a Club Member
+  if (!(await isClubMember(auth))) return json({ error: "Club Members only" }, 403);
 
   const body = await req.json().catch(() => ({}));
   const image = typeof body.image === "string" ? body.image : "";

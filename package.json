@@ -1,0 +1,8 @@
+{
+  "name": "parcade",
+  "private": true,
+  "description": "Parcade. Netlify installs these for netlify/functions.",
+  "dependencies": {
+    "stripe": "^23.0.1"
+  }
+}

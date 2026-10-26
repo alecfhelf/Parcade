@@ -1,11 +1,13 @@
+import { sessionUser, isClubMember } from "../lib/supa.mjs";
+
 const BASE = "https://api.opengolfapi.org/v1/courses";
 
+// Club Members only, so answers are cached in the member's browser, never on the shared CDN
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
   status,
   headers: {
     "content-type": "application/json",
-    "cache-control": "public, max-age=3600",
-    "netlify-cdn-cache-control": status === 200 ? "public, s-maxage=86400" : "no-store"
+    "cache-control": status === 200 ? "private, max-age=3600" : "no-store"
   }
 });
 
@@ -17,6 +19,9 @@ const get = async (url) => {
 };
 
 export default async (req) => {
+  const who = await sessionUser(req, "courses");
+  if (who.error) return who.error;
+  if (!(await isClubMember(who.auth))) return json({ error: "Club Members only" }, 403);
   const u = new URL(req.url);
   const q = (u.searchParams.get("q") || "").trim().slice(0, 80);
   const id = (u.searchParams.get("id") || "").trim();

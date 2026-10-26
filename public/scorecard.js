@@ -6,7 +6,7 @@ function scEl(tag, cls, text) {
   return e;
 }
 
-function pickFrom(title, options) {
+function pickFrom(title, options, opts = {}) {
   return new Promise(resolve => {
     const wrap = scEl("div", "modal");
     const panel = scEl("div", "modal-panel");
@@ -25,7 +25,8 @@ function pickFrom(title, options) {
     cancel.style.width = "100%";
     cancel.onclick = () => close(null);
     wrap.onclick = e => { if (e.target === wrap) close(null); };
-    panel.append(list, cancel);
+    panel.append(list);
+    if (!opts.noCancel) panel.append(cancel);
     wrap.append(panel);
     document.body.append(wrap);
   });

@@ -522,6 +522,65 @@ async function ensureUser() {
   return userPromise;
 }
 
+// ---------- Tiers: guest (no account), free account, Club Member (supabase/club.sql) ----------
+// The database decides who's a member (is_club_member, plus triggers on rounds and tournaments).
+// This copy only picks which options to lock. Reloaded when the account changes or the app comes back into view.
+const CLUB = { uid: null, member: false };
+let clubLoading = null;
+async function loadClub(force) {
+  let u = null;
+  try { const { data: { session } } = await db.auth.getSession(); u = session && session.user; } catch (e) {}
+  window.__signedIn = !!(u && !u.is_anonymous);
+  const uid = window.__signedIn ? u.id : null;
+  if (force || !clubLoading || CLUB.uid !== uid) {
+    if (CLUB.uid !== uid) CLUB.member = false;
+    CLUB.uid = uid;
+    clubLoading = !uid ? Promise.resolve(false) : db.rpc("is_club_member").then(({ data, error }) => {
+      if (CLUB.uid === uid) CLUB.member = !error && data === true;
+      return CLUB.member;
+    }, () => CLUB.member);
+  }
+  return clubLoading;
+}
+function tier() {
+  return !window.__signedIn ? "guest" : CLUB.member ? "club" : "free";
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && window.__signedIn) {
+    const was = CLUB.member;
+    loadClub(true).then(m => { if (m !== was) renderAccount(); });
+  }
+});
+
+// Every game mode but Stroke Play is a Club Member perk
+function clubModeLock() {
+  if (tier() === "club") return {};
+  return Object.fromEntries(Object.keys(MODES).filter(k => k !== "stroke").map(k => [k, "Club Members"]));
+}
+
+// Tapped something that's a Club Member perk
+async function needClub(what) {
+  const pick = await pickFrom(CRABBY_LINES.clubPerk + (what ? " (" + what + ")" : ""), [
+    { label: "Become a Club Member", value: "club" },
+    { label: "Not now", value: "no" }
+  ], { noCancel: true });
+  if (pick === "club") location.href = "/club";
+}
+
+// Small gold "Club Member" title next to a name
+function clubBadge() {
+  const b = document.createElement("span");
+  b.className = "club-badge";
+  b.textContent = "Club Member";
+  return b;
+}
+
+// Netlify functions that check who's asking (courses, scan)
+async function authedFetch(url, init = {}) {
+  const { data: { session } } = await db.auth.getSession();
+  return fetch(url, { ...init, headers: { ...(init.headers || {}), authorization: "Bearer " + (session ? session.access_token : "") } });
+}
+
 $("create-round").addEventListener("click", () => startRound(false));
 $("create-mini").addEventListener("click", () => startRound(true));
 async function startRound(mini) {
@@ -567,7 +626,7 @@ const MODES = {
 };
 
 // Game-mode tiles with the i button for the full rules and a description line underneath.
-// Used by round setup and tournaments. opts: { modes: [key], selected, off: { key: why not }, onPick(key) }
+// Used by round setup and tournaments. opts: { modes: [key], selected, off: { key: why not }, onPick(key), onLocked(key) }
 function modeGrid(opts) {
   let picked = opts.selected || null, off = opts.off || {};
   const wrap = document.createElement("div");
@@ -600,7 +659,7 @@ function modeGrid(opts) {
     tile.onblur = () => showDesc(picked);
     tile.onclick = () => {
       showDesc(key);
-      if (off[key]) return;
+      if (off[key]) { if (opts.onLocked) opts.onLocked(key); return; }
       picked = key;
       draw();
       if (opts.onPick) opts.onPick(key);
@@ -650,6 +709,7 @@ async function loadRound(code) {
 
   const user = await ensureUser();
   window.__signedIn = !user.is_anonymous;
+  await loadClub();
   const fetchRound = () => db.from("rounds").select("*").eq("code", code.toUpperCase()).maybeSingle();
   let { data: round } = await fetchRound();
   if (!round) {
@@ -681,9 +741,13 @@ async function loadRound(code) {
   if (round.mini) document.querySelector("h1").append(" ", MINI_TAG());
   const sub = document.querySelector("h1 + p");
   const link = location.origin + "/?r=" + round.code;
+  // Joiners play under the host's settings, so side bets follow the host's membership
+  const hostClub = round.host_id === user.id ? tier() === "club"
+    : await db.rpc("is_club_member", { p_user: round.host_id }).then(({ data }) => data === true, () => false);
 
   let me = null, players = [], scores = [], results = [], picks = [], pairs = [], preds = [], mulls = [], bets = [], wads = [], course = null, pmulls = [];
   let hole = 1, strokes = 4, cardReady = false, pickedMode = null;
+  const clubIds = new Set(), clubChecked = new Set();
   const isParty = () => !round.mode || round.mode === "party";
   const isSkins = () => round.mode === "skins";
   const isMatch = () => round.mode === "match";
@@ -797,6 +861,10 @@ async function loadRound(code) {
     const modeRules = key => showRulesModal(MODES[key].name, [key, "round"], deckFor(round), holesIn(round), round.mini);
     // Mini-golf: no "first on the green" (bbb), every shot is a putt (wad), everyone's playing (caddy)
     const MINI_HIDDEN = ["bbb", "wad", "caddy"];
+    // Tournament rounds already have the tournament's mode. Everyone else gets Stroke Play unless they're in the Club.
+    const isClub = tier() === "club";
+    const modeLock = () => (round.tournament_id ? {} : clubModeLock());
+    const lockedMode = key => { if (modeLock()[key]) needClub(MODES[key].name); };
     const MODES_FOR = Object.fromEntries(Object.entries(MODES_ALL).map(([k, list]) => [k, round.mini ? list.filter(m => !MINI_HIDDEN.includes(m)) : list]));
     const SIZE_NOTES = {
       "1": "Just you and the course. Kinda sad, but great for keeping score.",
@@ -867,7 +935,7 @@ async function loadRound(code) {
       const head = h3("Game mode");
       head.style.marginTop = "28px";
       roomGame.append(head);
-      const picker = modeGrid({ modes: MODES_FOR[pickedSize], selected: pickedMode, off: guestModeLock(), info: modeRules, onPick: key => {
+      const picker = modeGrid({ modes: MODES_FOR[pickedSize], selected: pickedMode, off: modeLock(), info: modeRules, onLocked: lockedMode, onPick: key => {
         pickedMode = key;
         renderModes();
         updateStart();
@@ -913,9 +981,9 @@ async function loadRound(code) {
       hcSwitch.classList.toggle("on", on);
       hcSwitch.setAttribute("aria-checked", String(on));
     };
-    if (!window.__signedIn) { hcHint.textContent = "Sign in to use handicaps."; hcSwitch.classList.add("locked-feature"); }
+    if (!isClub && !round.handicap) { hcHint.textContent = "Club Members only."; hcSwitch.classList.add("locked-feature"); }
     hcSwitch.onclick = async () => {
-      if (!window.__signedIn) return needAccount("handicaps");
+      if (!isClub && !round.handicap) return needClub("handicaps");
       const on = !round.handicap;
       const { error } = await db.from("rounds").update({ handicap: on }).eq("id", round.id);
       if (error) { toast(error.message); return; }
@@ -1046,7 +1114,7 @@ async function loadRound(code) {
     };
     async function apiSearch(q) {
       try {
-        const r = await fetch("/.netlify/functions/courses?q=" + encodeURIComponent(q));
+        const r = await authedFetch("/.netlify/functions/courses?q=" + encodeURIComponent(q));
         return r.ok ? ((await r.json()).courses || []) : [];
       } catch (e) { return []; }
     }
@@ -1063,7 +1131,7 @@ async function loadRound(code) {
       toast("Grabbing the scorecard...");
       let d = null;
       try {
-        const r = await fetch("/.netlify/functions/courses?id=" + encodeURIComponent(c.id) + "&v=2");
+        const r = await authedFetch("/.netlify/functions/courses?id=" + encodeURIComponent(c.id) + "&v=2");
         if (r.ok) d = await r.json();
       } catch (e) {}
       const location = [(c.city || "").trim(), c.state].filter(Boolean).join(", ") || null;
@@ -1146,11 +1214,16 @@ async function loadRound(code) {
       cScan.style.marginTop = "0";
       cSkip.textContent = "Skip, no scorecard";
     }
-    if (!window.__signedIn) {
-      cSearch.disabled = true;
-      cSearch.placeholder = "Sign in to search courses";
-      // Guests can still type in a mini-golf card. It stays on the round.
-      (round.mini ? [cScan] : [cManual, cScan]).forEach(b => { b.classList.add("locked-feature"); b.onclick = () => needAccount("courses"); });
+    // Course lookup, the scanner and typing in pars are Club perks. Everyone else gets Skip.
+    if (!isClub) {
+      cSearch.readOnly = true;
+      cSearch.placeholder = "\u{1F512} Course lookup is for Club Members";
+      cSearch.classList.add("locked-feature");
+      cSearch.onclick = () => needClub("course lookup");
+      cSearch.oninput = null;
+      cScan.onclick = () => needClub("the scorecard reader");
+      cManual.onclick = () => needClub(round.mini ? "entering holes" : "entering pars");
+      [cScan, cManual].forEach(b => b.classList.add("locked-feature"));
     }
 
     const confirmArea = document.createElement("div");
@@ -1251,7 +1324,9 @@ async function loadRound(code) {
       mullUp.disabled = v >= 9;
       mullArea.style.display = round.mode === "caddy" ? "none" : "";
     };
+    if (!isClub) { mullHint.textContent = "Club Members only."; mullStep.classList.add("locked-feature"); }
     const setMull = async (d) => {
+      if (!isClub && d > 0) return needClub("mulligans");
       const v = Math.max(0, Math.min(9, (round.mulligans || 0) + d));
       if (v === (round.mulligans || 0)) return;
       round.mulligans = v;
@@ -1313,7 +1388,7 @@ async function loadRound(code) {
       back.onclick = () => { pickedSize = null; pickedMode = null; renderModes(); updateStart(); setStep("size"); };
       modeArea.append(back, h3("Pick a game mode for " + label.toLowerCase()));
       slideIn(modeArea);
-      const picker = modeGrid({ modes: MODES_FOR[pickedSize], selected: pickedMode, off: guestModeLock(), info: modeRules, onPick: key => {
+      const picker = modeGrid({ modes: MODES_FOR[pickedSize], selected: pickedMode, off: modeLock(), info: modeRules, onLocked: lockedMode, onPick: key => {
         pickedMode = key;
         updateStart();
         caddyNote.style.display = key === "caddy" ? "block" : "none";
@@ -1372,8 +1447,8 @@ async function loadRound(code) {
     lobby.prepend(stepBar);
     function guideLine() {
       const st = lobby.dataset.step;
-      if (st === "course") return round.mini ? (window.__signedIn ? CRABBY_LINES.courseMini : CRABBY_LINES.courseMiniGuest)
-        : window.__signedIn ? CRABBY_LINES.course : CRABBY_LINES.courseGuest;
+      if (st === "course") return round.mini ? (isClub ? CRABBY_LINES.courseMini : CRABBY_LINES.courseMiniGuest)
+        : isClub ? CRABBY_LINES.course : CRABBY_LINES.courseGuest;
       if (st === "confirm") return CRABBY_LINES.confirm;
       if (st === "size") return CRABBY_LINES.size;
       if (st === "setup") return CRABBY_LINES.setup;
@@ -1514,8 +1589,8 @@ async function loadRound(code) {
       mq("m-unit").textContent = "Dollars per " + (MONEY_UNITS[pickedMode] || MONEY_UNITS.party).unit;
       potBox.sync();
     }
-    if (!window.__signedIn) mq("money-switch").classList.add("locked-feature");
-    mq("money-switch").onclick = () => { if (!window.__signedIn) return needAccount("Play for money"); stakes = stakes === "none" ? "pot" : "none"; syncMoney(); };
+    if (!isClub) mq("money-switch").classList.add("locked-feature");
+    mq("money-switch").onclick = () => { if (!isClub) return needClub("Play for money"); stakes = stakes === "none" ? "pot" : "none"; syncMoney(); };
     mq("money-type").querySelectorAll("button").forEach(b => (b.onclick = () => { stakes = b.dataset.t; syncMoney(); }));
     mq("m-per").oninput = syncMoney;
     mq("m-count").oninput = syncMoney;
@@ -1656,6 +1731,7 @@ async function loadRound(code) {
   const betChat = (body) => db.from("messages").insert({ round_id: round.id, player_id: me.id, kind: "auto", body: body.slice(0, 280) }).then(() => {});
   betForm.onsubmit = async (e) => {
     e.preventDefault();
+    if (!hostClub) return round.host_id === user.id ? needClub("side bets") : toast("Side bets need a Club Member hosting the round.");
     if (!window.__signedIn) return needAccount("side bets");
     const body = $("bet-text").value.trim();
     const amount = Math.round(parseFloat($("bet-amt").value) * 100) / 100;
@@ -1866,6 +1942,7 @@ async function loadRound(code) {
               : "") + ")" : "")
           + (pl.user_id === user.id ? " (you)" : "");
         name.prepend(figureEl(pl));
+        if (clubIds.has(pl.user_id)) name.append(clubBadge());
         li.append(name);
         if (round.handicap) {
           const txt = pl.hcp != null ? "Handicap " + pl.hcp : pl.usual_score ? "Shoots " + pl.usual_score : "Handicap ?";
@@ -2105,6 +2182,16 @@ async function loadRound(code) {
     wads = (wd && wd.data) || [];
     me = players.find(pl => pl.user_id === user.id) || null;
     render();
+    checkClubBadges();
+  }
+
+  // Club Member badges: look each account in the round up once
+  async function checkClubBadges() {
+    const ids = [...new Set(players.map(pl => pl.user_id).filter(id => id && !clubChecked.has(id)))];
+    if (!ids.length) return;
+    ids.forEach(id => clubChecked.add(id));
+    const { data } = await db.rpc("club_members", { p_users: ids });
+    if (Array.isArray(data) && data.length) { data.forEach(id => clubIds.add(id)); if (!gone) render(); }
   }
 
   function render() {
@@ -2245,6 +2332,7 @@ async function loadRound(code) {
       const li = document.createElement("li");
       const name = document.createElement("span");
       name.append((i + 1) + ". ", figureEl(r.pl), r.pl.name + (r.pl.user_id === user.id ? " (you)" : ""));
+      if (clubIds.has(r.pl.user_id)) name.append(clubBadge());
       const val = document.createElement("span");
       val.textContent = (isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas() || isWad() || isStab())
         ? r.pts + (isSkins() ? (r.pts === 1 ? " skin" : " skins") : isMatch() ? (r.pts === 1 ? " pt" : " pts") : isWad() ? " made" : " pts")
@@ -2729,6 +2817,7 @@ async function loadRound(code) {
       const li = document.createElement("li");
       const name = document.createElement("span");
       name.append((i + 1) + ". ", figureEl(pl), pl.name + (pl.user_id === user.id ? " (you)" : ""));
+      if (clubIds.has(pl.user_id)) name.append(clubBadge());
       const val = document.createElement("span");
       val.textContent = label;
       li.append(name, val);
@@ -3485,7 +3574,13 @@ if (!roundCode) {
 }
 if (roundCode) loadRound(roundCode);
 else Promise.resolve()
-  .then(() => { $("status").textContent = ""; renderAccount(); })
+  .then(() => { $("status").textContent = ""; return renderAccount(); })
+  .then(() => {
+    // /club sends guests here to make an account first
+    if (new URLSearchParams(location.search).get("create") !== "1") return;
+    history.replaceState(null, "", "/");
+    if (!window.__signedIn) createAccount();
+  })
   .catch(err => { $("status").textContent = "Error: " + err.message; });
 
 $("join-code").onclick = async () => {
@@ -3519,12 +3614,14 @@ async function renderAccount() {
   if (!el) return;
   const { data: { session } } = await db.auth.getSession();
   const u = session && session.user;
-  el.innerHTML = "";
   gateHomeButtons(!!(u && !u.is_anonymous));
+  await loadClub();
+  el.innerHTML = "";
   if (u && !u.is_anonymous) {
     const who = document.createElement("span");
     const nm = u.user_metadata && u.user_metadata.first_name;
     who.textContent = "Signed in as " + (nm || u.email);
+    if (tier() === "club") who.append(clubBadge());
     el.append(who);
     if (!nm) el.append(linkBtn("Add your name", async () => { if (await askFirstName()) renderAccount(); }));
     el.append(linkBtn("Sign out", signOut));
@@ -4289,9 +4386,11 @@ async function openProfile() {
   let md = u.user_metadata || {};
 
   panel.append(mk("h2", null, "Your profile"));
+  await loadClub();
 
   // Name
   const nameSec = section("Preferred name");
+  if (tier() === "club") nameSec.firstChild.append(clubBadge());
   const nameRow = mk("div", "profile-inline");
   const nameIn = mk("input");
   nameIn.value = md.first_name || "";
@@ -4867,12 +4966,19 @@ function openProShop(outfit) {
     const u = session && session.user;
     const signed = !!(u && !u.is_anonymous);
     const md = (u && u.user_metadata) || {};
-    menu.append(mk("div", "pm-head", signed ? (md.first_name || u.email) : "Playing as a guest"));
+    await loadClub();
+    const head = mk("div", "pm-head", signed ? (md.first_name || u.email) : "Playing as a guest");
+    if (tier() === "club") head.append(clubBadge());
+    menu.append(head);
     menu.append(
       swRow("Sound effects", () => Sound.sfxOn, v => { Sound.setSfx(v); if (v) Sound.play("pop"); }),
       swRow("Music", () => Sound.musicOn, v => Sound.setMusic(v)),
       swRow("Light mode", () => isLight(), v => setThemePref(v ? "light" : "dark")));
     menu.append(mk("div", "pm-sep"));
+    const club = mk("button", "pm-link pm-club", tier() === "club" ? "Club membership" : "Become a Club Member");
+    club.type = "button";
+    club.onclick = () => (location.href = "/club");
+    menu.append(club);
     if (signed) menu.append(linkRow("Edit profile", openProfile), linkRow("Sign out", signOut));
     else menu.append(linkRow("Create account", createAccount), linkRow("Sign in", signIn));
   }
@@ -5024,7 +5130,7 @@ function howToEarn() {
   const list = document.createElement("div");
   list.className = "coin-ways";
   [["Play a round", "Finish all 18 holes while signed in and get 1 coin. Max 1 coin a day from rounds."],
-   ["Try a new game mode", "The first time you finish a round of each game mode (except Stroke Play), get a 10 coin bonus on top."],
+   ["Try a new game mode", "The first time you finish a round of each game mode (except Stroke Play), get a 10 coin bonus on top. Every other mode comes with the Club."],
    ["Buy coins", "Grab a coin bundle any time from Buy coins."]].forEach(([t, d]) => {
     const row = document.createElement("div");
     row.className = "coin-way";
@@ -5051,12 +5157,6 @@ function howToEarn() {
   buy.onclick = () => { wrap.remove(); buyCoinsScreen(); };
   panel.append(list, buy, done);
   document.body.append(wrap);
-}
-
-// Guests can only play Stroke Play. Every other mode needs an account.
-function guestModeLock() {
-  if (window.__signedIn) return {};
-  return Object.fromEntries(Object.keys(MODES).filter(k => k !== "stroke").map(k => [k, "Sign in to play"]));
 }
 
 // Guests tapped something that needs an account

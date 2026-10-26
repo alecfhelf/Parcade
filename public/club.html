@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>
+    // Same saved theme as the app, applied before first paint
+    (function () {
+      var t = "dark";
+      try { t = localStorage.getItem("parcade-theme") || "dark"; } catch (e) {}
+      if (t === "system") t = window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#060A1A">
+  <title>Parcade Club</title>
+  <meta name="description" content="Become a Parcade Club Member. Every game mode, course lookup, the scorecard scanner and more for $6.95/month.">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg:#060A1A; --panel:#0E1630; --ink:#EAF2FF; --muted:#8A9BC4; --blue:#2E6BFF; --blue-hover:#4A80FF; --glow:#5CE1FF;
+      --glow-rgb:92,225,255; --blue-rgb:46,107,255; --gold:#FFD84D; --gold-rgb:255,216,77; --good:#7CFF6B; --danger:#FF7A90; }
+    :root[data-theme="light"] { color-scheme: light;
+      --bg:#F4F6FB; --panel:#FFFFFF; --ink:#0E1630; --muted:#5B6785; --blue:#1F57D6; --blue-hover:#1A4BB8; --glow:#00728F;
+      --glow-rgb:0,114,143; --blue-rgb:31,87,214; --gold:#8A6400; --gold-rgb:138,100,0; --good:#1D7A2E; --danger:#C4183C; }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body { margin: 0; min-height: 100vh; min-height: 100dvh; color: var(--ink); font-family: "Chakra Petch", system-ui, sans-serif;
+      background: radial-gradient(ellipse 80% 50% at 50% 100%, rgba(var(--blue-rgb),0.28), transparent 70%), var(--bg);
+      isolation: isolate; overflow-x: hidden; }
+    body::before { content: ""; position: fixed; left: -50%; right: -50%; bottom: 0; height: 45vh; z-index: -1; pointer-events: none;
+      background-image: linear-gradient(rgba(var(--glow-rgb),0.18) 1px, transparent 1px), linear-gradient(90deg, rgba(var(--glow-rgb),0.18) 1px, transparent 1px);
+      background-size: 48px 48px; transform: perspective(300px) rotateX(60deg); transform-origin: bottom;
+      -webkit-mask-image: linear-gradient(to top, black, transparent); mask-image: linear-gradient(to top, black, transparent); }
+    main { max-width: 440px; margin: 0 auto; padding: calc(20px + env(safe-area-inset-top)) 16px calc(48px + env(safe-area-inset-bottom)); }
+    a { color: var(--glow); }
+    .back { display: inline-block; margin-bottom: 28px; text-decoration: none; }
+    h1 { font-family: "Bungee", sans-serif; font-weight: 400; font-size: clamp(1.9rem, 9vw, 2.6rem); line-height: 1.05; margin: 0 0 18px;
+      text-shadow: 0 0 4px #fff, 0 0 10px var(--glow), 0 0 24px rgba(var(--glow-rgb),0.6); }
+    :root[data-theme="light"] h1 { text-shadow: none; }
+    .card { background: var(--panel); border: 1px solid rgba(var(--glow-rgb),0.3); padding: 22px 20px;
+      clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px); }
+    .price { font-family: "Bungee", sans-serif; font-size: 2rem; color: var(--gold); margin: 0; }
+    .price small { font-family: "Chakra Petch", system-ui, sans-serif; font-size: 1rem; color: var(--muted); }
+    .cancel { margin: 2px 0 18px; color: var(--muted); }
+    ul { list-style: none; padding: 0; margin: 0 0 22px; }
+    li { position: relative; padding: 8px 0 8px 28px; border-bottom: 1px solid rgba(var(--glow-rgb),0.1); }
+    li:last-child { border-bottom: none; }
+    li::before { content: "\2713"; position: absolute; left: 4px; color: var(--good); font-weight: 700; }
+    .badge { display: inline-block; margin-left: 4px; padding: 1px 6px; border-radius: 6px; font-size: 0.72rem; font-weight: 600;
+      color: var(--gold); border: 1px solid rgba(var(--gold-rgb),0.5); background: rgba(var(--gold-rgb),0.08); }
+    button, .btn { display: block; width: 100%; text-align: center; text-decoration: none;
+      font: inherit; font-weight: 700; font-size: 1.1rem; color: #fff; background: var(--blue); border: none; padding: 15px 20px; cursor: pointer;
+      clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px); }
+    button:hover, .btn:hover { background: var(--blue-hover); }
+    button:focus-visible, .btn:focus-visible { outline: none; background: var(--glow); color: var(--bg); }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .ghost { background: rgba(var(--glow-rgb),0.12); color: var(--glow); margin-top: 10px; }
+    .ghost:hover { background: rgba(var(--glow-rgb),0.22); }
+    .member { text-align: center; font-weight: 700; color: var(--gold); padding: 12px; border: 1px solid rgba(var(--gold-rgb),0.5);
+      background: rgba(var(--gold-rgb),0.08); }
+    .note { color: var(--muted); margin: 10px 0 0; text-align: center; min-height: 1.4em; }
+    .bad { color: var(--danger); }
+    .thanks { margin: 0 0 16px; padding: 12px 14px; border: 1px solid rgba(var(--gold-rgb),0.5); color: var(--gold); text-align: center; font-weight: 600; }
+    .legal { margin-top: 22px; font-size: 0.85rem; color: var(--muted); text-align: center; }
+  </style>
+</head>
+<body>
+<main>
+  <a class="back" href="/">&larr; Back to Parcade</a>
+  <h1>Become a Club Member</h1>
+  <div id="thanks" class="thanks" hidden></div>
+  <div class="card">
+    <p class="price">$6.95<small>/month</small></p>
+    <p class="cancel">Cancel anytime</p>
+    <ul>
+      <li>Every game mode: Party, Skins, Match Play, Wolf, Vegas and more</li>
+      <li>Course lookup with real pars and hole handicaps</li>
+      <li>Scorecard scanner</li>
+      <li>Enter pars and handicaps yourself</li>
+      <li>Mulligans, bets and payout presets</li>
+      <li><span class="badge">Club Member</span> title next to your name</li>
+    </ul>
+    <div id="action"><button type="button" disabled>Checking your account...</button></div>
+    <p id="note" class="note" role="status"></p>
+  </div>
+  <p class="legal">Billed monthly through Stripe. Cancel and you keep the Club until the end of the month you paid for.
+    <a href="/terms">Terms</a> &middot; <a href="/privacy">Privacy</a></p>
+</main>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const db = supabase.createClient(PARFUL_CONFIG.SUPABASE_URL, PARFUL_CONFIG.SUPABASE_KEY);
+  const action = document.getElementById("action");
+  const note = document.getElementById("note");
+  const say = (text, bad) => { note.textContent = text || ""; note.className = "note" + (bad ? " bad" : ""); };
+  const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const day = iso => new Date(iso).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
+
+  async function session() {
+    const { data: { session: s } } = await db.auth.getSession();
+    return s && s.user && !s.user.is_anonymous ? s : null;
+  }
+
+  // Calls checkout or portal and follows the Stripe link it hands back
+  async function goStripe(fn, btn) {
+    const s = await session();
+    if (!s) { draw(); return; }
+    btn.disabled = true;
+    say("Heading to Stripe...");
+    try {
+      const r = await fetch("/.netlify/functions/" + fn, { method: "POST", headers: { authorization: "Bearer " + s.access_token } });
+      const out = await r.json().catch(() => ({}));
+      if (!r.ok || !out.url) throw new Error(out.error || "Something went sideways. Try again.");
+      location.href = out.url;
+    } catch (e) {
+      btn.disabled = false;
+      say(e.message, true);
+    }
+  }
+
+  async function memberState() {
+    const { data, error } = await db.rpc("is_club_member");
+    if (error || data !== true) return null;
+    const { data: row } = await db.from("club_subscriptions").select("current_period_end, cancel_at_period_end").maybeSingle();
+    return row || {};
+  }
+
+  async function draw(known) {
+    action.innerHTML = "";
+    say("");
+    const s = await session();
+    if (!s) {
+      const b = mk("a", "btn", "Create a free account first");
+      b.href = "/?create=1";
+      action.append(b);
+      say("Already have one? Sign in on the home page, then come back.");
+      return null;
+    }
+    const m = known !== undefined ? known : await memberState();
+    if (m) {
+      action.append(mk("div", "member", "You're a Club Member"));
+      const manage = mk("button", "ghost", "Manage subscription");
+      manage.type = "button";
+      manage.onclick = () => goStripe("portal", manage);
+      action.append(manage);
+      if (m.current_period_end) say((m.cancel_at_period_end ? "Your Club ends on " : "Renews on ") + day(m.current_period_end) + ".");
+      return m;
+    }
+    const join = mk("button", null, "Join the Club");
+    join.type = "button";
+    join.onclick = () => goStripe("checkout", join);
+    action.append(join);
+    return null;
+  }
+
+  // Back from Stripe: the webhook usually lands within a few seconds, so keep checking for a bit
+  async function afterJoin() {
+    const thanks = document.getElementById("thanks");
+    thanks.hidden = false;
+    thanks.textContent = "Thanks for joining, bud. Setting up your membership...";
+    history.replaceState(null, "", "/club");
+    for (let i = 0; i < 15; i++) {
+      const m = await memberState();
+      if (m) {
+        thanks.textContent = "Welcome to the Club. Everything's unlocked.";
+        draw(m);
+        return;
+      }
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    thanks.textContent = "Payment's in. Your membership can take a minute to show up. Check back shortly.";
+    draw();
+  }
+
+  if (new URLSearchParams(location.search).get("joined")) afterJoin(); else draw();
+</script>
+</body>
+</html>
