@@ -93,6 +93,8 @@ const CRABBY_LINES = {
   clubPerk: "That's a Club Member perk, bud.",
   setup: "House rules time. One phone or many? Handicaps? Money on the line? Mulligans for the weak? Choose wisely.",
   confirm: "Check the card. If a par is wrong, now is the time. Once balls are flying I am not hearing it.",
+  confirmNoHcp: "No hole handicaps on this card, so strokes get spread evenly. Want them right? Go back and scan the scorecard.",
+  noCard: "No scorecard on file for that one. Tap Scan a scorecard photo and I'll read it for you, or punch the pars in yourself.",
   size: "How many of you are playing? Tap a number. Counting's the easy part, trust me.",
   mode: "Pick a game. Tap the {i} if you need the rules explained like you're five.",
   modePicked: "Fine. Now hit Next before I change my mind.",
@@ -103,6 +105,38 @@ const CRABBY_LINES = {
   ready: "Everybody's here. Hit Start game. Slow play is a crime.",
   joiner: "Tap Join this round and type in your name. It's two steps. Try not to mess it up.",
   joined: "You're in. Now we wait on the slowpoke running this thing.",
+};
+
+// Sixes: the partner switch card after each set, and presses with Nassau bets
+const CRABBY_SIXES = {
+  switch: [
+    "Partners switch! Don't take it personally. Okay, take it a little personally.",
+    "New partner. Same excuses. Shake hands and try not to drag them down.",
+    "Swap time. Your old partner's thrilled. Your new one hasn't seen you putt yet.",
+    "Musical chairs, golf edition. Grab a new partner before they figure you out.",
+  ],
+  // Nassau bets: the Press! card
+  press: [
+    "Press! Two down in a three-hole bet. Math says no. Ego says yes.",
+    "Your partner got you into this. Press your way out of it.",
+    "A press. You'll be partners with them next set, so maybe don't gloat.",
+    "Double down with a partner you've known for six holes. Love that for you.",
+  ],
+};
+
+// Nassau: the Press! card and the turn
+const CRABBY_NASSAU = {
+  press: [
+    "Press! Two down and still talking. I respect the delusion.",
+    "Double or nothing, baby. Mostly nothing, if I've seen you putt.",
+    "A press. Bold move for someone who just lost two in a row.",
+    "Somebody's wallet just got nervous. Press is on.",
+  ],
+  turn: [
+    "That's the front. Grab a hot dog. Don't let it affect your backswing. Too late, it already has.",
+    "Halfway home. The back 9 is a fresh bet, so the loser gets a do-over. Lucky.",
+    "The turn. Front's settled, but the Overall's still wide open. Nobody relax.",
+  ],
 };
 
 // Dressing room

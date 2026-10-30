@@ -114,6 +114,67 @@ const RULES = {
       "Every group must be split 2 and 2 before the game starts."] },
     { h: "Winning", p: ["Most points after {holes} wins. Teammates usually tie, so the tiebreaker is who carried who. Settle that in the chat."] },
   ],
+  sixes: [
+    { h: "Sixes", p: ["Also called Round Robin or Hollywood. 4 players, and partners rotate every {set} holes, so by the end everyone has teamed up with everyone. No one gets stuck carrying the same guy all day."] },
+    { h: "Who's on your team", p: ["Players are A, B, C and D in the order they joined the room. The round splits into three sets of {set} holes ({sets})."],
+      list: [
+      "Set 1: A + B vs C + D",
+      "Set 2: A + C vs B + D",
+      "Set 3: A + D vs B + C",
+      "The hole card and leaderboard always show the current teams. After each set, a Partners switch! card shows the new ones.",
+      "Swapped the nines? Sets follow the order you play, not the hole numbers on the card."] },
+    { h: "Each hole", list: [
+      "Each team's best ball counts, the lowest single score on the team.",
+      "Lower best ball wins the hole. Same best ball halves it.",
+      "With handicaps on, the best net score counts, just like Best Ball."] },
+    { h: "Each set", list: [
+      "Every set is its own little match. The team that wins more holes in the set wins it, and each player on that team gets 1 point.",
+      "Tied set? Everyone gets \u00BD point.",
+      "Most a player can get is 3 points, one for each set (more with Nassau bets, below)."] },
+    { h: "Example", p: ["In set 1, Alec and Sam win holes 2 and 5, Jo and Kim win hole 3, and the rest are halved. Alec and Sam take the set 2\u20131, so they get 1 point each. Then Alec teams up with Jo for set 2 and it starts all over."] },
+    { h: "Nassau bets", p: ["Optional, off unless the party leader turns it on in settings. 18 holes only: on a 9-hole card each set stays one match."],
+      list: [
+      "Each 6-hole set becomes three 1-point bets: the Front (its first 3 holes), the Back (its last 3) and the Overall (all 6). That's 9 bets a round.",
+      "Holes are still won by best ball, net with handicaps on. Win a bet and you and your partner get 1 point each. A halved bet is \u00BD each.",
+      "Presses (on unless you turn them off): go 2 down in the Front, Back or Overall and a new 1-point bet starts on the next hole, running to the end of that bet. A half is only 3 holes, so 2 down after its second hole is the only way to press it. Presses never change the bets they came from.",
+      "Birdie bonus (optional): a team that makes a gross birdie gets +1 point each. A net birdie doesn't count.",
+      "Second-ball tiebreak (optional): best balls tie? The team with the better other score wins the hole. Those tie too, it's halved.",
+      "Example: in set 1, Jo and Kim win holes 1 and 2, so they take the Front 2 & 1. Alec and Sam are 2 down in the Front and the Overall, so both get pressed from hole 3. Alec and Sam win hole 3 and the rest are halved: they take both presses, Jo and Kim take the Overall 1 UP, and the Back is halved. 2\u00BD points each, all square.",
+      "Playing per point? Every bet, press and birdie wins that amount from the other team."] },
+    { h: "Winning", list: [
+      "Most points after {holes} wins. The podium goes by points.",
+      "Tied on points? Most holes won across all three sets breaks it, then fewest total strokes.",
+      "Playing for a pot? Places pay out by those final standings. Per point? Each point is worth the amount you set.",
+      "Needs exactly 4 golfers. The results screen shows all three sets: who played with who, holes won and who took it."] },
+  ],
+  nassau: [
+    { h: "Nassau", p: ["Three bets in one round: the Front 9, the Back 9 and the Overall 18. It's all match play, so you're never out of it. Blow the front and the back is a whole new bet."] },
+    { h: "Who plays", list: [
+      "2 players: a singles match, 1 vs 1.",
+      "4 players: 2 vs 2. The party leader sets Team A and Team B in the lobby, or taps Randomize teams.",
+      "Needs an 18-hole round. Swapped the nines? The Front is the first 9 you play, whatever the card says."] },
+    { h: "Each hole", list: [
+      "Lower score wins the hole. Same score halves it.",
+      "In 2 vs 2, each team's best ball counts, the lowest single score on the team.",
+      "With handicaps on, holes are decided on net scores, just like Match Play and Best Ball."] },
+    { h: "The three bets", list: [
+      "Front 9 (holes 1\u20139), Back 9 (holes 10\u201318) and Overall (all 18). Each one is its own match.",
+      "Win more holes in that stretch and you win the bet, worth 1 point. A tied bet is \u00BD point each.",
+      "In 2 vs 2, both players on a team get the team's points.",
+      "The live status reads like real match play: \"Front: Alec 2 UP\", \"Back: All square\". \"Wins 3 & 2\" means 3 up with 2 to play, so it's over. Dormie means up by exactly the holes left."] },
+    { h: "Presses", p: ["Optional, off unless the party leader turns them on in settings."],
+      list: [
+      "Go 2 down in the Front or the Back and a press starts on the next hole. It's a new 1-point bet that runs to the end of that nine.",
+      "Go 2 down in a press and that gets pressed too. Each side presses each bet once.",
+      "2 down after the 9th or 18th? Nothing left to press.",
+      "Presses only add their own point. They never change the Front, Back or Overall, and the Overall can't be pressed."] },
+    { h: "Example", p: ["Alec wins holes 1 and 2, so Sam is 2 down and presses: a new bet on holes 3\u20139. Sam wins 3 and 5, Alec wins 4, and the rest are halved. Alec takes the Front 1 UP for 1 point, and Sam takes the press 1 UP for 1 point. All square at the turn, with the Back and Overall still to play."] },
+    { h: "Winning", list: [
+      "Most points wins. A sweep with no presses is 3 points.",
+      "Tied on points? Most holes won over the 18 breaks it, then fewest total strokes.",
+      "Playing per point? Every bet and press is worth the amount you set, and you settle with the other side. Playing for a pot? Places pay out by those final standings.",
+      "The results screen shows every bet: Front, Back, Overall and each press, with who won and by how much."] },
+  ],
   vegas: [
     { h: "Vegas", p: ["2 vs 2, with math. Each hole, your team's two scores get mashed together into one number, low score first. A 4 and a 5 makes 45."] },
     { h: "Scoring", list: [
@@ -228,11 +289,13 @@ const MINI_RULE_LINES = {
     "Trick-shot challenges (hole out off a wall, putt one-handed, putt with your other hand) are optional. Pull it off and you get +2. Anyone can try, so there can be more than one winner.",
 };
 
-// Rule text can say {holes}, {prev} (second-to-last hole) or {turns} (Wolf turns with 3 players).
+// Rule text can say {holes}, {prev} (second-to-last hole), {turns} (Wolf turns with 3 players), {set} (holes in a Sixes set)
+// or {sets} (the Sixes set ranges).
 // Real golf fills in 18. A 9-hole mini-golf round fills in 9.
 function renderRules(container, keys, deck = CHALLENGES, holes = 18, mini = false) {
   container.classList.add("rules");
-  const fill = text => ((mini && MINI_RULE_LINES[text]) || text).replaceAll("{holes}", String(holes)).replaceAll("{prev}", String(holes - 1)).replaceAll("{turns}", String(holes / 3));
+  const fill = text => ((mini && MINI_RULE_LINES[text]) || text).replaceAll("{holes}", String(holes)).replaceAll("{prev}", String(holes - 1)).replaceAll("{turns}", String(holes / 3))
+    .replaceAll("{set}", String(holes / 3)).replaceAll("{sets}", [0, 1, 2].map(i => (i * holes / 3 + 1) + "\u2013" + ((i + 1) * holes / 3)).join(", ").replace(/, ([^,]*)$/, " and $1"));
   keys.forEach(k => (RULES[k] || []).forEach(sec => {
     const h = document.createElement("h4");
     h.textContent = sec.h;

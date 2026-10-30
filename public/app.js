@@ -617,9 +617,11 @@ const MODES = {
   stableford: { name: "Stableford", desc: "Points vs par every hole. Par is 2, birdie 3, blow-ups just score 0. Most points wins." },
   skins: { name: "Skins", desc: "Ties roll the prize into the next hole, so holes stack up. One clutch hole can win you a pile." },
   match: { name: "Match Play", desc: "Win a hole for 1 point. Tie it and everyone tied gets half. Most points wins the match." },
+  nassau: { name: "Nassau", desc: "Three bets in one: front 9, back 9 and the full 18. Match play, so every hole is a fight." },
   wad: { name: "Wad", desc: "Drain your first putt from long range and the pot grows. Make the last one of the round and everybody pays you." },
   vegas: { name: "Vegas", desc: "2 vs 2. Your team's scores mash into one number, so a 4 and a 5 is 45. Lowest number wins the difference." },
   bestball: { name: "Best Ball", desc: "2 vs 2. Your team's best score on each hole counts. Carry your partner, or get carried." },
+  sixes: { name: "Sixes", desc: "4 players. Partners rotate every 6 holes, so everyone teams up with everyone. Win the most 6-hole matches." },
   bbb: { name: "Bingo Bango Bongo", desc: "Three points every hole: first on the green, closest to the pin, first in the cup. Anyone can steal them." },
   caddy: { name: "Cart Caddy", desc: "Non-golfers become caddies with ridiculous powers. Call the shot, earn points, fight for Best Caddy." },
   wolf: { name: "Wolf", desc: "Groups of 3 or 4. Pick a partner off the tee or go it alone. Loyalty is optional." },
@@ -755,6 +757,8 @@ async function loadRound(code) {
   const isBbb = () => round.mode === "bbb";
   const isBest = () => round.mode === "bestball";
   const isVegas = () => round.mode === "vegas";
+  const isSixes = () => round.mode === "sixes";
+  const isNassau = () => round.mode === "nassau";
   const isWad = () => round.mode === "wad";
   const isWolf = () => round.mode === "wolf";
   const isStab = () => round.mode === "stableford";
@@ -857,7 +861,7 @@ async function loadRound(code) {
     startBtn.style.width = "100%";
     const SIZES = [["1", "1 player"], ["2", "2 players"], ["3", "3 players"], ["4", "4 players"], ["5", "5 or more"]];
     const sizeFits = { "1": n => n === 1, "2": n => n === 2, "3": n => n === 3, "4": n => n === 4, "5": n => n >= 5 };
-    const MODES_ALL = { "1": ["stroke", "stableford", "party"], "2": ["party", "stroke", "stableford", "skins", "match", "wad", "caddy"], "3": ["party", "stroke", "stableford", "skins", "match", "wolf", "bbb", "wad", "caddy"], "4": ["party", "stroke", "stableford", "skins", "match", "wolf", "bbb", "bestball", "vegas", "wad", "caddy"], "5": ["party", "stroke", "stableford", "skins", "match", "wolf", "bbb", "bestball", "vegas", "wad", "caddy"] };
+    const MODES_ALL = { "1": ["stroke", "stableford", "party"], "2": ["party", "stroke", "stableford", "skins", "match", "nassau", "wad", "caddy"], "3": ["party", "stroke", "stableford", "skins", "match", "wolf", "bbb", "wad", "caddy"], "4": ["party", "stroke", "stableford", "skins", "match", "nassau", "wolf", "bbb", "bestball", "sixes", "vegas", "wad", "caddy"], "5": ["party", "stroke", "stableford", "skins", "match", "wolf", "bbb", "bestball", "vegas", "wad", "caddy"] };
     const modeRules = key => showRulesModal(MODES[key].name, [key, "round"], deckFor(round), holesIn(round), round.mini);
     // Mini-golf: no "first on the green" (bbb), every shot is a putt (wad), everyone's playing (caddy)
     const MINI_HIDDEN = ["bbb", "wad", "caddy"];
@@ -865,7 +869,9 @@ async function loadRound(code) {
     const isClub = tier() === "club";
     const modeLock = () => (round.tournament_id ? {} : clubModeLock());
     const lockedMode = key => { if (modeLock()[key]) needClub(MODES[key].name); };
-    const MODES_FOR = Object.fromEntries(Object.entries(MODES_ALL).map(([k, list]) => [k, round.mini ? list.filter(m => !MINI_HIDDEN.includes(m)) : list]));
+    const MODES_BASE = Object.fromEntries(Object.entries(MODES_ALL).map(([k, list]) => [k, round.mini ? list.filter(m => !MINI_HIDDEN.includes(m)) : list]));
+    // Nassau needs 18 holes, so it's hidden on 9-hole mini-golf cards. The card can change in setup, so this is checked live.
+    const modesFor = key => MODES_BASE[key].filter(m => m !== "nassau" || holesIn(round) === 18);
     const SIZE_NOTES = {
       "1": "Just you and the course. Kinda sad, but great for keeping score.",
       "2": "Head to head. Nowhere to hide.",
@@ -935,7 +941,7 @@ async function loadRound(code) {
       const head = h3("Game mode");
       head.style.marginTop = "28px";
       roomGame.append(head);
-      const picker = modeGrid({ modes: MODES_FOR[pickedSize], selected: pickedMode, off: modeLock(), info: modeRules, onLocked: lockedMode, onPick: key => {
+      const picker = modeGrid({ modes: modesFor(pickedSize), selected: pickedMode, off: modeLock(), info: modeRules, onLocked: lockedMode, onPick: key => {
         pickedMode = key;
         renderModes();
         updateStart();
@@ -954,7 +960,7 @@ async function loadRound(code) {
       const where = st === "room" ? "room" : "setup";
       if (settingsPlace === where) return;
       settingsPlace = where;
-      const els = [odRow, odNote, hcRow, money, mullArea];
+      const els = [odRow, odNote, hcRow, pressRow, money, mullArea];
       if (setupNext.nextElementSibling !== startBtn) startBtn.before(setupNext);
       if (where === "room") {
         let after = startBtn;
@@ -1138,9 +1144,8 @@ async function loadRound(code) {
       const card = d && Array.isArray(d.scorecard) ? d.scorecard.slice().sort((a, b) => a.hole - b.hole) : [];
       const pars = card.length === 18 ? card.map(h => Number(h.par)) : null;
       if (!pars || pars.some(p => !(p >= 3 && p <= 6))) {
-        toast("No scorecard for that one yet. Punch in the pars.");
-        const m = await parsModal(c.name);
-        if (m) saveCourse({ ...m, location: m.location || location });
+        // Point them at the scanner instead of opening the par entry right away
+        guide.say(CRABBY_LINES.noCard);
         return;
       }
       const hcps = card.map(h => Number(h.handicap ?? h.hcp));
@@ -1337,6 +1342,84 @@ async function loadRound(code) {
     mullDown.onclick = () => setMull(-1);
     mullUp.onclick = () => setMull(1);
 
+    // Nassau presses, stored on rounds.nassau_presses
+    const pressRow = document.createElement("div");
+    pressRow.className = "toggle-row od-row settings-only";
+    const pressTxt = document.createElement("div");
+    const pressLabel = document.createElement("span");
+    pressLabel.className = "field-label";
+    pressLabel.textContent = "Presses";
+    const pressHint = document.createElement("small");
+    pressHint.textContent = "Go 2 down in a nine and a new 1-point bet starts on the next hole. Chase it back.";
+    pressTxt.append(pressLabel, pressHint);
+    const pressSwitch = document.createElement("button");
+    pressSwitch.type = "button";
+    pressSwitch.className = "switch";
+    pressSwitch.setAttribute("role", "switch");
+    pressSwitch.setAttribute("aria-label", "Presses");
+    pressRow.append(pressTxt, pressSwitch);
+    const syncPress = () => {
+      const on = !!round.nassau_presses;
+      pressSwitch.textContent = on ? "On" : "Off";
+      pressSwitch.classList.toggle("on", on);
+      pressSwitch.setAttribute("aria-checked", String(on));
+      pressRow.style.display = pickedMode === "nassau" ? "" : "none";
+    };
+    pressSwitch.onclick = async () => {
+      if (!isClub && !round.nassau_presses) return needClub("presses");
+      const on = !round.nassau_presses;
+      const { error } = await db.from("rounds").update({ nassau_presses: on }).eq("id", round.id);
+      if (error) { toast(error.message); return; }
+      round.nassau_presses = on;
+      syncPress();
+    };
+    hostArea.append(pressRow);
+
+    // Sixes: Nassau bets and its options, stored on rounds.sixes_nassau, sixes_presses, sixes_birdie and sixes_second_ball.
+    // 18 holes only. The options sit under Nassau bets and only show while it's on.
+    const sixesRows = [
+      ["sixes_nassau", "Nassau bets", "Each 6-hole set becomes three 1-point bets: its first 3 holes, its last 3, and all 6."],
+      ["sixes_presses", "Presses", "Go 2 down in a bet and a new 1-point bet starts on the next hole."],
+      ["sixes_birdie", "Birdie bonus", "A gross birdie is +1 point for you and your partner."],
+      ["sixes_second_ball", "Second-ball tiebreak", "Best balls tie? The better other ball wins the hole."],
+    ].map(([key, label, hint], i) => {
+      const row = document.createElement("div");
+      row.className = "toggle-row od-row settings-only" + (i ? " sub-toggle" : "");
+      const txt = document.createElement("div");
+      const lab = document.createElement("span");
+      lab.className = "field-label";
+      lab.textContent = label;
+      const small = document.createElement("small");
+      small.textContent = hint;
+      txt.append(lab, small);
+      const sw = document.createElement("button");
+      sw.type = "button";
+      sw.className = "switch";
+      sw.setAttribute("role", "switch");
+      sw.setAttribute("aria-label", label);
+      row.append(txt, sw);
+      sw.onclick = async () => {
+        if (!isClub && !round[key]) return needClub("Nassau bets");
+        const on = !round[key];
+        const { error } = await db.from("rounds").update({ [key]: on }).eq("id", round.id);
+        if (error) { toast(error.message); return; }
+        round[key] = on;
+        syncSixes();
+      };
+      hostArea.append(row);
+      return { key, row, sw };
+    });
+    function syncSixes() {
+      const shown = pickedMode === "sixes" && holesIn(round) === 18;
+      sixesRows.forEach(({ key, row, sw }, i) => {
+        const on = !!round[key];
+        sw.textContent = on ? "On" : "Off";
+        sw.classList.toggle("on", on);
+        sw.setAttribute("aria-checked", String(on));
+        row.style.display = shown && (!i || round.sixes_nassau) ? "" : "none";
+      });
+    }
+
     const sizeTitle = h3("How many players?");
     hostArea.append(sizeTitle, sizeArea, modeArea);
     sizeTitle.classList.add("size-only");
@@ -1344,7 +1427,7 @@ async function loadRound(code) {
     modeArea.classList.add("mode-only");
 
     const showSizeInfo = (key, label) => {
-      RULES["size" + key] = [{ h: label, p: [SIZE_NOTES[key]] }].concat(MODES_FOR[key].map(k => ({
+      RULES["size" + key] = [{ h: label, p: [SIZE_NOTES[key]] }].concat(modesFor(key).map(k => ({
         h: MODES[k].name,
         p: [MODES[k].desc + (key === "5" && k === "wolf" ? " Every group needs 3 or 4 players." : "")],
       })));
@@ -1357,7 +1440,7 @@ async function loadRound(code) {
       const b = document.createElement("b");
       b.textContent = label;
       const d = document.createElement("span");
-      const list = MODES_FOR[key];
+      const list = modesFor(key);
       d.textContent = key === "1" ? "Kinda sad... but best for helping keep score" : list.length <= 3 ? list.map(k => MODES[k].name).join(", ") : list.length + " game modes";
       tile.append(b, d);
       tile.onclick = () => {
@@ -1388,7 +1471,7 @@ async function loadRound(code) {
       back.onclick = () => { pickedSize = null; pickedMode = null; renderModes(); updateStart(); setStep("size"); };
       modeArea.append(back, h3("Pick a game mode for " + label.toLowerCase()));
       slideIn(modeArea);
-      const picker = modeGrid({ modes: MODES_FOR[pickedSize], selected: pickedMode, off: modeLock(), info: modeRules, onLocked: lockedMode, onPick: key => {
+      const picker = modeGrid({ modes: modesFor(pickedSize), selected: pickedMode, off: modeLock(), info: modeRules, onLocked: lockedMode, onPick: key => {
         pickedMode = key;
         updateStart();
         caddyNote.style.display = key === "caddy" ? "block" : "none";
@@ -1415,6 +1498,8 @@ async function loadRound(code) {
       const n = players.length;
       if ($("money-switch")) syncMoney();
       syncHc();
+      syncPress();
+      syncSixes();
       odNote.style.display = oneDevice && new Set(players.map(p => p.group_no)).size > 1 ? "block" : "none";
       startBtn.disabled = true;
       if (!pickedSize) { startBtn.textContent = "Pick how many are playing"; return; }
@@ -1449,7 +1534,8 @@ async function loadRound(code) {
       const st = lobby.dataset.step;
       if (st === "course") return round.mini ? (isClub ? CRABBY_LINES.courseMini : CRABBY_LINES.courseMiniGuest)
         : isClub ? CRABBY_LINES.course : CRABBY_LINES.courseGuest;
-      if (st === "confirm") return CRABBY_LINES.confirm;
+      if (st === "confirm") return course && !course.mini && !(Array.isArray(course.hcp_index) && course.hcp_index.length === 18)
+        ? CRABBY_LINES.confirmNoHcp : CRABBY_LINES.confirm;
       if (st === "size") return CRABBY_LINES.size;
       if (st === "setup") return CRABBY_LINES.setup;
       if (st === "mode") return pickedMode ? CRABBY_LINES.modePicked : CRABBY_LINES.mode;
@@ -1457,7 +1543,7 @@ async function loadRound(code) {
         const need = pickedSize === "5" ? 5 : +pickedSize;
         return players.length < need ? CRABBY_LINES.waitingPlayers : CRABBY_LINES.tooMany;
       }
-      if (TEAM_MODES.includes(pickedMode) && [...new Set(players.map(pl => pl.group_no))].some(g => !teamsOf(players, g).valid)) return CRABBY_LINES.teams;
+      if (teamsPicked() && [...new Set(players.map(pl => pl.group_no))].some(g => !teamsOf(players, g).valid)) return CRABBY_LINES.teams;
       if (pickedMode === "caddy") {
         const caddies = players.filter(pl => pl.role === "caddy");
         if (!caddies.length || caddies.some(cd => !pairs.some(x => x.caddy_id === cd.id))) return CRABBY_LINES.caddy;
@@ -1505,7 +1591,16 @@ async function loadRound(code) {
         players.forEach(pl => (sizes[pl.group_no] = (sizes[pl.group_no] || 0) + 1));
         if (!players.length || Object.values(sizes).some(n => n !== 3 && n !== 4)) { toast("Wolf needs 3 or 4 players in every group."); return; }
       }
-      if (TEAM_MODES.includes(pickedMode)) {
+      if (pickedMode === "sixes" && (players.length !== 4 || players.some(pl => pl.group_no !== players[0].group_no))) {
+        toast("Sixes needs exactly 4 golfers in one group. You have " + players.length + "."); return;
+      }
+      if (pickedMode === "nassau") {
+        if (holesIn(round) !== 18) { toast("Nassau needs 18 holes. Pick another game for a 9-hole card."); return; }
+        if ((players.length !== 2 && players.length !== 4) || players.some(pl => pl.group_no !== players[0].group_no)) {
+          toast("Nassau needs exactly 2 or 4 golfers in one group. You have " + players.length + "."); return;
+        }
+      }
+      if (teamsPicked()) {
         const gs = [...new Set(players.map(pl => pl.group_no))];
         const bad = gs.filter(g => !teamsOf(players, g).valid);
         if (bad.length) { toast("Every group needs 4 players split 2 and 2 into teams." + (gs.length > 1 ? " Check group " + bad.join(", ") + "." : "")); return; }
@@ -1647,6 +1742,17 @@ async function loadRound(code) {
       <div id="best-teams" class="ch-text"></div>
       <div id="best-result" class="ch-winner"></div>
     </div>
+    <div id="sixes-box" class="ch-box" style="display:none">
+      <div class="ch-kicker">Sixes</div>
+      <div id="sixes-teams" class="ch-text"></div>
+      <div id="sixes-result" class="ch-winner"></div>
+    </div>
+    <div id="nassau-box" class="ch-box" style="display:none">
+      <div class="ch-kicker">Nassau</div>
+      <div id="nassau-teams" class="ch-text"></div>
+      <div id="nassau-status" class="nassau-status"></div>
+      <div id="nassau-result" class="ch-winner"></div>
+    </div>
     <div id="bbb-box" class="ch-box" style="display:none">
       <div class="ch-kicker">Bingo Bango Bongo</div>
       <div id="bbb-rows"></div>
@@ -1717,7 +1823,13 @@ async function loadRound(code) {
   stakesLine.style.cssText = "display:none;margin:0 0 8px";
   const hcInfo = document.createElement("div");
   const cardsInfo = document.createElement("div");
-  panels.board.append(stakesLine, board, cardsInfo, hcInfo);
+  const sixesLine = document.createElement("p");
+  sixesLine.className = "waiting sixes-line";
+  sixesLine.style.cssText = "display:none;margin:0 0 8px";
+  const nassauLine = document.createElement("div");
+  nassauLine.className = "waiting nassau-line";
+  nassauLine.style.cssText = "display:none;margin:0 0 8px";
+  panels.board.append(stakesLine, sixesLine, nassauLine, board, cardsInfo, hcInfo);
 
   const betForm = document.createElement("form");
   betForm.className = "bet-form";
@@ -1907,12 +2019,15 @@ async function loadRound(code) {
   document.body.append(roundSound);
   document.body.append(topBar);
 
+  // Best Ball and Vegas always pick teams. Nassau does when it's 2 vs 2.
+  function teamsPicked() { return TEAM_MODES.includes(pickedMode) || (pickedMode === "nassau" && nassauTeamGame(players)); }
+
   function renderLobbyList() {
     const isLeader = round.host_id === user.id;
     const tournament = players.length > 4 || players.some(p => p.group_no > 1);
     const groupCount = Math.max(1, Math.ceil(players.length / 4), ...players.map(p => p.group_no));
     groupTools.style.display = isLeader && players.length > 4 ? "block" : "none";
-    teamTools.style.display = isLeader && TEAM_MODES.includes(pickedMode) ? "block" : "none";
+    teamTools.style.display = isLeader && teamsPicked() ? "block" : "none";
     lobbyList.innerHTML = "";
     const groups = tournament ? Array.from({ length: groupCount }, (_, i) => i + 1) : [null];
     groups.forEach(g => {
@@ -1936,7 +2051,8 @@ async function loadRound(code) {
         name.textContent = pl.name
           + (pl.user_id === round.host_id ? " (party leader)" : "")
           + (pl.is_co_leader ? " (co-leader)" : "")
-          + (pl.team ? " (" + TEAM_NAMES[pl.team] + ")" : "")
+          + (pl.team && pickedMode !== "sixes" && round.mode !== "sixes" && (pickedMode !== "nassau" || teamsPicked()) ? " (" + TEAM_NAMES[pl.team] + ")" : "")
+          + (pickedMode === "sixes" && players.indexOf(pl) < 4 ? " (Player " + "ABCD"[players.indexOf(pl)] + ")" : "")
           + (pl.role === "caddy" ? " (caddy" + (pairs.some(x => x.caddy_id === pl.id)
               ? " for " + pairs.filter(x => x.caddy_id === pl.id).map(x => (players.find(g => g.id === x.golfer_id) || {}).name).filter(Boolean).join(", ")
               : "") + ")" : "")
@@ -1966,7 +2082,7 @@ async function loadRound(code) {
           st.textContent = strokeHolesText(holeAllowances(round, players)[pl.id] || 0);
           li.append(st);
         }
-        if (isLeader && TEAM_MODES.includes(pickedMode)) {
+        if (isLeader && teamsPicked()) {
           const tctl = document.createElement("div");
           tctl.className = "lobby-ctl";
           [1, 2].forEach(n => {
@@ -2303,6 +2419,8 @@ async function loadRound(code) {
     const matchWon = isMatch() ? matchTotals(round, players, scores) : {};
     const bestTot = isBest() ? bestBallTotals(round, players, scores) : {};
     const vegasTot = isVegas() ? vegasTotals(round, players, scores) : {};
+    const sixesTot = isSixes() ? sixesTotals(round, players, scores, false, course) : {};
+    const nassauTot = isNassau() ? nassauTotals(round, players, scores) : {};
     const wadHold = isWad() ? wadHolders(players, wads) : new Set();
     const stabTot = isStab() ? stablefordTotals(round, players, scores, course) : {};
     const rows = players.map(pl => {
@@ -2319,26 +2437,37 @@ async function loadRound(code) {
       if (isBbb()) pts = results.filter(x => x.award && x.winner_id === pl.id).length;
       if (isBest()) pts = bestTot[pl.id] || 0;
       if (isVegas()) pts = vegasTot[pl.id] || 0;
+      if (isSixes()) pts = sixesTot[pl.id] || 0;
+      if (isNassau()) pts = nassauTot[pl.id] || 0;
       if (isWad()) pts = wads.filter(w => w.player_id === pl.id).length;
       if (isStab()) pts = stabTot[pl.id] || 0;
       return { pl, pts, total, net: total - Math.floor(mine.length * (allow[pl.id] || 0) + 1e-9), thru: mine.length };
     });
     if (isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas() || isWad() || isStab()) rows.sort((a, b) => b.pts - a.pts);
+    else if (isSixes() || isNassau()) {
+      const rank = isSixes() ? sixesRankValues(round, players, scores, false, course) : nassauRankValues(round, players, scores);
+      rows.sort((a, b) => (rank[b.pl.id] || 0) - (rank[a.pl.id] || 0));
+    }
     else { const avg = r => (r.thru ? r.net / r.thru : Infinity); rows.sort((a, b) => avg(a) - avg(b)); }
     if (isWad()) rows.sort((a, b) => (wadHold.has(b.pl.id) - wadHold.has(a.pl.id)) || b.pts - a.pts);
 
     board.innerHTML = "";
+    sixesLine.style.display = isSixes() ? "block" : "none";
+    if (isSixes()) sixesLine.textContent = sixesNowText(me ? me.group_no : 1);
+    nassauLine.style.display = isNassau() ? "block" : "none";
+    if (isNassau()) drawNassauLines(nassauLine, me ? me.group_no : 1);
     rows.forEach((r, i) => {
       const li = document.createElement("li");
       const name = document.createElement("span");
       name.append((i + 1) + ". ", figureEl(r.pl), r.pl.name + (r.pl.user_id === user.id ? " (you)" : ""));
       if (clubIds.has(r.pl.user_id)) name.append(clubBadge());
       const val = document.createElement("span");
-      val.textContent = (isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas() || isWad() || isStab())
+      val.textContent = isSixes() || isNassau() ? sixesPts(r.pts) + (r.pts === 1 ? " pt" : " pts")
+        : (isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas() || isWad() || isStab())
         ? r.pts + (isSkins() ? (r.pts === 1 ? " skin" : " skins") : isMatch() ? (r.pts === 1 ? " pt" : " pts") : isWad() ? " made" : " pts")
         : (r.thru ? r.total + " strokes" + (round.handicap ? ", net " + Math.round(r.net) : "") + " (thru " + r.thru + ")" : "-");
       if (isWad() && wadHold.has(r.pl.id)) val.prepend("💰 ");
-      if ((isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas() || isWad() || isStab()) && r.thru) {
+      if ((isParty() || isWolf() || isSkins() || isMatch() || isBbb() || isBest() || isVegas() || isSixes() || isNassau() || isWad() || isStab()) && r.thru) {
         const sub = document.createElement("span");
         sub.className = "sub-score";
         sub.textContent = " (" + r.total + " thru " + r.thru + ")";
@@ -2501,6 +2630,21 @@ async function loadRound(code) {
     if (isStab()) message = "⭐ Par is worth 2 points";
     if (isBest()) message = "🤝 Carry your partner";
     if (isVegas()) message = "🎰 Lowest number wins the difference";
+    if (isSixes()) {
+      const st = sixesState(round, players, scores, me.group_no, false, course);
+      if (st.valid) {
+        const seg = sixesSegment(h, holesIn(round));
+        message = (h > 1 && h === sixesSegHoles(seg, holesIn(round))[0] ? "🔄 New partners: " : "🤝 ") + sixesTeamsText(st.segs[seg].teams, st.byId);
+      }
+    }
+    if (isNassau()) {
+      const st = nassauState(round, players, scores, me.group_no);
+      if (st.valid) {
+        const pos = st.holes[h] ? st.holes[h].pos : h;
+        const m = st.matches[pos <= 9 ? 0 : 1];
+        message = "\u2694\uFE0F " + (pos === 10 ? "Back 9 starts. Overall: " + nassauStatusText(st.matches[2], st.names) : nassauLabel(m) + ": " + nassauStatusText(m, st.names));
+      }
+    }
     if (isWad()) {
       const st = wadState(players, wads, me.group_no);
       const per = Number(round.per_point || 0);
@@ -2511,7 +2655,7 @@ async function loadRound(code) {
       const n = skinsState(round, players, scores).holes[h].pot;
       message = "💰 " + n + (n === 1 ? " skin" : " skins") + " on the line";
     }
-    playHoleIntro({ hole: h, color, challenge: ch, idx, message, wolfGrab: isWolf(), coins: isSkins(), cartRun: isMatch(), bbb: isBbb(), carry: isBest(), slots: isVegas(), cashRain: isWad(), tornado: isStab(), items }).then(() => { introRunning = false; });
+    playHoleIntro({ hole: h, color, challenge: ch, idx, message, wolfGrab: isWolf(), coins: isSkins(), cartRun: isMatch() || isNassau(), bbb: isBbb(), carry: isBest() || isSixes(), slots: isVegas(), cashRain: isWad(), tornado: isStab(), items }).then(() => { introRunning = false; });
   }
 
   function drawCard() {
@@ -2631,6 +2775,10 @@ async function loadRound(code) {
     if (isWad()) drawWad(myGroup, isLeader);
     $("vegas-box").style.display = isVegas() ? "block" : "none";
     if (isVegas()) drawVegas(myGroup);
+    $("sixes-box").style.display = isSixes() ? "block" : "none";
+    if (isSixes()) drawSixes(myGroup);
+    $("nassau-box").style.display = isNassau() ? "block" : "none";
+    if (isNassau()) drawNassau(myGroup);
     const hideGrid = isCaddy() && !!me && me.role === "caddy" && !(keeperMode && canKeep());
     $("score-grid").style.display = hideGrid ? "none" : "";
     $("score-label").style.display = hideGrid ? "none" : "";
@@ -2922,6 +3070,67 @@ async function loadRound(code) {
     $("vegas-result").textContent = hi.winner
       ? TEAM_NAMES[1] + " " + show(1) + ", " + TEAM_NAMES[2] + " " + show(2) + ". " + TEAM_NAMES[hi.winner] + " wins by " + hi.diff + ", +" + hi.diff + " each."
       : "Both teams made " + hi.num[1] + ". Push.";
+  }
+
+  // "Holes 7–12: Alec & Sam vs Jo & Kim" and the live tally, for the segment the group is on
+  function sixesSegText(st, seg) {
+    const s = st.segs[seg], [lo, hi] = s.range;
+    return "Holes " + lo + "\u2013" + hi + ": " + sixesTeamsText(s.teams, st.byId);
+  }
+  function sixesTallyText(st, seg) {
+    const s = st.segs[seg], n = s.range[1] - s.range[0] + 1;
+    const nm = t => t.map(id => st.byId[id].name).join(" & ");
+    if (!s.played) return "Nobody's won a hole yet in this set.";
+    const lead = s.won[1] > s.won[2] ? 1 : s.won[2] > s.won[1] ? 2 : 0;
+    const tally = s.won[1] + "\u2013" + s.won[2];
+    if (s.winner != null) return s.winner ? nm(s.teams[s.winner - 1]) + " won the set " + Math.max(s.won[1], s.won[2]) + "\u2013" + Math.min(s.won[1], s.won[2]) + ". +1 each." : "Set halved " + tally + ". \u00BD point each.";
+    if (s.clinched) return nm(s.teams[s.clinched - 1]) + " have clinched it, " + Math.max(s.won[1], s.won[2]) + "\u2013" + Math.min(s.won[1], s.won[2]) + ".";
+    return (lead ? nm(s.teams[lead - 1]) + " lead " + Math.max(s.won[1], s.won[2]) + "\u2013" + Math.min(s.won[1], s.won[2]) : "All square " + tally) + " thru " + s.played + " of " + n + ".";
+  }
+  function sixesNowText(g) {
+    const st = sixesState(round, players, scores, g, false, course);
+    if (!st.valid) return "Sixes needs exactly 4 golfers.";
+    const seg = sixesSegment(Math.min(groupProgressHole(), holesIn(round)), holesIn(round));
+    return sixesSegText(st, seg) + ". " + (st.nassau ? sixesBetsText(st, seg) : sixesTallyText(st, seg));
+  }
+  function drawSixes(g) {
+    const st = sixesState(round, players, scores, g, false, course);
+    if (!st.valid) {
+      $("sixes-teams").textContent = "Sixes needs exactly 4 golfers.";
+      $("sixes-result").textContent = "";
+      return;
+    }
+    const seg = sixesSegment(hole, holesIn(round)), hi = st.holes[hole];
+    const nm = t => t.map(id => st.byId[id].name).join(" & ");
+    $("sixes-teams").textContent = sixesSegText(st, seg);
+    const holeTxt = !hi || hi.winner == null ? "" : hi.winner
+      ? nm(hi.teams[hi.winner - 1]) + " won this hole, " + (hi.secondBall ? "on the second ball. " : hi.best[hi.winner] + " to " + hi.best[3 - hi.winner] + ". ")
+      : "Halved this hole at " + hi.best[1] + ". ";
+    $("sixes-result").textContent = holeTxt + (st.nassau ? sixesBetsText(st, seg) + "." : sixesTallyText(st, seg)) + (round.handicap && !hi ? " Best net ball counts." : "");
+  }
+
+  // Nassau: one line per bet, "Front: Alec 2 UP", presses included
+  function drawNassauLines(el, g) {
+    const st = nassauState(round, players, scores, g);
+    el.innerHTML = "";
+    if (!st.valid) { el.textContent = nassauInvalidText(); return st; }
+    nassauStatusLines(st).forEach(t => { const d = document.createElement("div"); d.textContent = t; el.append(d); });
+    return st;
+  }
+  function nassauInvalidText() {
+    return holesIn(round) !== 18 ? "Nassau needs 18 holes." : "Nassau needs 2 golfers, or 4 split into Team A and Team B.";
+  }
+  function nassauHoleText(st, hi) {
+    if (!hi || hi.winner == null) return "";
+    return hi.winner ? st.names[hi.winner - 1] + (st.sides[hi.winner - 1].length > 1 ? " win" : " wins") + " the hole, " + hi.best[hi.winner] + " to " + hi.best[3 - hi.winner] + "."
+      : "Halved at " + hi.best[1] + ".";
+  }
+  function drawNassau(g) {
+    const st = drawNassauLines($("nassau-status"), g);
+    if (!st.valid) { $("nassau-teams").textContent = ""; $("nassau-result").textContent = ""; return; }
+    $("nassau-teams").textContent = st.names[0] + " vs " + st.names[1];
+    const hi = st.holes[hole];
+    $("nassau-result").textContent = nassauHoleText(st, hi) || ("Lower " + (st.sides[0].length > 1 ? "best ball" : "score") + (round.handicap ? " (net)" : "") + " wins the hole. Same score halves it.");
   }
 
   function drawBest(g) {
@@ -3371,6 +3580,27 @@ async function loadRound(code) {
       title = !hi ? winLine(lows()) : hi.winner ? TEAM_NAMES[hi.winner] + " wins by " + hi.diff + " (" + hi.num[hi.winner] + " vs " + hi.num[3 - hi.winner] + ")"
         : "Both teams made " + hi.num[1] + ". Push.";
       note = "Each team's two scores make one number, low score first. Lowest number wins the difference.";
+    } else if (isSixes()) {
+      const st = sixesState(round, players, scores, g, false, course);
+      const hi = st.valid ? st.holes[h] : null;
+      if (!hi || hi.winner == null) title = winLine(lows());
+      else {
+        const tn = t => t.map(id => nm(byId(id))).join(" & ");
+        title = hi.winner ? tn(hi.teams[hi.winner - 1]) + " win the hole, " + (hi.secondBall ? "on the second ball" : hi.best[hi.winner] + " to " + hi.best[3 - hi.winner])
+          : "Halved at " + hi.best[1];
+        rows.forEach(r => { const t = hi.teams.findIndex(x => x.includes(r.p.id)); r.sub = "With " + nm(byId(hi.teams[t].find(id => id !== r.p.id))); });
+      }
+      note = !st.valid || !hi ? "Each team's best ball wins the hole. Most holes in the set wins it."
+        : st.nassau ? hi.birdies.map(t => "Birdie bonus: " + sixesNames(st.segs[hi.seg], st.byId)[t - 1] + " +1 each. ").join("") + sixesBetsText(st, hi.seg)
+        : sixesTallyText(st, hi.seg);
+    } else if (isNassau()) {
+      const st = nassauState(round, players, scores, g);
+      const hi = st.valid ? st.holes[h] : null;
+      title = hi && hi.winner != null ? nassauHoleText(st, hi).replace(/\.$/, "") : winLine(lows());
+      if (hi && st.sides[0].length > 1) rows.forEach(r => { const t = st.sides.findIndex(x => x.includes(r.p.id)); r.sub = "With " + nm(byId(st.sides[t].find(id => id !== r.p.id))); });
+      // The nine being played, the Overall, and any press that covers this hole
+      note = st.valid ? st.matches.filter(m => m.key === "overall" || (hi && (m.key === "press" ? hi.pos >= m.range[0] && hi.pos <= m.range[1] : m.nine === (hi.pos <= 9 ? 0 : 1))))
+        .map(m => nassauLabel(m) + ": " + nassauStatusText(m, st.names)).join(" \u00B7 ") : "Lower score wins the hole. Same score halves it.";
     } else if (isWad()) {
       const made = wads.filter(w => w.hole === h && gp.some(p => p.id === w.player_id));
       title = made.length ? made.map(w => nm(byId(w.player_id))).join(" and ") + " made a Wad" : "No Wads this hole";
@@ -3424,11 +3654,130 @@ async function loadRound(code) {
       const close = () => {
         if (closed) return;
         closed = true;
-        ov.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: "forwards" }).finished.then(() => { ov.remove(); resolve(); });
+        ov.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: "forwards" }).finished.then(() => { ov.remove(); (isSixes() ? showSixesPress(h).then(() => showSixesSwitch(h)) : isNassau() ? showNassauPress(h).then(() => showNassauTurn(h)) : Promise.resolve()).then(resolve); });
       };
       go.onclick = close;
       setTimeout(() => go.focus({ preventScroll: true }), 50);
     });
+  }
+
+  // Sixes: after holes 6 and 12 (3 and 6 on a 9-hole card), how the set ended and who's partners now
+  function showSixesSwitch(h) {
+    return new Promise(resolve => {
+      const n = holesIn(round) / 3;
+      if (!me || (h !== n && h !== 2 * n)) return resolve();
+      const st = sixesState(round, players, scores, me.group_no, false, course);
+      if (!st.valid) return resolve();
+      const done = st.segs[h / n - 1], next = st.segs[h / n];
+      const mk = (cls, text) => { const e = document.createElement("div"); e.className = cls; if (text != null) e.textContent = text; return e; };
+      const ov = mk("recap");
+      ov.setAttribute("role", "status");
+      const card = mk("recap-card sixes-switch");
+      const crab = mk("sixes-crabby");
+      crab.append(crabbyEl(44), mk("sixes-quip", CRABBY_SIXES.switch[(h / n - 1 + round.code.length) % CRABBY_SIXES.switch.length]));
+      card.append(mk("recap-kicker", "Partners switch!"), mk("recap-title", "Holes " + next.range[0] + "\u2013" + next.range[1]), crab);
+      const list = mk("recap-rows");
+      next.teams.forEach((t, i) => {
+        const row = mk("recap-row");
+        const name = document.createElement("span");
+        t.forEach((id, k) => { if (k) name.append(" & "); name.append(figureEl(st.byId[id], 16), st.byId[id].user_id === user.id ? "You" : st.byId[id].name); });
+        row.append(name, mk("recap-sub", i ? "Team 2" : "Team 1"));
+        list.append(row);
+      });
+      const go = document.createElement("button");
+      go.className = "recap-btn";
+      go.textContent = "Let's go";
+      card.append(list);
+      // With Nassau bets, how each of the set's bets ended
+      if (st.nassau) {
+        const bets = mk("recap-rows");
+        sixesBetRows(st, done.seg).concat(sixesBirdieRows(st, done.seg)).forEach(([a, b]) => {
+          const row = mk("recap-row");
+          row.append(mk("", a), mk("recap-sub", b));
+          bets.append(row);
+        });
+        card.append(mk("recap-kicker", "Last set's bets"), bets);
+      } else card.append(mk("recap-note", "Last set: " + sixesTallyText(st, done.seg)));
+      card.append(go);
+      ov.append(card);
+      document.body.append(ov);
+      Sound.play("pop");
+      let closed = false;
+      go.onclick = () => {
+        if (closed) return;
+        closed = true;
+        ov.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: "forwards" }).finished.then(() => { ov.remove(); resolve(); });
+      };
+      setTimeout(() => go.focus({ preventScroll: true }), 50);
+    });
+  }
+
+  // Nassau: a small card with Crabby. kicker, title, a Crabby line, and rows of [left, right].
+  function nassauCard(kicker, title, quip, rows, note, btn) {
+    return new Promise(resolve => {
+      const mk = (cls, text) => { const e = document.createElement("div"); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+      const ov = mk("recap");
+      ov.setAttribute("role", "status");
+      const card = mk("recap-card sixes-switch");
+      const crab = mk("sixes-crabby");
+      crab.append(crabbyEl(44), mk("sixes-quip", quip));
+      card.append(mk("recap-kicker", kicker), mk("recap-title", title), crab);
+      const list = mk("recap-rows");
+      rows.forEach(([a, b]) => { const row = mk("recap-row"); row.append(mk(null, a), mk("recap-sub", b)); list.append(row); });
+      const go = document.createElement("button");
+      go.className = "recap-btn";
+      go.textContent = btn;
+      card.append(list);
+      if (note) card.append(mk("recap-note", note));
+      card.append(go);
+      ov.append(card);
+      document.body.append(ov);
+      Sound.play("pop");
+      let closed = false;
+      go.onclick = () => {
+        if (closed) return;
+        closed = true;
+        ov.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: "forwards" }).finished.then(() => { ov.remove(); resolve(); });
+      };
+      setTimeout(() => go.focus({ preventScroll: true }), 50);
+    });
+  }
+  const crabbyPick = (list, n) => list[(n + round.code.length) % list.length];
+  // Presses that started off hole h
+  function showNassauPress(h) {
+    if (!me) return Promise.resolve();
+    const st = nassauState(round, players, scores, me.group_no);
+    const hi = st.valid ? st.holes[h] : null;
+    if (!hi || !hi.presses.length) return Promise.resolve();
+    const ps = hi.presses.map(i => st.matches[i]);
+    const title = ps.every(m => m.by === ps[0].by) ? st.names[ps[0].by - 1] + (st.sides[0].length > 1 ? " press" : " presses") : "Both sides press";
+    return nassauCard("Press!", title, crabbyPick(CRABBY_NASSAU.press, h),
+      ps.map(m => [nassauLabel(m), "On the " + nassauLabel(st.matches[m.parent]).toLowerCase() + ": " + nassauStatusText(st.matches[m.parent], st.names)]),
+      "Each press is its own 1-point bet. It doesn't change the front, back or overall.", "Bring it");
+  }
+  // Sixes with Nassau bets: presses that started off hole h
+  function showSixesPress(h) {
+    if (!me) return Promise.resolve();
+    const st = sixesState(round, players, scores, me.group_no, false, course);
+    const hi = st.valid && st.nassau ? st.holes[h] : null;
+    if (!hi || !hi.presses.length) return Promise.resolve();
+    const s = st.segs[hi.seg], names = sixesNames(s, st.byId), ps = hi.presses.map(i => s.bets[i]);
+    const title = ps.every(m => m.by === ps[0].by) ? names[ps[0].by - 1] + " press" : "Both teams press";
+    return nassauCard("Press!", title, crabbyPick(CRABBY_SIXES.press, h),
+      ps.map(m => [nassauLabel(m), "On the " + nassauLabel(s.bets[m.parent]).toLowerCase() + ": " + nassauStatusText(s.bets[m.parent], names)]),
+      "Each press is its own 1-point bet. It doesn't change the front, back or overall.", "Bring it");
+  }
+  // At the turn: how the Front 9 went
+  function showNassauTurn(h) {
+    if (!me) return Promise.resolve();
+    const st = nassauState(round, players, scores, me.group_no);
+    if (!st.valid || !st.holes[h] || st.holes[h].pos !== 9) return Promise.resolve();
+    const front = st.matches[0];
+    const presses = st.matches.filter(m => m.key === "press" && m.nine === 0);
+    const title = front.winner ? st.names[front.winner - 1] + (st.sides[0].length > 1 ? " take" : " takes") + " the Front 9" : front.winner === 0 ? "Front 9 halved" : "Front 9";
+    return nassauCard("The turn", title, crabbyPick(CRABBY_NASSAU.turn, 0),
+      [["Front", nassauStatusText(front, st.names)], ...presses.map(m => [nassauLabel(m), nassauStatusText(m, st.names)]), ["Overall", nassauStatusText(st.matches[2], st.names)]],
+      "Back 9 is a fresh bet. Overall keeps going.", "Make the turn");
   }
 
   async function saveScore(n) {
@@ -4177,6 +4526,8 @@ const MONEY_UNITS = {
   wolf: { unit: "point", note: "Every Wolf point is worth this much. Everyone settles the point difference at the end." },
   bbb: { unit: "point", note: "Every Bingo, Bango or Bongo is worth this much. Everyone settles the difference at the end." },
   bestball: { unit: "hole won", note: "Every hole your team wins is worth this much to each teammate. Settle the difference at the end." },
+  sixes: { unit: "point", note: "Winning a set is 1 point each, a tied set is half. Everyone settles the point difference at the end. With Nassau bets, every bet, press and birdie wins this much from the other team." },
+  nassau: { unit: "bet", note: "Front, back, overall and every press is one bet. Win it and you collect from the other side, halve it and nobody pays." },
   vegas: { unit: "point", note: "Every Vegas point (the difference between team numbers) is worth this much. Settle up at the end." },
   wad: { unit: "Wad", note: "Whoever makes the last Wad collects the whole pot from everyone else in their group." },
   caddy: { unit: "Caddy Point", note: "Every Caddy Point is worth this much. Caddies settle the point difference at the end." },
@@ -4331,7 +4682,7 @@ const HOME_GATED = ["Customize Character", "Seasons", "Tournaments", "Recent rou
 let homeSignedIn = false;
 function homeGatedButtons() {
   return [...document.querySelectorAll("button")].filter(b =>
-    !b.closest(".modal") && !b.closest(".lobby") && !b.closest(".season-box") && HOME_GATED.includes(b.textContent.trim()));
+    !b.closest(".modal") && !b.closest(".lobby") && !b.closest(".season-box") && (HOME_GATED.includes(b.textContent.trim()) || b.classList.contains("app-nav-btn")));
 }
 function gateHomeButtons(signedIn) {
   homeSignedIn = signedIn;
@@ -4514,6 +4865,21 @@ const DRESS_PANELS = {
   hat: [["tiles", "Style", "hat"], ["swatch", "Color", "hatColor"]],
   item: [["tiles", "Held item", "item"]],
 };
+// App only: category icons for the dressing room tabs, and short sub-tab names
+const DRESS_ICONS = (() => {
+  const ic = d => '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + "</svg>";
+  return {
+    body: ic('<circle cx="12" cy="7" r="3.5"/><path d="M5 21c0-4 3-7 7-7s7 3 7 7"/>'),
+    hair: ic('<rect x="3" y="7" width="18" height="5" rx="1.5"/><path d="M6 12v6M9 12v6M12 12v6M15 12v6M18 12v6"/>'),
+    shirt: ic('<path d="M8 3l-5 3 2 5 3-1v11h8V10l3 1 2-5-5-3c-.5 1.5-2 2.5-4 2.5S8.5 4.5 8 3z"/>'),
+    pants: ic('<path d="M7 3h10l2 18h-5l-2-11-2 11H5z"/>'),
+    shoes: ic('<path d="M3 7h6l3 5 6 1.5c2 .5 3 1.5 3 3.5v1H3z"/><path d="M3 15h18"/>'),
+    hat: ic('<path d="M4 15a8 8 0 0 1 16 0z"/><path d="M4 15h17l-2 3H4z"/>'),
+    item: ic('<path d="M15 3L9.5 17"/><path d="M9.5 17H5.5c-1 0-1.5 1-1 2h6l-1-2z"/><circle cx="18" cy="19" r="2"/>'),
+  };
+})();
+const DRESS_SUB_NAME = { skin: "Skin", eyes: "Eyes", hairColor: "Color", face: "Facial hair" };
+const DRESS_PAGE = 6;
 const needText = n => "You need " + n + " more " + (n === 1 ? "coin" : "coins") + ".";
 // Wardrobe list for a slot: Bogey pieces first (in their order), then shop pieces cheapest tier first
 const shopSorted = list => list.map((it, i) => [it, i]).sort((a, b) => RARITY_RANK[a[0].rarity] - RARITY_RANK[b[0].rarity] || a[1] - b[1]).map(x => x[0]);
@@ -4527,6 +4893,92 @@ function pieceTag(it, mk) {
   else t.innerHTML = "\u{1F512} " + COIN_SVG + "<b>" + row.price + "</b>";
   return t;
 }
+// A tile's text column: name, then rarity tag, then lock / price / owned (one box on the website, stacked beside the sprite in the app)
+function tileText(mk, ...parts) {
+  const t = mk("span", "dress-tile-text");
+  t.append(...parts);
+  return t;
+}
+// App only: the category icon tab, shared by the dressing room and Pro Shop
+function iconTab(b, key, label) {
+  b.classList.add("dress-itab");
+  b.innerHTML = DRESS_ICONS[key] + "<span>" + label + "</span>";
+}
+// App only: an x on Crabby's bubble hides him behind a "Show Crabby" button in the top bar, and while he's hidden his
+// lines show as toasts. Remembered, and shared by the dressing room and Pro Shop. sync() picks up a change made in the other.
+const CRABBY_OFF_KEY = "parcade-dress-crabby-off";
+function crabbyHideable(guide, top, before, lines) {
+  const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const isOff = () => { try { return localStorage.getItem(CRABBY_OFF_KEY) === "1"; } catch (e) { return false; } };
+  let off = isOff();
+  const say = guide.say;
+  // Hidden Crabby stays quiet: only lines that block an action still pop up
+  const IMPORTANT = new Set([CRABBY_DRESS.locked, CRABBY_SHOP.closed]);
+  guide.say = text => off ? (IMPORTANT.has(text) && toast(text)) : say(text);
+  const hideX = mk("button", "cd-x", "\u00D7");
+  hideX.type = "button";
+  hideX.setAttribute("aria-label", "Hide Crabby");
+  guide.querySelector(".cd-bubble").append(hideX);
+  const show = mk("button", "dress-crabby-show");
+  show.type = "button";
+  show.setAttribute("aria-label", "Show Crabby");
+  show.title = "Show Crabby";
+  const face = crabbyEl(26);
+  face.setAttribute("aria-hidden", "true");
+  face.removeAttribute("role");
+  show.append(face);
+  const set = v => {
+    off = v;
+    guide.hidden = v;
+    show.hidden = !v;
+    try { if (v) localStorage.setItem(CRABBY_OFF_KEY, "1"); else localStorage.removeItem(CRABBY_OFF_KEY); } catch (e) {}
+  };
+  hideX.onclick = () => { set(true); show.focus(); };
+  show.onclick = () => { set(false); guide.reserve(lines); hideX.focus(); };
+  set(off);
+  top.insertBefore(show, before);
+  return { sync: () => { if (isOff() !== off) { set(!off); if (!off) guide.reserve(lines); } } };
+}
+// App only: the < 1 / 2 > pager under a 2x3 grid, with swipe left / right on the grid. slice() gives one page of a
+// list (at: an index whose page to jump to); single() is for content that's never paged.
+function dressPager(grid, redraw) {
+  const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const el = mk("div", "dress-pager");
+  const prev = mk("button", "btn-ghost dress-page-btn", "\u2039");
+  const next = mk("button", "btn-ghost dress-page-btn", "\u203A");
+  const pageNo = mk("span", "dress-page-no");
+  prev.type = next.type = "button";
+  prev.setAttribute("aria-label", "Previous page");
+  next.setAttribute("aria-label", "Next page");
+  el.append(prev, pageNo, next);
+  const p = { el, page: 0, count: 1 };
+  const turn = d => { if (p.page + d < 0 || p.page + d >= p.count) return; p.page += d; redraw(); };
+  prev.onclick = () => turn(-1);
+  next.onclick = () => turn(1);
+  let sx = null, sy = 0;
+  grid.addEventListener("touchstart", e => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
+  grid.addEventListener("touchend", e => {
+    if (sx == null) return;
+    const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
+    sx = null;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) turn(dx < 0 ? 1 : -1);
+  });
+  const sync = () => {
+    el.classList.toggle("off", p.count < 2);
+    prev.disabled = p.page === 0;
+    next.disabled = p.page >= p.count - 1;
+    pageNo.textContent = (p.page + 1) + " / " + p.count;
+  };
+  p.slice = (list, at) => {
+    p.count = Math.max(1, Math.ceil(list.length / DRESS_PAGE));
+    if (at != null) p.page = Math.max(0, Math.floor(at / DRESS_PAGE));
+    p.page = Math.min(p.page, p.count - 1);
+    sync();
+    return list.slice(p.page * DRESS_PAGE, (p.page + 1) * DRESS_PAGE);
+  };
+  p.single = () => { p.count = 1; p.page = 0; sync(); };
+  return p;
+}
 const pieceLabel = it => {
   const row = SHOP.prices[it.id];
   return it.name + ", " + RARITY_NAME[it.rarity] + (outfitOwned(it.id) ? ", owned" : row ? ", locked, " + coinsText(row.price) : ", locked");
@@ -4538,6 +4990,10 @@ function openDressingRoom() {
     let saved = await myOutfit();
     let cur = { ...saved };
     let tab = "body", pose = "idle";
+    // App only: which sub-tab each category is on, and whether to jump to the equipped piece's page
+    const inApp = document.documentElement.classList.contains("in-app");
+    const subIdx = {};
+    let jump = true;
     const name = (await accountName()) || "Guest";
     const opener = document.activeElement;
 
@@ -4570,17 +5026,22 @@ function openDressingRoom() {
     const shopBtn = mk("button", "dress-shop-btn");
     shopBtn.type = "button";
     shopBtn.innerHTML = COIN_SVG + "<span>Pro Shop</span>";
-    stage.append(fig, mk("div", "dress-pedestal"), mk("div", "dress-name", name), seg, shopBtn);
+    if (inApp) {
+      const ctl = mk("div", "dress-stage-ctl");
+      ctl.append(seg, shopBtn);
+      stage.append(fig, mk("div", "dress-pedestal"), mk("div", "dress-name", name), ctl);
+    } else stage.append(fig, mk("div", "dress-pedestal"), mk("div", "dress-name", name), seg, shopBtn);
     const tabs = mk("div", "dress-tabs");
     tabs.setAttribute("role", "tablist");
     tabs.setAttribute("aria-label", "Wardrobe");
     const tabBtns = DRESS_TABS.map(([key, label]) => {
       const b = mk("button", "dress-tab", label);
+      if (inApp) iconTab(b, key, label);
       b.type = "button";
       b.id = "dress-tab-" + key;
       b.setAttribute("role", "tab");
       b.setAttribute("aria-controls", "dress-grid");
-      b.onclick = () => { tab = key; draw(); };
+      b.onclick = () => { if (tab !== key) jump = true; tab = key; draw(); };
       return b;
     });
     tabs.append(...tabBtns);
@@ -4589,6 +5050,7 @@ function openDressingRoom() {
       e.preventDefault();
       const i = DRESS_TABS.findIndex(([k]) => k === tab), d = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : -1;
       tab = DRESS_TABS[(i + d + DRESS_TABS.length) % DRESS_TABS.length][0];
+      jump = true;
       draw();
       tabBtns.find(b => b.id === "dress-tab-" + tab).focus();
     };
@@ -4603,13 +5065,28 @@ function openDressingRoom() {
     const actions = mk("div", "dress-actions");
     const btn = (label, cls, fn) => { const b = mk("button", cls, label); b.type = "button"; b.onclick = fn; return b; };
     const guide = crabbyDesk(CRABBY_DRESS.open);
-    guide.reserve([CRABBY_DRESS.open, CRABBY_DRESS.tryOn, CRABBY_DRESS.locked, CRABBY_DRESS.equipped, ...CRABBY_DRESS.saved]);
+    const crabbyLines = [CRABBY_DRESS.open, CRABBY_DRESS.tryOn, CRABBY_DRESS.locked, CRABBY_DRESS.equipped, ...CRABBY_DRESS.saved];
+    guide.reserve(crabbyLines);
     // Stage, tabs, grid and Crabby scroll in their own area; the action bar stays put below it, never over a tile
     const body = mk("div", "dress-body");
-    body.append(guide, coins.note, main, grid);
-    const scroller = mk("div", "dress-scroll");
-    scroller.append(body);
-    wrap.append(top, scroller, tryBar, actions);
+    // App only: one screen, no scrolling. Icon tabs, stage, sub-tabs and a paged 2x3 grid; Crabby can be hidden.
+    const subs = mk("div", "dress-seg dress-subs");
+    subs.setAttribute("role", "group");
+    let pager = null, crabby = null;
+    if (inApp) {
+      wrap.classList.add("dress-v3");
+      crabby = crabbyHideable(guide, top, coins.badge, crabbyLines);
+      pager = dressPager(grid, () => draw());
+      // Nothing on this screen scrolls, so stop the WebView rubber-banding
+      wrap.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
+      body.append(guide, coins.note, tabs, stage, subs, grid, pager.el);
+      wrap.append(top, body, tryBar, actions);
+    } else {
+      body.append(guide, coins.note, main, grid);
+      const scroller = mk("div", "dress-scroll");
+      scroller.append(body);
+      wrap.append(top, scroller, tryBar, actions);
+    }
 
     const dirty = () => JSON.stringify(cur) !== JSON.stringify(saved);
     const sprite = (o, cls) => { const s = mk("span", cls); s.innerHTML = PX.svg(o, "idle"); return s; };
@@ -4619,12 +5096,13 @@ function openDressingRoom() {
       b.type = "button";
       b.setAttribute("aria-pressed", String(selected));
       b.setAttribute("aria-label", shop ? pieceLabel(piece) : label + (piece && piece.name !== "None" ? ", " + RARITY_NAME[piece.rarity] : ""));
-      b.append(figure, mk("span", "dress-tile-name", label));
-      if (piece && piece.name !== "None") b.append(mk("span", "dress-rarity r-" + piece.rarity, RARITY_NAME[piece.rarity]));
+      const text = tileText(mk, mk("span", "dress-tile-name", label));
+      if (piece && piece.name !== "None") text.append(mk("span", "dress-rarity r-" + piece.rarity, RARITY_NAME[piece.rarity]));
       if (shop) {
-        b.append(pieceTag(piece, mk));
+        text.append(pieceTag(piece, mk));
         if (!outfitOwned(piece.id)) b.classList.add("locked");
       }
+      b.append(figure, text);
       b.onclick = onPick;
       return b;
     }
@@ -4633,16 +5111,20 @@ function openDressingRoom() {
       g.append(mk("h3", null, title), content);
       return g;
     }
-    function tilesFor(title, key) {
-      const row = mk("div", "dress-tiles");
+    const wardrobe = key => shopSorted(OUTFIT_SLOTS[key]).filter(it => outfitOwned(it.id) || cur[key] === it.id);
+    function tileFor(key, it) {
       // Hair and facial hair tiles go without the hat so the hair shows
       const bare = key === "hair" || key === "face" ? { hat: null } : {};
-      shopSorted(OUTFIT_SLOTS[key]).filter(it => outfitOwned(it.id) || cur[key] === it.id).forEach(it => row.append(tile(it.name, sprite({ ...cur, ...bare, [key]: it.id }, "dress-px"), cur[key] === it.id,
+      return tile(it.name, sprite({ ...cur, ...bare, [key]: it.id }, "dress-px"), cur[key] === it.id,
         () => {
           cur[key] = it.id;
           if (!outfitOwned(it.id)) guide.say(CRABBY_DRESS.tryOn);
           draw();
-        }, it)));
+        }, it);
+    }
+    function tilesFor(title, key) {
+      const row = mk("div", "dress-tiles");
+      wardrobe(key).forEach(it => row.append(tileFor(key, it)));
       return group(title, row);
     }
     function swatchesFor(title, key) {
@@ -4656,18 +5138,46 @@ function openDressingRoom() {
         b.onclick = () => { cur[key] = c; draw(); };
         row.append(b);
       });
-      return group(title, row);
+      return inApp ? row : group(title, row);
+    }
+    // App only: the sub-tab's tiles, one page of six at a time (swatches all fit on one page)
+    function drawPaged() {
+      const panels = DRESS_PANELS[tab];
+      const si = Math.min(subIdx[tab] || 0, panels.length - 1);
+      subs.hidden = panels.length < 2;
+      subs.setAttribute("aria-label", DRESS_TABS.find(([k]) => k === tab)[1]);
+      subs.replaceChildren(...(panels.length < 2 ? [] : panels.map(([, title, key], i) => {
+        const b = mk("button", null, DRESS_SUB_NAME[key] || title);
+        b.type = "button";
+        b.setAttribute("aria-pressed", String(i === si));
+        b.onclick = () => { if (i !== si) jump = true; subIdx[tab] = i; draw(); };
+        return b;
+      })));
+      const [kind, title, key] = panels[si];
+      if (kind === "tiles") {
+        const list = wardrobe(key);
+        const shown = pager.slice(list, jump ? list.findIndex(it => it.id === cur[key]) : null);
+        const row = mk("div", "dress-tiles");
+        row.setAttribute("aria-label", title + (pager.count > 1 ? ", page " + (pager.page + 1) + " of " + pager.count : ""));
+        row.append(...shown.map(it => tileFor(key, it)));
+        grid.replaceChildren(row);
+      } else {
+        pager.single();
+        grid.replaceChildren(swatchesFor(title, key));
+      }
+      jump = false;
     }
     // What a slot goes back to when an unowned piece comes off: the saved piece, or the default
     const takeOff = slot => { cur[slot] = outfitOwned(saved[slot]) ? saved[slot] : DEFAULT_OUTFIT[slot]; draw(); };
     function drawTryBar() {
       const slots = Object.keys(OUTFIT_SLOTS).filter(slot => !outfitOwned(cur[slot]));
       tryBar.hidden = !slots.length;
+      wrap.classList.toggle("trying", !!slots.length);
       tryBar.replaceChildren(...slots.map(slot => {
         const it = OUTFIT_PIECES[cur[slot]].piece, row = SHOP.prices[it.id];
         const line = mk("div", "dress-try-row");
         const info = mk("div", "dress-try-info");
-        info.append(mk("b", null, "Trying on: " + it.name), mk("span", "dress-rarity r-" + it.rarity, RARITY_NAME[it.rarity]));
+        info.append(mk("b", null, (inApp ? "" : "Trying on: ") + it.name), mk("span", "dress-rarity r-" + it.rarity, RARITY_NAME[it.rarity]));
         const btns = mk("div", "dress-try-btns");
         if (!SHOP.signedIn) btns.append(btn("Create account to buy", "", () => buyPiece(it.id).then(after)));
         else if (!SHOP.ready || !row || !row.active) btns.append(mk("span", "dress-try-note", SHOP.ready ? "Not for sale right now." : "The Pro Shop's closed. Try again soon."));
@@ -4700,7 +5210,8 @@ function openDressingRoom() {
         b.tabIndex = on ? 0 : -1;
       });
       grid.setAttribute("aria-labelledby", "dress-tab-" + tab);
-      grid.replaceChildren(...DRESS_PANELS[tab].map(([kind, title, key]) => kind === "tiles" ? tilesFor(title, key) : swatchesFor(title, key)));
+      if (inApp) drawPaged();
+      else grid.replaceChildren(...DRESS_PANELS[tab].map(([kind, title, key]) => kind === "tiles" ? tilesFor(title, key) : swatchesFor(title, key)));
       drawTryBar();
       saveBtn.disabled = !dirty();
     }
@@ -4733,9 +5244,11 @@ function openDressingRoom() {
 
     shopBtn.onclick = async () => {
       const equip = await openProShop(cur);
+      if (crabby) crabby.sync();
       await loadShop();
       if (equip) {
         cur[OUTFIT_PIECES[equip].slot] = equip;
+        jump = true;
         guide.say(CRABBY_DRESS.equipped);
       }
       after();
@@ -4779,6 +5292,9 @@ function openProShop(outfit) {
     const base = { ...outfit };
     let tab = "hat", pick = null, pose = "idle";
     const opener = document.activeElement;
+    // App only: one screen like the dressing room, with icon tabs, a paged 2x3 grid and Buy / Equip pinned at the bottom
+    const inApp = document.documentElement.classList.contains("in-app");
+    let jump = true;
 
     const wrap = mk("div", "dress pshop");
     wrap.setAttribute("role", "dialog");
@@ -4791,11 +5307,12 @@ function openProShop(outfit) {
 
     const lines = SHOP.signedIn ? CRABBY_SHOP.open : CRABBY_SHOP.guest;
     const guide = crabbyDesk(SHOP.failed ? CRABBY_SHOP.closed : lines[Math.floor(Math.random() * lines.length)]);
-    guide.reserve([...CRABBY_SHOP.open, ...CRABBY_SHOP.guest, ...CRABBY_SHOP.bought, ...CRABBY_SHOP.browse,
-      CRABBY_SHOP.closed, CRABBY_SHOP.short, CRABBY_SHOP.getCoins, CRABBY_SHOP.owned]);
+    const crabbyLines = [...CRABBY_SHOP.open, ...CRABBY_SHOP.guest, ...CRABBY_SHOP.bought, ...CRABBY_SHOP.browse,
+      CRABBY_SHOP.closed, CRABBY_SHOP.short, CRABBY_SHOP.getCoins, CRABBY_SHOP.owned];
+    guide.reserve(crabbyLines);
     guide.classList.add("pshop-desk");
 
-    const stage = mk("div", "pshop-stage");
+    const stage = mk("div", inApp ? "dress-stage pshop-stage" : "pshop-stage");
     const fig = mk("div", "dress-fig pshop-fig");
     fig.setAttribute("role", "img");
     const seg = mk("div", "dress-seg");
@@ -4809,13 +5326,19 @@ function openProShop(outfit) {
     seg.append(...poseBtns);
     const detail = mk("div", "pshop-detail");
     detail.setAttribute("aria-live", "polite");
-    stage.append(fig, mk("div", "dress-pedestal pshop-pedestal"), seg, detail);
+    const hint = mk("p", "pshop-hint", "Tap an item to try it on.");
+    if (inApp) {
+      const ctl = mk("div", "dress-stage-ctl");
+      ctl.append(seg);
+      stage.append(fig, mk("div", "dress-pedestal"), ctl, hint);
+    } else stage.append(fig, mk("div", "dress-pedestal pshop-pedestal"), seg, detail);
 
     const tabs = mk("div", "dress-tabs pshop-tabs");
     tabs.setAttribute("role", "tablist");
     tabs.setAttribute("aria-label", "Categories");
     const tabBtns = SHOP_TABS.map(([key, label]) => {
-      const b = btn(label, "dress-tab", () => { tab = key; pick = null; draw(); });
+      const b = btn(label, "dress-tab", () => { if (tab !== key) jump = true; tab = key; pick = null; draw(); });
+      if (inApp) iconTab(b, key, label);
       b.id = "pshop-tab-" + key;
       b.setAttribute("role", "tab");
       b.setAttribute("aria-controls", "pshop-grid");
@@ -4828,28 +5351,43 @@ function openProShop(outfit) {
       const i = SHOP_TABS.findIndex(([k]) => k === tab), d = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : -1;
       tab = SHOP_TABS[(i + d + SHOP_TABS.length) % SHOP_TABS.length][0];
       pick = null;
+      jump = true;
       draw();
       tabBtns.find(b => b.id === "pshop-tab-" + tab).focus();
     };
-    const grid = mk("div", "dress-tiles pshop-grid");
+    const grid = mk("div", inApp ? "dress-grid" : "dress-tiles pshop-grid");
     grid.id = "pshop-grid";
     grid.setAttribute("role", "tabpanel");
 
-    const shelf = mk("div", "pshop-shelf");
-    shelf.append(tabs, grid);
-    const layout = mk("div", "pshop-layout");
-    layout.append(stage, shelf);
     const body = mk("div", "dress-body");
-    body.append(guide, coins.note, layout);
-    const scroller = mk("div", "dress-scroll");
-    scroller.append(body);
-    wrap.append(top, scroller);
+    // App only: the picked piece's name, price and Buy / Equip, pinned under the grid
+    const bar = mk("div", "dress-actions pshop-bar");
+    let pager = null;
+    if (inApp) {
+      wrap.classList.add("dress-v3");
+      crabbyHideable(guide, top, coins.badge, crabbyLines);
+      pager = dressPager(grid, () => draw());
+      wrap.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
+      bar.append(detail);
+      body.append(guide, coins.note, tabs, stage, grid, pager.el);
+      wrap.append(top, body, bar);
+    } else {
+      const shelf = mk("div", "pshop-shelf");
+      shelf.append(tabs, grid);
+      const layout = mk("div", "pshop-layout");
+      layout.append(stage, shelf);
+      body.append(guide, coins.note, layout);
+      const scroller = mk("div", "dress-scroll");
+      scroller.append(body);
+      wrap.append(top, scroller);
+    }
 
     const stock = () => shopSorted(OUTFIT_SLOTS[tab]).filter(it => it.rarity !== "bogey");
     const wearing = () => pick ? { ...base, [OUTFIT_PIECES[pick].slot]: pick } : base;
     function drawDetail() {
       detail.replaceChildren();
-      if (!pick) { detail.append(mk("p", "pshop-hint", "Tap an item to try it on.")); return; }
+      if (inApp) { bar.hidden = !pick; hint.hidden = !!pick; }
+      if (!pick) { if (!inApp) detail.append(hint); return; }
       const it = OUTFIT_PIECES[pick].piece, row = SHOP.prices[pick];
       const head = mk("div", "pshop-name");
       head.append(mk("b", null, it.name), mk("span", "dress-rarity r-" + it.rarity, RARITY_NAME[it.rarity]));
@@ -4891,14 +5429,17 @@ function openProShop(outfit) {
         b.tabIndex = on ? 0 : -1;
       });
       grid.setAttribute("aria-labelledby", "pshop-tab-" + tab);
-      grid.replaceChildren(...stock().map(it => {
+      const list = stock();
+      const shown = inApp ? pager.slice(list, jump ? list.findIndex(it => it.id === pick) : null) : list;
+      jump = false;
+      const tiles = shown.map(it => {
         const b = mk("button", "dress-tile shop-piece r-" + it.rarity + (pick === it.id ? " selected" : "") + (outfitOwned(it.id) ? "" : " locked"));
         b.type = "button";
         b.setAttribute("aria-pressed", String(pick === it.id));
         b.setAttribute("aria-label", pieceLabel(it));
         const s = mk("span", "dress-px");
         s.innerHTML = PX.svg({ ...base, [tab]: it.id }, "idle");
-        b.append(s, mk("span", "dress-tile-name", it.name), mk("span", "dress-rarity r-" + it.rarity, RARITY_NAME[it.rarity]), pieceTag(it, mk));
+        b.append(s, tileText(mk, mk("span", "dress-tile-name", it.name), mk("span", "dress-rarity r-" + it.rarity, RARITY_NAME[it.rarity]), pieceTag(it, mk)));
         b.onclick = () => {
           pick = it.id;
           const row = SHOP.prices[it.id];
@@ -4908,7 +5449,13 @@ function openProShop(outfit) {
           draw();
         };
         return b;
-      }));
+      });
+      if (inApp) {
+        const row = mk("div", "dress-tiles");
+        if (pager.count > 1) row.setAttribute("aria-label", "Page " + (pager.page + 1) + " of " + pager.count);
+        row.append(...tiles);
+        grid.replaceChildren(row);
+      } else grid.replaceChildren(...tiles);
       drawDetail();
     }
     function refresh() { coins.update(); draw(); }
@@ -4981,6 +5528,9 @@ function openProShop(outfit) {
     menu.append(club);
     if (signed) menu.append(linkRow("Edit profile", openProfile), linkRow("Sign out", signOut));
     else menu.append(linkRow("Create account", createAccount), linkRow("Sign in", signIn));
+    const legal = mk("div", "pm-legal");
+    legal.innerHTML = '<a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a>';
+    menu.append(mk("div", "pm-sep"), legal);
   }
   function close() { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); }
   btn.onclick = async (e) => {
@@ -4993,6 +5543,68 @@ function openProShop(outfit) {
   menu.onclick = e => e.stopPropagation();
   document.addEventListener("click", close);
   document.addEventListener("keydown", e => { if (e.key === "Escape") close(); });
+})();
+
+// ---------- App only: Crabby and your character behind the Pro Shop counter on home ----------
+// Rotating one-liners (no grumble sound, so home stays quiet). Tapping it opens the dressing room.
+const HOME_DESK_LINES = [
+  "Who let this one behind the counter?",
+  "Nice outfit. Did your mom pick it out?",
+  "Tap Play Now. The course isn't gonna embarrass itself.",
+  "I've seen better swings on a screen door.",
+  "Stand up straight. You're scaring the customers.",
+  "New gear's in the Pro Shop. Your coins aren't doing anything.",
+  "Losers buy the first round. Just saying.",
+  "You've got the look of a 30 handicap. I mean that nicely.",
+];
+(function homeDesk() {
+  if (!document.documentElement.classList.contains("in-app")) return;
+  if (new URLSearchParams(location.search).get("r")) return;
+  let i = Math.floor(Math.random() * HOME_DESK_LINES.length);
+  const desk = crabbyDesk(HOME_DESK_LINES[i]);
+  desk.classList.add("home-desk", "home-only");
+  desk.setAttribute("role", "button");
+  desk.setAttribute("tabindex", "0");
+  desk.setAttribute("aria-label", "Your character with Crabby. Tap to customize.");
+  // Crabby stays behind his standard counter; your character stands beside it
+  const stage = desk.querySelector(".cd-stage");
+  const row = document.createElement("div");
+  row.className = "home-desk-row";
+  const me = document.createElement("div");
+  me.className = "home-desk-me";
+  stage.replaceWith(row);
+  row.append(stage, me);
+  const drawMe = async () => { try { me.innerHTML = PX.svg(await myOutfit(), "idle"); } catch (e) { me.innerHTML = PX.svg(DEFAULT_OUTFIT, "idle"); } };
+  drawMe();
+  window.addEventListener("outfit-changed", drawMe);
+  const open = () => $("char-btn").click();
+  desk.onclick = open;
+  desk.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
+  document.querySelector("svg.course").before(desk);
+})();
+
+// ---------- App only: bottom bar with Customize Character, profile and Recent rounds ----------
+// The labels match HOME_GATED, so gateHomeButtons locks them for guests like the old home buttons.
+(function appNav() {
+  if (!document.documentElement.classList.contains("in-app")) return;
+  if (new URLSearchParams(location.search).get("r")) return;
+  const prof = document.querySelector(".profile-home");
+  const item = (label, icon, target) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "app-nav-btn";
+    b.setAttribute("aria-label", label === "Character" ? "Customize character" : "Recent rounds");
+    b.innerHTML = icon + "<span>" + label + "</span>";
+    b.onclick = () => $(target).click();
+    return b;
+  };
+  const SHIRT = '<svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M8 3l-5 3 2 5 3-1v11h8V10l3 1 2-5-5-3c-.5 1.5-2 2.5-4 2.5S8.5 4.5 8 3z"/></svg>';
+  const CLOCK = '<svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+  const nav = document.createElement("nav");
+  nav.className = "app-nav home-only";
+  nav.setAttribute("aria-label", "Home");
+  nav.append(item("Character", SHIRT, "char-btn"), prof, item("Rounds", CLOCK, "recent-btn"));
+  document.body.append(nav);
 })();
 
 // ---------- modal-x: close buttons, no accidental closes, no address autofill ----------
@@ -5059,7 +5671,7 @@ document.addEventListener("wheel", e => {
     ]);
     if (pick) document.getElementById(pick).click();
   };
-  if (ch) ch.onclick = () => openDressingRoom();
+  if (ch) ch.onclick = () => openDressingRoom().then(() => window.dispatchEvent(new Event("outfit-changed")));
 })();
 
 // ---------- Coin menu ----------

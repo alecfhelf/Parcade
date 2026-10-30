@@ -60,7 +60,7 @@
   const out = document.getElementById("out");
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   const MODE_NAMES = { party: "Party Mode", stroke: "Stroke Play", skins: "Skins", match: "Match Play", wolf: "Wolf", bbb: "Bingo Bango Bongo",
-    bestball: "Best Ball", vegas: "Vegas", wad: "Wad", caddy: "Cart Caddy", none: "Not started yet" };
+    bestball: "Best Ball", vegas: "Vegas", sixes: "Sixes", nassau: "Nassau", wad: "Wad", caddy: "Cart Caddy", none: "Not started yet" };
   const STATUS_NAMES = { lobby: "In the lobby", playing: "In progress", finished: "Finished" };
   const money = n => "$" + Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 

@@ -193,6 +193,85 @@ function renderCaddyResults(box, { round, players, scores, user, preds, mulls, b
   if (!round.mini) renderAddToSeason(addWrap, round, players);
 }
 
+// Sixes results: one row per set with the teams, holes won and who took it
+function renderSixesSets(box, round, players, scores, course) {
+  [...new Set(players.map(p => p.group_no))].sort((a, b) => a - b).forEach((g, gi, gs) => {
+    const st = sixesState(round, players, scores, g, true, course);
+    if (!st.valid) return;
+    if (st.nassau) return renderSixesBets(box, st, g, gs.length > 1);
+    const nm = t => t.map(id => st.byId[id].name).join(" & ");
+    box.append(scEl("h3", null, "The three sets" + (gs.length > 1 ? ", group " + g : "")));
+    const wrap = scEl("div", "sc-wrap");
+    const table = scEl("table", "sc-table sixes-sets");
+    const head = scEl("tr");
+    ["Holes", "Teams", "Won", "Result"].forEach(t => head.append(scEl("th", null, t)));
+    table.append(head);
+    st.segs.forEach(s => {
+      const tr = scEl("tr");
+      const teams = scEl("td");
+      teams.append(scEl("div", s.winner === 1 ? "best" : null, nm(s.teams[0])), scEl("div", s.winner === 2 ? "best" : null, nm(s.teams[1])));
+      tr.append(scEl("td", null, s.range[0] + "\u2013" + s.range[1]), teams, scEl("td", null, s.won[1] + "\u2013" + s.won[2]),
+        scEl("td", null, s.winner == null ? "Not played" : s.winner ? nm(s.teams[s.winner - 1]) : "Halved"));
+      table.append(tr);
+    });
+    wrap.append(table);
+    box.append(wrap);
+  });
+}
+
+// Sixes with Nassau bets: Front, Back and Overall for each set, then its presses and birdie bonuses
+function renderSixesBets(box, st, g, many) {
+  box.append(scEl("h3", null, "The bets" + (many ? ", group " + g : "")));
+  const wrap = scEl("div", "sc-wrap");
+  const table = scEl("table", "sc-table nassau-bets");
+  const head = scEl("tr");
+  ["Bet", "Holes", "Winner", "Result"].forEach(t => head.append(scEl("th", null, t)));
+  table.append(head);
+  st.segs.forEach(s => {
+    const names = sixesNames(s, st.byId);
+    s.bets.forEach(m => {
+      const tr = scEl("tr");
+      const bet = "Set " + (s.seg + 1) + " " + (m.key === "press" ? "press (" + names[m.by - 1] + ")" : nassauLabel(m));
+      tr.append(scEl("td", null, bet), scEl("td", null, m.range[0] === m.range[1] ? String(m.range[0]) : m.range[0] + "\u2013" + m.range[1]),
+        scEl("td", m.winner ? "best" : null, m.winner == null ? "Not played" : m.winner ? names[m.winner - 1] : "Halved"),
+        scEl("td", null, m.winner == null ? "-" : m.result));
+      table.append(tr);
+    });
+    s.birdies.forEach(b => {
+      const tr = scEl("tr");
+      tr.append(scEl("td", null, "Set " + (s.seg + 1) + " birdie"), scEl("td", null, String(b.hole)),
+        scEl("td", "best", names[b.team - 1]), scEl("td", null, "+1 each"));
+      table.append(tr);
+    });
+  });
+  wrap.append(table);
+  box.append(wrap);
+}
+
+// Nassau results: one row per bet with who won and by how much
+function renderNassauBets(box, round, players, scores) {
+  nassauGroups(players).sort((a, b) => a - b).forEach((g, gi, gs) => {
+    const st = nassauState(round, players, scores, g, true);
+    if (!st.valid) return;
+    box.append(scEl("h3", null, "The bets" + (gs.length > 1 ? ", group " + g : "")));
+    const wrap = scEl("div", "sc-wrap");
+    const table = scEl("table", "sc-table nassau-bets");
+    const head = scEl("tr");
+    ["Bet", "Holes", "Winner", "Result"].forEach(t => head.append(scEl("th", null, t)));
+    table.append(head);
+    st.matches.forEach(m => {
+      const tr = scEl("tr");
+      const bet = m.key === "press" ? "Press (" + st.names[m.by - 1] + ")" : m.key === "overall" ? "Overall" : m.key === "front" ? "Front 9" : "Back 9";
+      tr.append(scEl("td", null, bet), scEl("td", null, m.range[0] + "\u2013" + m.range[1]),
+        scEl("td", m.winner ? "best" : null, m.winner == null ? "Not played" : m.winner ? st.names[m.winner - 1] : "Halved"),
+        scEl("td", null, m.winner == null ? "-" : m.result));
+      table.append(tr);
+    });
+    wrap.append(table);
+    box.append(wrap);
+  });
+}
+
 function renderScorecard(box, { round, players, scores, results, user, picks, preds, mulls, bets, wads, course }) {
   if (round.mode === "caddy") return renderCaddyResults(box, { round, players, scores, user, preds: preds || [], mulls: mulls || [], bets: bets || [] });
   const wolf = round.mode === "wolf";
@@ -201,19 +280,31 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
   const bbb = round.mode === "bbb";
   const best = round.mode === "bestball";
   const vegas = round.mode === "vegas";
+  const sixes = round.mode === "sixes";
+  const nassau = round.mode === "nassau";
   const wadMode = round.mode === "wad";
   const stab = round.mode === "stableford";
   const stabTot = stab ? stablefordTotals(round, players, scores, course) : {};
   const wadHold = wadMode ? wadHolders(players, wads || []) : new Set();
   const vegasTot = vegas ? vegasTotals(round, players, scores) : {};
   const bestTot = best ? bestBallTotals(round, players, scores) : {};
+  const sixesTot = sixes ? sixesTotals(round, players, scores, true, course) : {};
+  const sixesRank = sixes ? sixesRankValues(round, players, scores, true, course) : {};
+  const sixesWon = {};
+  if (sixes) [...new Set(players.map(p => p.group_no))].forEach(g => Object.assign(sixesWon, sixesState(round, players, scores, g, true, course).holesWon));
+  if (nassau) nassauGroups(players).forEach(g => Object.assign(sixesWon, nassauState(round, players, scores, g, true).holesWon));
+  const nassauTot = nassau ? nassauTotals(round, players, scores, true) : {};
+  const nassauRank = nassau ? nassauRankValues(round, players, scores, true) : {};
+  // Nassau and Sixes share the points display, holes-won detail and standings sort
+  const pointsGame = sixes || nassau;
+  const pointsRank = nassau ? nassauRank : sixesRank;
   const bbbCount = (pl, k) => results.filter(x => x.award === k && x.winner_id === pl.id).length;
   const bbbDetail = pl => ["bingo", "bango", "bongo"].map(k => {
     const n = bbbCount(pl, k);
     return n + " " + k[0].toUpperCase() + k.slice(1) + (n === 1 ? "" : "s");
   }).join(", ");
   const matchWon = match ? matchTotals(round, players, scores) : {};
-  const party = round.mode !== "stroke" && !wolf && !skins && !match && !bbb && !best && !vegas && !wadMode && !stab;
+  const party = round.mode !== "stroke" && !wolf && !skins && !match && !bbb && !best && !vegas && !sixes && !nassau && !wadMode && !stab;
   const skinTot = skins ? skinsState(round, players, scores).totals : {};
   const wolfTot = wolf ? wolfTotals(round, players, scores, picks || []) : {};
   const played = scores.filter(x => x.strokes);
@@ -230,12 +321,13 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
     const cursed = results.filter(r => r.winner_id === pl.id && r.points < 0);
     const chPts = [...won, ...cursed].reduce((a, r) => a + r.points, 0);
     return { pl, byHole, thru: mine.length, strokes: mine.reduce((a, x) => a + x.strokes, 0),
-             holePts, chPts, won: won.length, cursed: cursed.length, total: wolf ? (wolfTot[pl.id] || 0) : skins ? (skinTot[pl.id] || 0) : match ? (matchWon[pl.id] || 0) : bbb ? results.filter(x => x.award && x.winner_id === pl.id).length : best ? (bestTot[pl.id] || 0) : vegas ? (vegasTot[pl.id] || 0) : wadMode ? (wads || []).filter(w => w.player_id === pl.id).length : stab ? (stabTot[pl.id] || 0) : holePts + chPts };
+             holePts, chPts, won: won.length, cursed: cursed.length, total: wolf ? (wolfTot[pl.id] || 0) : skins ? (skinTot[pl.id] || 0) : match ? (matchWon[pl.id] || 0) : bbb ? results.filter(x => x.award && x.winner_id === pl.id).length : best ? (bestTot[pl.id] || 0) : vegas ? (vegasTot[pl.id] || 0) : sixes ? (sixesTot[pl.id] || 0) : nassau ? (nassauTot[pl.id] || 0) : wadMode ? (wads || []).filter(w => w.player_id === pl.id).length : stab ? (stabTot[pl.id] || 0) : holePts + chPts };
   });
   if (party || wolf || skins || match || bbb || best || vegas || wadMode || stab) rows.sort((a, b) => b.total - a.total);
+  else if (pointsGame) rows.sort((a, b) => (pointsRank[b.pl.id] || 0) - (pointsRank[a.pl.id] || 0));
   else { const avg = r => (r.thru ? (r.strokes - Math.floor(r.thru * (allow[r.pl.id] || 0) + 1e-9)) / r.thru : Infinity); rows.sort((a, b) => avg(a) - avg(b)); }
   if (wadMode) rows.sort((a, b) => (wadHold.has(b.pl.id) - wadHold.has(a.pl.id)) || b.total - a.total);
-  const headline = r => (wadMode ? (wadHold.has(r.pl.id) ? "💰 Won the Wad" : r.total + " made") : match ? r.total + (r.total === 1 ? " pt" : " pts") : skins ? r.total + (r.total === 1 ? " skin" : " skins") : (party || wolf || bbb || best || vegas || stab) ? r.total + " pts" : (r.thru ? r.strokes + " strokes" + (round.handicap ? ", net " + Math.round(r.strokes - Math.floor(r.thru * (allow[r.pl.id] || 0) + 1e-9)) : "") : "-"));
+  const headline = r => (pointsGame ? sixesPts(r.total) + (r.total === 1 ? " pt" : " pts") : wadMode ? (wadHold.has(r.pl.id) ? "💰 Won the Wad" : r.total + " made") : match ? r.total + (r.total === 1 ? " pt" : " pts") : skins ? r.total + (r.total === 1 ? " skin" : " skins") : (party || wolf || bbb || best || vegas || stab) ? r.total + " pts" : (r.thru ? r.strokes + " strokes" + (round.handicap ? ", net " + Math.round(r.strokes - Math.floor(r.thru * (allow[r.pl.id] || 0) + 1e-9)) : "") : "-"));
 
   box.innerHTML = "";
 
@@ -249,6 +341,8 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
     podium.append(col);
   });
   box.append(podium);
+  if (sixes) renderSixesSets(box, round, players, scores, course);
+  if (nassau) renderNassauBets(box, round, players, scores);
   if (match) {
     const gs = [...new Set(players.map(p => p.group_no))].sort((a, b) => a - b);
     gs.forEach(g => {
@@ -276,22 +370,25 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
     nm.append((i + 1) + ". ", figureEl(r.pl), r.pl.name + (r.pl.user_id === user.id ? " (you)" : ""));
     left.append(nm);
     const sign = r.chPts > 0 ? "+" : "";
-    const detail = wadMode ? r.total + (r.total === 1 ? " Wad made" : " Wads made") : bbb ? bbbDetail(r.pl) : (best || vegas) ? (r.pl.team ? TEAM_NAMES[r.pl.team] : "No team") + (r.thru ? ", thru " + r.thru + " holes" : "") : party
+    const detail = pointsGame ? (sixesWon[r.pl.id] || 0) + ((sixesWon[r.pl.id] || 0) === 1 ? " hole won" : " holes won") + (r.thru ? ", thru " + r.thru + " holes" : "") : wadMode ? r.total + (r.total === 1 ? " Wad made" : " Wads made") : bbb ? bbbDetail(r.pl) : (best || vegas) ? (r.pl.team ? TEAM_NAMES[r.pl.team] : "No team") + (r.thru ? ", thru " + r.thru + " holes" : "") : party
       ? "Holes " + r.holePts + ", challenges " + sign + r.chPts + " (" + r.won + " won, " + r.cursed + (r.cursed === 1 ? " curse" : " curses") + ")"
       : (r.thru ? "Thru " + r.thru + " holes" : "No scores entered");
     left.append(scEl("span", "detail", detail));
     const li = scEl("li");
     const right = scEl("span", null, headline(r));
-    if ((party || wolf || skins || match || bbb || best || vegas || wadMode || stab) && r.thru) right.append(scEl("span", "sub-score", " (" + r.strokes + ")"));
+    if ((party || wolf || skins || match || bbb || best || vegas || sixes || nassau || wadMode || stab) && r.thru) right.append(scEl("span", "sub-score", " (" + r.strokes + ")"));
     li.append(left, right);
     list.append(li);
   });
   box.append(list);
 
-  const pointsMode = party || wolf || skins || match || bbb || best || vegas || wadMode || stab;
+  const pointsMode = party || wolf || skins || match || bbb || best || vegas || sixes || nassau || wadMode || stab;
+  // Sixes and Nassau pots pay by final standings (tiebreaks included). Per-point games settle on points alone,
+  // and Nassau's per-bet money (and Sixes' with Nassau bets) is settled against the other side.
   const entries = rows.filter(r => pointsMode || r.thru).map(r => ({
-    pl: r.pl, v: pointsMode ? r.total : -(r.strokes - Math.floor(r.thru * (allow[r.pl.id] || 0) + 1e-9)) }));
-  renderMoneySection(box, { round, players, entries, bets: bets || [], user, override: wadMode ? wadMoney(round, players, wads || []) : null });
+    pl: r.pl, v: pointsGame && round.stakes === "pot" ? (pointsRank[r.pl.id] || 0) : pointsMode ? r.total : -(r.strokes - Math.floor(r.thru * (allow[r.pl.id] || 0) + 1e-9)) }));
+  renderMoneySection(box, { round, players, entries, bets: bets || [], user,
+    override: wadMode ? wadMoney(round, players, wads || []) : nassau ? nassauRoundMoney(round, players, scores) : sixes ? sixesRoundMoney(round, players, scores, course) : null });
 
   const scHead = scEl("h3", null, "Scorecard");
   if (round.mini) scHead.append(" ", scEl("span", "mini-tag", "Mini-golf"));

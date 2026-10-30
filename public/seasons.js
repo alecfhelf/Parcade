@@ -142,6 +142,15 @@ function inviteRow(season) {
   return el("div", {}, codeBox, linkRow);
 }
 
+// Sixes' birdie bonus needs pars. Mini-golf cards are on the round already; rounds on a course get theirs as
+// round.sixes_pars, since seasons load rounds without their courses.
+async function attachSixesPars(rounds) {
+  const want = rounds.filter(r => r.mode === "sixes" && r.sixes_nassau && r.sixes_birdie && r.course_id);
+  if (!want.length) return;
+  const { data } = await db.from("courses").select("id, pars").in("id", [...new Set(want.map(r => r.course_id))]);
+  want.forEach(r => { const c = (data || []).find(x => x.id === r.course_id); if (c) r.sixes_pars = c.pars; });
+}
+
 function renderSeasonMoney(moneyArea, aliasMap, members, rounds, players, scores, results, picks, cpreds, cmulls, sbets, swads) {
   moneyArea.innerHTML = "";
   const staked = r => r.stakes === "pot" || r.stakes === "point";
@@ -176,7 +185,8 @@ function renderSeasonMoney(moneyArea, aliasMap, members, rounds, players, scores
     } else {
       entries = roundStandings(round, rp, rs, rr, wp, cpr, cmu, of(swads)).map(r => ({ pl: r.pl, v: r.v }));
     }
-    const { net } = moneyNet(round, entries, rp, rb, round.mode === "wad" ? wadMoney(round, rp, of(swads)) : null);
+    const { net } = moneyNet(round, entries, rp, rb, round.mode === "wad" ? wadMoney(round, rp, of(swads))
+      : round.mode === "nassau" ? nassauRoundMoney(round, rp, rs) : round.mode === "sixes" ? sixesRoundMoney(round, rp, rs) : null);
     rp.forEach(pl => {
       const inRound = staked(round) && entries.some(e => e.pl.id === pl.id);
       const inBets = rb.some(b => b.creator_id === pl.id || b.taker_id === pl.id);
@@ -229,6 +239,8 @@ function roundStandings(round, rp, rs, rr, wp, cpr, cmu, wd) {
   const matchWon = round.mode === "match" ? matchTotals(round, rp, rs) : {};
   const bestTot = round.mode === "bestball" ? bestBallTotals(round, rp, rs) : {};
   const vegasTot = round.mode === "vegas" ? vegasTotals(round, rp, rs) : {};
+  const sixesRank = round.mode === "sixes" ? sixesRankValues(round, rp, rs, true) : {};
+  const nassauRank = round.mode === "nassau" ? nassauRankValues(round, rp, rs, true) : {};
   const wadHold = round.mode === "wad" ? wadHolders(rp, wd || []) : new Set();
   const rows = rp.map(pl => {
     const mine = played.filter(x => x.player_id === pl.id);
@@ -238,6 +250,8 @@ function roundStandings(round, rp, rs, rr, wp, cpr, cmu, wd) {
     if (round.mode === "match") return { pl, v: matchWon[pl.id] || 0 };
     if (round.mode === "bestball") return { pl, v: bestTot[pl.id] || 0 };
     if (round.mode === "vegas") return { pl, v: vegasTot[pl.id] || 0 };
+    if (round.mode === "sixes") return { pl, v: sixesRank[pl.id] || 0 };
+    if (round.mode === "nassau") return { pl, v: nassauRank[pl.id] || 0 };
     if (round.mode === "wad") return { pl, v: (wadHold.has(pl.id) ? 1000 : 0) + (wd || []).filter(w => w.player_id === pl.id).length };
     if (round.mode === "bbb") return { pl, v: rr.filter(x => x.award && x.winner_id === pl.id).length };
     if (round.mode === "stroke") {
@@ -309,6 +323,7 @@ async function loadSeason(code) {
         db.from("wads").select("*").in("round_id", ids),
       ]);
       [rounds, players, scores, results, picks, cpreds, cmulls, sbets, swads] = res.map(r => r.data || []);
+      await attachSixesPars(rounds);
     }
     renderJoin(members || []);
     renderStandings(members || [], rounds, players, scores, results, picks, cpreds, cmulls, swads);
@@ -706,6 +721,7 @@ async function loadSeasonV2(box, season, acct) {
         loadRoundRanks(ids),
       ]);
       [rounds, players, scores, results, picks, cpreds, cmulls, sbets, swads] = res.slice(0, 9).map(r => r.data || []);
+      await attachSixesPars(rounds);
     }
     const infoOf = await difficulties(rounds.map(r => r.course_id));
     if (my !== seq) return;

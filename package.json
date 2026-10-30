@@ -3,6 +3,12 @@
   "private": true,
   "description": "Parcade. Netlify installs these for netlify/functions.",
   "dependencies": {
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/ios": "^8.5.3",
     "stripe": "^23.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5"
   }
 }

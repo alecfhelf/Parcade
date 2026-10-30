@@ -9,11 +9,11 @@ function dropTournamentChannel() {
 const TN_STATUS = { setup: "Setting up", active: "In progress", finished: "Final" };
 const TN_SCHEDULE = { one_day: "One day", over_time: "Over time" };
 // Same tiles as round setup, in the same order. Unavailable ones stay on the grid, greyed out, with why.
-const TN_GRID = ["party", "stroke", "skins", "match", "wolf", "bbb", "bestball", "vegas", "wad", "caddy"];
+const TN_GRID = ["party", "stroke", "skins", "match", "nassau", "wolf", "bbb", "bestball", "sixes", "vegas", "wad", "caddy"];
 
 // { mode: one-line reason } for every mode that won't work with these settings
 function tnModeOff(size, schedule) {
-  const off = { wolf: "Not for tournaments", caddy: "Not a team game", wad: "Not a team game" };
+  const off = { wolf: "Not for tournaments", sixes: "Not for tournaments", nassau: "Not for tournaments", caddy: "Not a team game", wad: "Not a team game" };
   if (!(schedule === "over_time" && size <= 2)) off.bbb = "Over time, 1\u20132 per team";
   return off;
 }

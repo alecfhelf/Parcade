@@ -1,0 +1,14 @@
+{
+  "appId": "golf.parcade.app",
+  "appName": "Parcade",
+  "webDir": "public",
+  "server": {
+    "url": "https://parcade.golf",
+    "cleartext": false
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#060A1A"
+  },
+  "backgroundColor": "#060A1A"
+}

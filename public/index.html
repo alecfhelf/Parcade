@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script>if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) document.documentElement.classList.add("in-app");</script>
   <script>
     // Apply the saved theme before first paint so light mode never flashes dark
     (function () {
@@ -414,6 +415,7 @@
       opacity: 0; pointer-events: none; transition: opacity .15s; }
     .tip-wrap:hover .tip, .tip-wrap:focus-within .tip { opacity: 1; }
     .od-row { padding: 12px; margin: 16px 0 4px; text-align: left; background: var(--panel); border-radius: 10px; }
+    .od-row.sub-toggle { margin: 6px 0 4px 24px; }
     .intro-wolf { position: absolute; z-index: 3; }
     .intro-wolf svg { display: block; }
     .intro-wolf .wl { transform-box: view-box; }
@@ -718,6 +720,18 @@
     .recap-note { font-size: 0.8rem; color: var(--muted); margin-top: 10px; }
     .recap-hint { font-size: 0.72rem; color: var(--muted); opacity: 0.7; margin-top: 6px; text-align: center; }
     @media (prefers-reduced-motion: reduce) { .recap-card { animation: none; } }
+    .sixes-crabby { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; }
+    .sixes-crabby .crabby { flex: 0 0 auto; }
+    .sixes-quip { font-size: 0.85rem; color: var(--strong); font-style: italic; }
+    .sixes-switch .recap-row span { flex-wrap: wrap; }
+    .sixes-sets td { white-space: normal; vertical-align: middle; }
+    .sixes-sets td:nth-child(2) { text-align: left; }
+    .sixes-sets .best { color: var(--glow); font-weight: 700; }
+    .nassau-status { font-size: 0.9rem; color: var(--strong); margin: 6px 0; line-height: 1.45; }
+    .nassau-line div + div { margin-top: 2px; }
+    .nassau-bets td { white-space: normal; vertical-align: middle; }
+    .nassau-bets td:nth-child(3) { text-align: left; }
+    .nassau-bets .best { color: var(--glow); font-weight: 700; }
     .toggle-row .field-label { color: var(--strong); }
     /* glow-fixed: keep the floor glow pinned to the bottom of the screen with the grid */
     body { background: transparent; }
@@ -820,6 +834,7 @@
     .dress-tile.selected, .dress-tile.selected:hover { background: rgba(var(--glow-rgb),0.12); box-shadow: inset 0 0 0 2px var(--glow); }
     .dress-tile.locked .dress-px { opacity: 0.7; }
     .dress-tile-name { line-height: 1.2; }
+    .dress-tile-text { display: contents; }
     .dress-rarity { position: absolute; top: 5px; right: 5px; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
       padding: 2px 6px; border-radius: 999px; }
     /* Rarity tiers: --rc is the tier color for tile borders and badge text */
@@ -1033,6 +1048,177 @@
     .pm-link.pm-club { color: var(--gold); }
     .cd-i { display: inline-grid; place-items: center; width: 1.25em; height: 1.25em; margin: 0 0.15em; vertical-align: -0.2em;
       border: 2px solid var(--glow); border-radius: 50%; color: var(--glow); font-weight: 700; font-size: 0.85em; line-height: 1; }
+    /* ---------- App (Capacitor) only: home fits on one screen ---------- */
+    .in-app body:not(.in-round) { height: 100dvh; min-height: 0; overflow: hidden; box-sizing: border-box; justify-content: flex-start; padding-top: calc(14px + env(safe-area-inset-top)); padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+    .in-app body:not(.in-round) h1 { font-size: clamp(2.6rem, 12.5vw, 4.2rem); margin: 8px 0 8px; }
+    .in-app body:not(.in-round) h1 + p { font-size: 1rem; margin: 0 0 18px; }
+    .in-app .home-actions { gap: 8px; }
+    .in-app .home-actions button { padding: 14px 20px; font-size: 1.3rem; letter-spacing: 0.01em; }
+    .in-app .home-lock-note { font-size: 0.85rem; margin: 0 0 4px; }
+    .in-app .account-line { margin-top: 10px; font-size: 0.9rem; }
+    .in-app .course { margin-top: 6px; max-height: 15vh; }
+    .in-app .quip { margin: 6px 0 0; font-size: 0.85rem; }
+    .in-app .legal { margin: 6px 0 0; }
+    .in-app #status { margin: 0; min-height: 0; }
+    /* Terms + Privacy in the profile menu */
+    .pm-legal { display: flex; justify-content: center; gap: 18px; padding: 2px 0 0; }
+    .pm-legal a { color: var(--muted); font-size: 0.85rem; }
+    /* ---------- App only: home layout with a bottom bar ---------- */
+    .in-app body:not(.in-round) { padding-top: calc(34px + env(safe-area-inset-top)); padding-bottom: calc(86px + env(safe-area-inset-bottom)); }
+    .in-app body:not(.in-round) h1 { margin-bottom: 22px; }
+    .in-app body:not(.in-round) h1 + p { margin-top: 18px; margin-bottom: 26px; }
+    .in-app #char-btn, .in-app #recent-btn, .in-app .quip, .in-app .legal, .in-app .account-line, .in-app #home-lock-note { display: none !important; }
+    .in-app .course { margin-top: auto; }
+    .app-nav { display: none; }
+    .in-app .app-nav { position: fixed; z-index: 8; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+      padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid rgba(92,225,255,0.3);
+      box-shadow: 0 -6px 20px rgba(0,0,0,0.35); }
+    body.in-round .app-nav { display: none !important; }
+    .app-nav-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 4px; clip-path: none; background: none;
+      color: var(--glow); font-size: 0.85rem; font-weight: 600; }
+    .app-nav-btn:hover { background: none; }
+    .app-nav .profile-home { position: static; width: 52px; height: 52px; margin: 0 18px; box-shadow: 0 0 14px rgba(92,225,255,0.35); }
+    .app-nav .profile-home svg { width: 26px; height: 26px; }
+    .in-app .profile-menu { top: auto; bottom: calc(84px + env(safe-area-inset-bottom)); right: 50%; transform: translateX(50%); }
+    /* App only: home Pro Shop desk with Crabby and your character */
+    .home-desk { display: none; }
+    .in-app .home-desk { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: auto 0 0; width: 100%; max-width: 340px; cursor: pointer; }
+    .home-desk .cd-bubble { order: -1; margin: 0; width: 100%; box-sizing: border-box; text-align: center; font-size: 0.95rem; }
+    .home-desk .cd-bubble::before { left: calc(50% - 6px); top: auto; bottom: -7px; }
+    .home-desk-row { display: flex; align-items: flex-end; justify-content: center; gap: 22px; }
+    .home-desk-me { width: 76px; height: 104px; line-height: 0; }
+    .home-desk-me svg { width: 100%; height: 100%; }
+    .cd-text { transition: opacity .25s; }
+    .cd-text.hd-fade { opacity: 0; }
+    /* ---------- App only: dressing room on one screen (icon tabs, paged 2x3 grid, no scrolling) ---------- */
+    .in-app body.dress-open { overscroll-behavior: none; }
+    .in-app body.dress-open .toast, .in-app body:has(.dress-v3) .toast { top: calc(54px + env(safe-area-inset-top, 0px)); bottom: auto; } /* where Crabby's bubble would be */
+    .in-app .dress-v3 { overscroll-behavior: none; padding-top: calc(6px + env(safe-area-inset-top, 0px)); }
+    .in-app .dress-v3 .dress-top, .in-app .dress-v3 .dress-body, .in-app .dress-v3 .dress-actions, .in-app .dress-v3 .dress-try { max-width: 480px; }
+    .in-app .dress-v3 .dress-top { gap: 8px; }
+    .in-app .dress-v3 .dress-top h2 { flex: 0 1 auto; min-width: 0; font-size: 1.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .in-app .dress-v3 .dress-back { min-height: 40px; padding: 8px 12px; }
+    .in-app .dress-v3 .dress-crabby-show { flex: none; margin-left: auto; width: 40px; height: 40px; min-height: 0; padding: 0; display: grid; place-items: center;
+      clip-path: none; border-radius: 50%; background: var(--panel); box-shadow: inset 0 0 0 1px rgba(var(--glow-rgb),0.35); line-height: 0; overflow: hidden; }
+    .in-app .dress-v3 .dress-crabby-show:not([hidden]) + .coin-badge { margin-left: 0; }
+    .in-app .dress-v3 .dress-crabby-show[hidden], .in-app .dress-v3 .crabby-desk[hidden], .in-app .dress-v3 .dress-subs[hidden] { display: none; }
+    .in-app .dress-v3 .dress-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding-bottom: 6px; overflow: hidden; }
+    .in-app .dress-v3 .dress-body > * { flex: none; }
+    /* Crabby: smaller desk, x at the top right of his bubble */
+    .in-app .dress-v3 .crabby-desk { margin: 6px 0 2px; align-items: center; }
+    .in-app .dress-v3 .cd-stage { zoom: 0.72; }
+    .in-app .dress-v3 .cd-bubble { margin-bottom: 0; padding: 8px 30px 8px 10px; font-size: 0.8rem; line-height: 1.3; }
+    .in-app .dress-v3 .cd-bubble::before { bottom: auto; top: calc(50% - 6px); }
+    .in-app .dress-v3 .cd-x { position: absolute; top: 2px; right: 2px; width: 26px; height: 26px; min-height: 0; padding: 0; clip-path: none; border-radius: 50%;
+      background: transparent; color: var(--muted); font-size: 1.1rem; line-height: 1; }
+    .in-app .dress-v3 .cd-x:hover { background: rgba(var(--blue-rgb),0.25); color: var(--strong); }
+    .in-app .dress-v3 .coin-note { margin: 4px 0 0; padding: 6px 10px; font-size: 0.8rem; }
+    .in-app .dress-v3.trying .coin-note { display: none; } /* the try-on bar already offers Create account */
+    /* Category icons: all seven in one row */
+    .in-app .dress-v3 .dress-tabs { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; padding: 6px 0 4px; overflow: visible; }
+    .in-app .dress-v3 .dress-itab { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; min-height: 48px; padding: 5px 0 4px;
+      font-size: 0.62rem; font-weight: 600; letter-spacing: 0.02em; border-radius: 10px; clip-path: none; grid-column: auto; grid-row: auto; justify-self: stretch; }
+    .in-app .dress-v3 .dress-itab svg { width: 22px; height: 22px; }
+    .in-app .dress-v3 .dress-itab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .in-app .dress-v3 .dress-itab.on, .in-app .dress-v3 .dress-itab.on:hover { box-shadow: 0 0 10px rgba(var(--blue-rgb),0.5); }
+    /* Character: takes the leftover space and shrinks on short phones */
+    .in-app .dress-v3 .dress-stage { flex: 1 1 0; min-height: 76px; padding: 6px 0 0; width: 100%; justify-content: center; }
+    .in-app .dress-v3 .dress-stage::before { bottom: 44px; width: min(240px, 70%); }
+    .in-app .dress-v3 .dress-fig { flex: 1 1 0; min-height: 0; width: 100%; max-height: 330px; aspect-ratio: auto; }
+    .in-app .dress-v3 .dress-pedestal { flex: none; width: min(190px, 56%); height: 24px; margin-top: -17px; }
+    .in-app .dress-v3 .dress-name { flex: none; margin-top: 2px; font-size: 0.85rem; line-height: 1.2; }
+    .in-app .dress-v3 .dress-stage-ctl { flex: none; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 4px; }
+    .in-app .dress-v3 .dress-seg { margin-top: 0; padding: 2px; }
+    .in-app .dress-v3 .dress-seg button { min-height: 34px; padding: 5px 12px; font-size: 0.85rem; }
+    .in-app .dress-v3 .dress-shop-btn { margin-top: 0; min-height: 38px; padding: 6px 14px; font-size: 0.9rem; }
+    /* Sub-tabs */
+    .in-app .dress-v3 .dress-subs { display: flex; align-self: center; margin-top: 6px; }
+    .in-app .dress-v3 .dress-subs button { min-height: 32px; padding: 4px 14px; }
+    /* Paged grid: 2 x 3 tiles, sprite beside the name */
+    .in-app .dress-v3 .dress-grid { flex: 0 1 196px; min-height: 150px; margin-top: 6px; gap: 0; touch-action: pan-y; }
+    .in-app .dress-v3 .dress-grid .dress-tiles { flex: 1; min-height: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 6px; }
+    .in-app .dress-v3 .dress-grid .dress-tile { flex-direction: row; justify-content: flex-start; gap: 7px; min-height: 0; padding: 3px 7px 3px 5px; text-align: left;
+      font-size: 0.76rem; overflow: hidden; }
+    .in-app .dress-v3 .dress-grid .dress-px { flex: none; width: auto; height: 100%; max-height: 52px; aspect-ratio: 22 / 30; }
+    .in-app .dress-v3 .dress-grid .dress-px svg { display: block; width: 100%; height: 100%; }
+    /* Text column beside the sprite: full name (up to 2 lines), then the rarity tag, then lock / price / owned */
+    .in-app .dress-v3 .dress-grid .dress-tile-text { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+    .in-app .dress-v3 .dress-grid .dress-tile-name { max-width: 100%; line-height: 1.12; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+    .in-app .dress-v3 .dress-grid .dress-rarity { position: static; font-size: 0.5rem; line-height: 1.3; padding: 0 5px; }
+    .in-app .dress-v3 .dress-grid .dress-lock, .in-app .dress-v3 .dress-grid .dress-owned { max-width: 100%; font-size: 0.68rem; line-height: 1.2; white-space: nowrap; overflow: hidden; }
+    .in-app .dress-v3 .dress-grid .dress-swatches { display: grid; grid-template-columns: repeat(auto-fill, 38px); justify-content: center; align-content: center; gap: 10px; flex: 1; padding: 4px; }
+    .in-app .dress-v3 .dress-grid .dress-sw { width: 38px; height: 38px; }
+    .in-app .dress-v3 .dress-pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 4px; }
+    .in-app .dress-v3 .dress-pager.off { visibility: hidden; }
+    .in-app .dress-v3 .dress-page-btn { width: 44px; min-height: 30px; padding: 0; font-size: 1.4rem; line-height: 1; }
+    .in-app .dress-v3 .dress-page-btn:disabled { opacity: 0.35; }
+    .in-app .dress-v3 .dress-page-no { min-width: 44px; text-align: center; font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+    /* Try-on and action bars: compact so the character keeps some room */
+    .in-app .dress-v3 .dress-try { padding-top: 4px; gap: 4px; }
+    .in-app .dress-v3 .dress-try-row { flex-wrap: nowrap; padding: 5px 8px 5px 10px; gap: 8px; font-size: 0.8rem; }
+    .in-app .dress-v3 .dress-try-info { flex: 1 1 auto; }
+    .in-app .dress-v3 .dress-try-info b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .in-app .dress-v3 .dress-try-btns { flex: none; flex-wrap: nowrap; gap: 6px; }
+    .in-app .dress-v3 .dress-try-btns button { min-height: 34px; padding: 5px 9px; font-size: 0.8rem; white-space: nowrap; }
+    .in-app .dress-v3 .dress-try-note { font-size: 0.75rem; max-width: 9em; line-height: 1.2; }
+    @media (max-width: 400px) { .in-app .dress-v3 .dress-try-info .dress-rarity { display: none; } }
+    .in-app .dress-v3 .dress-actions { padding-top: 8px; padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+    /* Pro Shop in the app: same screen as the dressing room, five icon tabs and Buy / Equip pinned at the bottom */
+    .in-app .pshop.dress-v3 .dress-tabs { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .in-app .pshop.dress-v3 .dress-stage::before { bottom: 54px; }
+    .in-app .pshop.dress-v3 .dress-stage .pshop-hint { flex: none; margin-top: 4px; font-size: 0.8rem; line-height: 1.2; text-align: center; }
+    .in-app .pshop.dress-v3 .pshop-bar[hidden] { display: none; }
+    .in-app .pshop.dress-v3 .pshop-detail { flex: 1 1 auto; justify-content: space-between; gap: 6px 10px; margin: 0; min-height: 40px; }
+    .in-app .pshop.dress-v3 .pshop-name { flex: 1 1 auto; width: auto; min-width: 0; justify-content: flex-start; }
+    .in-app .pshop.dress-v3 .pshop-name b { font-size: 0.95rem; min-width: 0; }
+    .in-app .pshop.dress-v3 .pshop-detail button { flex: none; min-height: 40px; padding: 8px 14px; }
+    .in-app .pshop.dress-v3 .pshop-detail .pshop-hint { flex: 1 1 0; min-width: 0; font-size: 0.8rem; line-height: 1.2; text-align: left; }
+    .in-app .pshop.dress-v3 .pshop-detail:has(> .pshop-hint) .pshop-name { flex-basis: 100%; } /* name on its own line, then price, note and Get coins */
+    .in-app .pshop.dress-v3 .pshop-price { font-size: 0.95rem; }
+    @media (max-height: 740px) {
+      .in-app .pshop.dress-v3 .dress-stage .pshop-hint { grid-column: 3; grid-row: 1 / span 2; justify-self: end; max-width: 8em; margin: 0; text-align: right; }
+      .in-app .dress-v3 .cd-stage { zoom: 0.6; }
+      .in-app .dress-v3 .dress-name { display: none; }
+      .in-app .dress-v3 .dress-grid { flex-basis: 170px; min-height: 132px; }
+      .in-app .dress-v3 .dress-itab { min-height: 44px; padding: 4px 0 3px; }
+      .in-app .dress-v3 .dress-itab svg { width: 20px; height: 20px; }
+      /* Short phones: pose toggle and Pro Shop go beside the character instead of under it */
+      .in-app .dress-v3 .dress-stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(70px, 130px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 10px;
+        align-items: center; column-gap: 8px; min-height: 70px; }
+      .in-app .dress-v3 .dress-stage-ctl { display: contents; }
+      .in-app .dress-v3 .dress-fig { grid-column: 2; grid-row: 1; height: 100%; max-height: none; }
+      .in-app .dress-v3 .dress-pedestal { grid-column: 1 / -1; grid-row: 2; justify-self: center; width: 150px; margin-top: -24px; }
+      .in-app .dress-v3 .dress-seg:not(.dress-subs) { grid-column: 1; grid-row: 1 / span 2; justify-self: start; flex-direction: column; }
+      .in-app .dress-v3 .dress-shop-btn { grid-column: 3; grid-row: 1 / span 2; justify-self: end; flex-direction: column; gap: 2px; padding: 8px 12px; }
+    }
+    /* ---------- App only: round setup screens, bigger and easier to read ---------- */
+    .in-app body.in-round { padding-top: calc(16px + env(safe-area-inset-top)); }
+    .in-app .copy-top:not(.sound-btn), .in-app .top-actions .copy-top:not(.sound-btn) { font-size: 1.15rem !important; padding: 11px 20px !important; }
+    .in-app .sound-btn { width: 48px !important; height: 48px !important; padding: 0 !important; }
+    .in-app .sound-btn { width: 46px; height: 46px; }
+    .in-app .sound-btn svg { width: 26px !important; height: 26px !important; }
+    .in-app body.in-round h1 { font-size: clamp(2rem, 10vw, 2.8rem); margin-bottom: 6px; }
+    .in-app body.in-round h1 + p { font-size: 1.1rem; margin-bottom: 14px; }
+    .in-app .lobby .crabby-desk { margin: 0 0 6px; }
+    .in-app .lobby .cd-stage { zoom: 0.8; }
+    .in-app .lobby .cd-bubble { font-size: 1rem; padding: 9px 12px; margin-bottom: 18px; }
+    .in-app .lobby .cd-text { min-height: 0 !important; }
+    .in-app .lobby h3, .in-app .game h3 { font-size: 1.2rem; margin: 26px 0 10px; }
+    .in-app .lobby input, .in-app .lobby select { font-size: 1.15rem; padding: 15px 16px; }
+    .in-app .lobby button:not(.link-btn):not(.mini):not(.mode-tile):not(.cd-x):not(.info-corner):not(.game-tile):not(.sound-btn):not(.switch) { font-size: 1.2rem; padding: 16px 20px; }
+    .in-app .confirm-table th, .in-app .confirm-table td { padding: 6px 4px; }
+    .in-app .lobby[data-step="confirm"] h3 { margin: 14px 0 6px; }
+    .in-app .link-btn { font-size: 1.15rem; padding: 10px 6px; }
+    .in-app .lobby > button.link-btn { margin: 6px 0 10px; }
+    /* App only: "Is this right?" confirm step fits on one screen */
+    .in-app body.in-round { padding-top: calc(6px + env(safe-area-inset-top)); }
+    .in-app .lobby[data-step="confirm"] .cd-stage { zoom: 0.7; }
+    .in-app .lobby[data-step="confirm"] .cd-bubble { font-size: 0.95rem; padding: 7px 10px; margin-bottom: 12px; }
+    .in-app .lobby[data-step="confirm"] .crabby-desk { margin: 0 0 2px; }
+    .in-app .lobby[data-step="confirm"] h3 { margin: 6px 0 4px; }
+    .in-app .lobby[data-step="confirm"] p { margin: 4px 0; }
+    .in-app .confirm-table th, .in-app .confirm-table td { padding: 4px 3px !important; }
+    .in-app .lobby[data-step="confirm"] button:not(.link-btn):not(.mini):not(.cd-x) { padding: 13px 18px; margin-top: 8px; }
   </style>
   <meta name="description" content="Party games, side bets, seasons and tournaments for your golf crew.">
   <meta property="og:type" content="website">
@@ -1142,6 +1328,8 @@
   <script src="crabby.js"></script>
   <script src="caddy.js"></script>
   <script src="teams.js"></script>
+  <script src="nassau.js"></script>
+  <script src="sixes.js"></script>
   <script src="money.js"></script>
   <script src="wad.js"></script>
   <script src="seasonscore.js"></script>

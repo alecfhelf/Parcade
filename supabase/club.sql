@@ -53,6 +53,8 @@ grant execute on function public.club_members(uuid[]) to authenticated, anon;
 -- Inserts are checked in full. Updates only check settings that change, so rounds already underway keep going.
 -- A round's mode counts once it leaves the lobby. Tournament rounds are made by the tournament RPCs (tn_trusted),
 -- and the tournament's own settings are checked on the tournaments table below.
+-- nassau.sql and sixes-nassau.sql re-create this function with their settings, so re-run nassau.sql and then
+-- sixes-nassau.sql after re-running this file.
 
 create or replace function public.rounds_club_guard() returns trigger
 language plpgsql as $$
