@@ -1591,6 +1591,11 @@
       color: var(--muted) !important; text-decoration: none !important; border-bottom: 1px solid rgba(var(--muted-rgb),0.2); }
     .in-app .profile-links a:first-child { border-top: 1px solid rgba(var(--muted-rgb),0.2); }
     .in-app .profile-links a::after { content: "\203A"; font-size: 1.4rem; line-height: 1; opacity: 0.7; }
+    /* App only: recap uses the space above the tabs (over the score pad), Continue always visible */
+    .in-app body.app-play .recap { align-items: center; padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)) !important; background: rgba(5,8,23,0.55); }
+    .in-app body.app-play .recap-card { max-height: 100%; overflow-y: auto; display: flex; flex-direction: column; }
+    .in-app body.app-play .recap-card .recap-btn { position: sticky; bottom: -16px; margin-top: 14px; flex: none; box-shadow: 0 -10px 16px var(--panel); }
+    :root[data-theme="light"].in-app body.app-play .recap { background: rgba(240,244,250,0.6); }
   </style>
   <meta name="description" content="Party games, side bets, seasons and tournaments for your golf crew.">
   <meta property="og:type" content="website">
