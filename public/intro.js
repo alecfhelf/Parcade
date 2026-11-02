@@ -146,11 +146,23 @@ function playHoleIntro({ hole, color, challenge, idx, message, wolfGrab, coins, 
       await sleep(700);
       if (done) return;
 
-      // 2. Title to top-left corner
-      const tr = title.getBoundingClientRect(), sc = 0.4;
+      // 2. Title to top-left corner. In the app it lands exactly on the game screen's hole header, so the fade-out is seamless.
+      const tr = title.getBoundingClientRect();
+      let sc = 0.4, dx = 20 + tr.width * sc / 2 - (tr.left + tr.width / 2), dy = 24 + tr.height * sc / 2 - (tr.top + tr.height / 2);
+      if (document.documentElement.classList.contains("in-app")) {
+        const tgt = document.querySelector(".play-card .hole-head b");
+        const r = tgt && tgt.getBoundingClientRect();
+        if (r && r.width && r.height) {
+          const fs = parseFloat(getComputedStyle(title).fontSize), ft = parseFloat(getComputedStyle(tgt).fontSize);
+          sc = fs && ft ? ft / fs : r.height / tr.height;
+          dx = r.left + tr.width * sc / 2 - (tr.left + tr.width / 2);
+          dy = r.top + r.height / 2 - (tr.top + tr.height / 2);
+        } else {
+          dy += 50; // below the notch
+        }
+      }
       rope.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, fill: "forwards" });
-      await title.animate([{ transform: "none" }, { transform: "translate(" + (20 + tr.width * sc / 2 - (tr.left + tr.width / 2)) + "px," +
-        (24 + tr.height * sc / 2 - (tr.top + tr.height / 2)) + "px) scale(" + sc + ")" }],
+      await title.animate([{ transform: "none" }, { transform: "translate(" + dx + "px," + dy + "px) scale(" + sc + ")" }],
         { duration: 700, easing: "ease-in-out", fill: "forwards" }).finished;
       if (done) return;
       if (!challenge) {

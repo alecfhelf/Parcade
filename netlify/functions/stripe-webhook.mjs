@@ -1,11 +1,35 @@
-// Stripe webhook: keeps club_subscriptions in step with Stripe.
-// Every event re-reads the subscription from Stripe and writes its current state, so replays and
-// out-of-order events all land on the same row.
+// Stripe webhook: keeps club_subscriptions in step with Stripe, and credits paid coin bundles.
+// Every Club event re-reads the subscription from Stripe and writes its current state, so replays and
+// out-of-order events all land on the same row. Coin credits are keyed by the Checkout Session, so replays credit once.
 import Stripe from "stripe";
 import { json, service, saveClubRow, isActive } from "../lib/supa.mjs";
+import { isBundleCoins } from "../lib/coins.mjs";
 
-const HANDLED = new Set(["checkout.session.completed", "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"]);
+// async_payment_succeeded only matters for coin payments that clear later (not cards)
+const HANDLED = new Set(["checkout.session.completed", "checkout.session.async_payment_succeeded", "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"]);
 const iso = s => (s ? new Date(s * 1000).toISOString() : null);
+
+// A coin bundle Checkout Session: credit_coin_purchase adds the coins once per session (supabase/buy-coins.sql)
+async function creditCoins(obj) {
+  if (obj.mode !== "payment" || obj.payment_status !== "paid") return json({ received: true });
+  const userId = obj.metadata.user_id || obj.client_reference_id;
+  const coins = parseInt(obj.metadata.coins, 10);
+  if (!userId || !isBundleCoins(coins)) {
+    console.error("webhook: bad coin session", obj.id, userId, obj.metadata.coins);
+    return json({ received: true });
+  }
+  try {
+    await service("rpc/credit_coin_purchase", {
+      method: "POST",
+      body: JSON.stringify({ p_user: userId, p_coins: coins, p_session: obj.id })
+    });
+    return json({ received: true });
+  } catch (e) {
+    // 500 so Stripe retries later
+    console.error("webhook coin credit failed", obj.id, e);
+    return json({ error: "Webhook failed" }, 500);
+  }
+}
 
 export default async (req) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -24,7 +48,9 @@ export default async (req) => {
   if (!HANDLED.has(event.type)) return json({ received: true });
 
   const obj = event.data.object;
+  if (event.type.startsWith("checkout.session.") && obj.metadata && obj.metadata.kind === "coins") return creditCoins(obj);
   let subId, userId;
+  if (event.type === "checkout.session.async_payment_succeeded") return json({ received: true });
   if (event.type === "checkout.session.completed") {
     if (obj.mode !== "subscription" || !obj.subscription) return json({ received: true });
     subId = typeof obj.subscription === "string" ? obj.subscription : obj.subscription.id;
@@ -72,6 +98,11 @@ export default async (req) => {
     await saveClubRow(row);
     return json({ received: true });
   } catch (e) {
+    // The account was deleted (delete-account.mjs cancels first, then removes the user): nothing left to update
+    if (/\b23503\b/.test(String(e && e.message))) {
+      console.error("webhook: user no longer exists for", event.type, subId);
+      return json({ received: true });
+    }
     // 500 so Stripe retries later
     console.error("webhook failed", event.type, e);
     return json({ error: "Webhook failed" }, 500);

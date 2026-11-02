@@ -3,7 +3,8 @@ const Sound = (() => {
   const load = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v === "1"; } catch (e) { return d; } };
   const save = (k, v) => { try { localStorage.setItem(k, v ? "1" : "0"); } catch (e) {} };
   let muted = load("parful-muted4", true), musicOn = load("parful-music2", true), wantMusic = false;
-  let sfxOn = !muted;
+  let sfxPref = load("parful-sfx", true);
+  let sfxOn = !muted && sfxPref;
   let vol = (() => { try { const v = parseFloat(localStorage.getItem("parful-vol")); return isNaN(v) ? 0.6 : v; } catch (e) { return 0.6; } })();
   let ctx = null, master = null, musicBus = null, hatBuf = null;
 
@@ -181,12 +182,14 @@ const Sound = (() => {
     get musicOn() { return musicOn; },
     get muted() { return muted; },
     get volume() { return vol; },
-    setMuted(m) { muted = m; sfxOn = !m; save("parful-muted4", m); if (!m) { const c = ac(); if (c) c.resume().then(syncMusic).catch(() => {}); } syncMusic(); },
+    setMuted(m) { muted = m; sfxOn = !m && sfxPref; save("parful-muted4", m); if (!m) { const c = ac(); if (c) c.resume().then(syncMusic).catch(() => {}); } syncMusic(); },
     setVolume(v) {
       vol = Math.max(0, Math.min(1, v));
       try { localStorage.setItem("parful-vol", String(vol)); } catch (e) {}
       if (master) master.gain.setTargetAtTime(vol * 0.8, ctx.currentTime, 0.02);
     },
+    // Sound effects on/off, separate from music. Turning them on while muted unmutes.
+    setSfx(v) { sfxPref = v; save("parful-sfx", v); sfxOn = v && !muted; if (v && muted) this.setMuted(false); },
     setMusic(v) { musicOn = v; save("parful-music2", v); syncMusic(); },
   };
 })();

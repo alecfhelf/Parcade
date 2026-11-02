@@ -4,11 +4,24 @@
   "webDir": "public",
   "server": {
     "url": "https://parcade.golf",
-    "cleartext": false
+    "cleartext": false,
+    "errorPath": "offline.html"
   },
   "ios": {
     "contentInset": "never",
-    "backgroundColor": "#060A1A"
+    "backgroundColor": "#050817"
   },
-  "backgroundColor": "#060A1A"
+  "backgroundColor": "#050817",
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 3000,
+      "launchAutoHide": true,
+      "launchFadeOutDuration": 200,
+      "backgroundColor": "#050817",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK"
+    }
+  }
 }

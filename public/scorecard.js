@@ -54,6 +54,25 @@ function podiumFigure(who, place, outfitArg) {
   return w;
 }
 
+// A scorecard cell: circles under par (1 birdie, 2 eagle, 3 albatross or better), squares over par (1 bogey,
+// 2 double, 3 triple or worse). No par, no mark. Used by the results and the in-round scorecards.
+function scoreCell(strokes, par, cls, suffix) {
+  const td = document.createElement("td");
+  if (cls) td.className = cls;
+  if (strokes == null) { td.textContent = "-"; return td; }
+  const text = strokes >= 11 ? "11+" : String(strokes);
+  const d = Number.isFinite(par) && par > 0 ? strokes - par : 0;
+  if (d === 0) td.textContent = text;
+  else {
+    const m = document.createElement("span");
+    m.className = "sm " + (d < 0 ? "sm-c" + Math.min(3, -d) : "sm-s" + Math.min(3, d));
+    m.textContent = text;
+    td.append(m);
+  }
+  if (suffix) td.append(suffix);
+  return td;
+}
+
 function renderMoneySection(box, { round, players, entries, bets, user, override }) {
   const hasStakes = round.stakes === "pot" || round.stakes === "point";
   if (!hasStakes && !bets.length) return;
@@ -93,7 +112,7 @@ function renderMoneySection(box, { round, players, entries, bets, user, override
   if (open) box.append(scEl("p", "waiting", open + (open === 1 ? " side bet wasn't" : " side bets weren't") + " settled, so " + (open === 1 ? "it doesn't" : "they don't") + " count."));
 }
 
-function renderCaddyResults(box, { round, players, scores, user, preds, mulls, bets }) {
+function renderCaddyResults(box, { round, players, scores, user, preds, mulls, bets, course }) {
   box.innerHTML = "";
   const you = pl => (pl.user_id === user.id ? " (you)" : "");
   const cpts = caddyTotals(preds, mulls);
@@ -178,7 +197,7 @@ function renderCaddyResults(box, { round, players, scores, user, preds, mulls, b
       tr.append(nameTd);
       holes.forEach(hn => {
         const v = r.byHole[hn];
-        tr.append(scEl("td", v != null && v === bestOn[hn] ? "best" : null, v == null ? "-" : (v >= 11 ? "11+" : String(v))));
+        tr.append(scoreCell(v, course && course.pars ? course.pars[hn - 1] : null, v != null && v === bestOn[hn] ? "best" : null));
       });
       tr.append(scEl("td", "tot", r.thru ? String(r.total) : "-"));
       table.append(tr);
@@ -187,7 +206,7 @@ function renderCaddyResults(box, { round, players, scores, user, preds, mulls, b
     box.append(wrap);
   }
 
-  const addWrap = scEl("div");
+  const addWrap = scEl("div", "sc-actions");
   box.append(addWrap);
   // Mini-golf scores don't count toward seasons
   if (!round.mini) renderAddToSeason(addWrap, round, players);
@@ -273,7 +292,7 @@ function renderNassauBets(box, round, players, scores) {
 }
 
 function renderScorecard(box, { round, players, scores, results, user, picks, preds, mulls, bets, wads, course }) {
-  if (round.mode === "caddy") return renderCaddyResults(box, { round, players, scores, user, preds: preds || [], mulls: mulls || [], bets: bets || [] });
+  if (round.mode === "caddy") return renderCaddyResults(box, { round, players, scores, user, preds: preds || [], mulls: mulls || [], bets: bets || [], course });
   const wolf = round.mode === "wolf";
   const skins = round.mode === "skins";
   const match = round.mode === "match";
@@ -337,6 +356,7 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
     const r = rows[i];
     if (!r) return;
     const col = scEl("div", "podium-col place-" + (i + 1));
+    if (r.pl && r.pl.id) col.dataset.pid = r.pl.id;
     col.append(podiumFigure(r.pl, i), scEl("div", "podium-name", r.pl.name), scEl("div", "podium-score", headline(r)), scEl("div", "podium-block", labels[i]));
     podium.append(col);
   });
@@ -412,7 +432,7 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
       tr.append(nameTd);
       holes.forEach(h => {
         const v = r.byHole[h];
-        tr.append(scEl("td", v != null && v === bestOn[h] ? "best" : null, v == null ? "-" : (v >= 11 ? "11+" : String(v))));
+        tr.append(scoreCell(v, course && course.pars ? course.pars[h - 1] : null, v != null && v === bestOn[h] ? "best" : null));
       });
       tr.append(scEl("td", "tot", r.thru ? String(r.strokes) : "-"));
       table.append(tr);
@@ -421,7 +441,7 @@ function renderScorecard(box, { round, players, scores, results, user, picks, pr
     box.append(wrap);
   }
 
-  const addWrap = scEl("div");
+  const addWrap = scEl("div", "sc-actions");
   box.append(addWrap);
   // Mini-golf scores don't count toward seasons
   if (!round.mini) renderAddToSeason(addWrap, round, players);

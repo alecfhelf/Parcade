@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- iOS app only: bundled with the app and shown by Capacitor (server.errorPath) when parcade.golf won't load -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#050817">
+  <title>Parcade</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; height: 100%; background: #050817; color: #EAF2FF; }
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; box-sizing: border-box;
+      padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
+      font-family: "Chakra Petch", -apple-system, system-ui, sans-serif; text-align: center; }
+    h1 { margin: 0; font-family: "Bungee", -apple-system, system-ui, sans-serif; font-size: 2.2rem; color: #5CE1FF; letter-spacing: 0.02em; }
+    .bubble { max-width: 300px; margin: 0; padding: 14px 16px; border-radius: 14px; background: #0E1630; border: 1px solid rgba(92,225,255,0.35);
+      font-size: 1.05rem; line-height: 1.4; }
+    button { min-width: 220px; padding: 15px 24px; border: 0; border-radius: 12px; background: #2E6BFF; color: #fff;
+      font: inherit; font-size: 1.15rem; font-weight: 700; cursor: pointer; }
+    button:active { background: #4A80FF; }
+    button:disabled { opacity: 0.6; }
+    .crabby-slot { min-height: 150px; }
+  </style>
+</head>
+<body>
+  <h1>Parcade</h1>
+  <div class="crabby-slot" id="crabby" aria-hidden="true"></div>
+  <p class="bubble">No signal. Even I can't keep score without the internet.</p>
+  <button type="button" id="retry">Try again</button>
+  <script src="crabby.js"></script>
+  <script>
+    try { document.getElementById("crabby").append(crabbyEl(130)); } catch (e) {}
+    // The splash waits for a page; this is one
+    try { var sp = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.SplashScreen; if (sp) sp.hide(); } catch (e) {}
+    document.getElementById("retry").onclick = function () {
+      this.disabled = true;
+      this.textContent = "Checking...";
+      location.href = "https://parcade.golf";
+    };
+  </script>
+</body>
+</html>

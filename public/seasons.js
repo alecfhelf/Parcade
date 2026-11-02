@@ -122,13 +122,15 @@ function inviteRow(season) {
     el("b", { textContent: season.code }));
   const linkInput = el("input", { value: link, readOnly: true, onclick: () => linkInput.select() });
   linkInput.style.cssText = "flex:1;min-width:0;padding:12px;border-radius:10px;font-size:16px";
-  const canShare = !!navigator.share && matchMedia("(pointer: coarse)").matches;
+  const canShare = (!!navigator.share && matchMedia("(pointer: coarse)").matches) || !!(window.Native && Native.isApp && Native.canShare());
   const label = canShare ? "Share invite" : "Copy invite";
   const copy = el("button", { textContent: label });
   copy.style.cssText = "flex:0 0 128px;padding:12px 0;white-space:nowrap";
   copy.onclick = async () => {
     if (canShare) {
-      try { await navigator.share({ title: "Parcade", text: "Join my Parcade season \u201C" + season.name + "\u201D. Season code: " + season.code, url: link }); }
+      const opts = { title: "Parcade", text: "Join my Parcade season \u201C" + season.name + "\u201D. Season code: " + season.code, url: link };
+      if (window.Native) { await Native.share(opts); return; }
+      try { await navigator.share(opts); }
       catch (e) {}
       return;
     }

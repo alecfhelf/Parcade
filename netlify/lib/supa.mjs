@@ -70,3 +70,13 @@ export const isActive = row => !!row && ["active", "trialing"].includes(row.stat
 
 // Where Stripe sends people back to. Netlify sets URL to the site's main address.
 export const siteUrl = req => (process.env.URL || new URL(req.url).origin).replace(/\/+$/, "");
+
+// Removes a Supabase auth user with the service role. Rows on delete cascade go with it.
+export async function deleteAuthUser(userId) {
+  if (!base() || !serviceKey()) throw new Error("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing");
+  const r = await fetch(base() + "/auth/v1/admin/users/" + encodeURIComponent(userId), {
+    method: "DELETE",
+    headers: { apikey: serviceKey(), authorization: "Bearer " + serviceKey() }
+  });
+  if (!r.ok && r.status !== 404) throw new Error("Auth delete " + r.status + ": " + (await r.text()).slice(0, 300));
+}

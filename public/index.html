@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <script>if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) document.documentElement.classList.add("in-app");</script>
+  <script src="native.js"></script>
   <script>
     // Apply the saved theme before first paint so light mode never flashes dark
     (function () {
@@ -642,14 +643,26 @@
     .fmt-pick { display: flex; gap: 8px; }
     .modal-panel input[type="date"] { color-scheme: dark; }
     /* ---------- Tournaments ---------- */
-    .bk-wrap { width: min(1400px, calc(100vw - 32px)); position: relative; left: 50%; transform: translateX(-50%); margin: 4px 0 14px; }
-    .bk-tools { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-bottom: 6px; }
-    .bk-tools .mini { min-width: 40px; color: var(--ink); }
-    .bk-tools .mini:first-child { margin-right: auto; color: var(--glow); }
-    .bk-zoom { font-size: 0.8rem; color: var(--muted); min-width: 3em; text-align: right; }
-    .bk-view { overflow: auto; max-height: 72vh; border-radius: 12px; background: rgba(var(--hi-rgb),0.03); -webkit-overflow-scrolling: touch; }
-    .bk-sizer { position: relative; }
+    .dress-seg.tn-tabs { display: flex; width: 100%; margin: 2px 0 14px; }
+    .dress-seg.tn-tabs button { flex: 1 1 0; min-width: 0; padding: 8px 6px; }
+    .tn-pane[hidden] { display: none; }
+    .tn-bk-note { margin: 0 0 10px; text-align: left; }
+    .tn-pane-bk .tn-bk-note:only-child { margin-top: 20px; text-align: center; }
+    .bk-wrap { width: calc(100vw - 32px); position: relative; left: 50%; transform: translateX(-50%); margin: 0; }
+    .bk-view { position: relative; height: 60vh; overflow: hidden; border-radius: 12px; background: rgba(var(--hi-rgb),0.03);
+      box-shadow: inset 0 0 0 1px rgba(var(--hi-rgb),0.08); touch-action: none; overscroll-behavior: contain; cursor: grab;
+      user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+    .bk-view.dragging { cursor: grabbing; }
+    .bk-view.dragging .bk-card, .bk-view.dragging .bk-head { cursor: grabbing; }
     .bk-canvas { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+    .bk-canvas.bk-anim { transition: transform 0.28s ease; }
+    @media (prefers-reduced-motion: reduce) { .bk-canvas.bk-anim { transition: none; } }
+    .bk-tools { position: absolute; z-index: 2; right: 8px; bottom: 8px; display: flex; align-items: center; gap: 4px; padding: 4px; border-radius: 12px;
+      background: var(--panel); box-shadow: 0 2px 10px rgba(0,0,0,0.25), inset 0 0 0 1px rgba(var(--muted-rgb),0.25); }
+    .bk-tools .mini { min-width: 40px; min-height: 36px; margin: 0; padding: 6px 10px; color: var(--ink); background: rgba(var(--hi-rgb),0.06); }
+    .bk-tools .mini:hover { background: rgba(var(--blue-rgb),0.25); }
+    .bk-tools .bk-mine { color: var(--glow); }
+    .bk-zoom { font-size: 0.8rem; color: var(--muted); min-width: 3.2em; text-align: center; font-variant-numeric: tabular-nums; }
     .bk-lines { position: absolute; top: 0; left: 0; pointer-events: none; }
     .bk-lines path { fill: none; stroke: rgba(var(--muted-rgb),0.35); stroke-width: 1.5; }
     .bk-lines path.done { stroke: rgba(var(--ink-rgb),0.55); }
@@ -1200,25 +1213,384 @@
     .in-app body.in-round h1 { font-size: clamp(2rem, 10vw, 2.8rem); margin-bottom: 6px; }
     .in-app body.in-round h1 + p { font-size: 1.1rem; margin-bottom: 14px; }
     .in-app .lobby .crabby-desk { margin: 0 0 6px; }
-    .in-app .lobby .cd-stage { zoom: 0.8; }
-    .in-app .lobby .cd-bubble { font-size: 1rem; padding: 9px 12px; margin-bottom: 18px; }
+    .in-app .tn-tabs { margin: 0 0 10px; }
+    .in-app .tn-tabs button { min-height: 40px; font-size: 1rem; }
+    .in-app .bk-wrap { width: calc(100vw - 24px); }
+    .in-app .lobby .cd-stage { zoom: 0.7; }
+    .in-app .lobby .cd-bubble { font-size: 1rem; padding: 7px 10px; margin-bottom: 12px; }
     .in-app .lobby .cd-text { min-height: 0 !important; }
     .in-app .lobby h3, .in-app .game h3 { font-size: 1.2rem; margin: 26px 0 10px; }
     .in-app .lobby input, .in-app .lobby select { font-size: 1.15rem; padding: 15px 16px; }
-    .in-app .lobby button:not(.link-btn):not(.mini):not(.mode-tile):not(.cd-x):not(.info-corner):not(.game-tile):not(.sound-btn):not(.switch) { font-size: 1.2rem; padding: 16px 20px; }
+    .in-app .lobby button:not(.link-btn):not(.mini):not(.mode-tile):not(.cd-x):not(.info-corner):not(.info-btn):not(.game-tile):not(.sound-btn):not(.switch):not(.setup-tab):not(.tn-tab):not(.bk-card):not(.bk-head) { font-size: 1.2rem; padding: 16px 20px; }
     .in-app .confirm-table th, .in-app .confirm-table td { padding: 6px 4px; }
     .in-app .lobby[data-step="confirm"] h3 { margin: 14px 0 6px; }
     .in-app .link-btn { font-size: 1.15rem; padding: 10px 6px; }
     .in-app .lobby > button.link-btn { margin: 6px 0 10px; }
     /* App only: "Is this right?" confirm step fits on one screen */
     .in-app body.in-round { padding-top: calc(6px + env(safe-area-inset-top)); }
-    .in-app .lobby[data-step="confirm"] .cd-stage { zoom: 0.7; }
-    .in-app .lobby[data-step="confirm"] .cd-bubble { font-size: 0.95rem; padding: 7px 10px; margin-bottom: 12px; }
     .in-app .lobby[data-step="confirm"] .crabby-desk { margin: 0 0 2px; }
     .in-app .lobby[data-step="confirm"] h3 { margin: 6px 0 4px; }
     .in-app .lobby[data-step="confirm"] p { margin: 4px 0; }
     .in-app .confirm-table th, .in-app .confirm-table td { padding: 4px 3px !important; }
-    .in-app .lobby[data-step="confirm"] button:not(.link-btn):not(.mini):not(.cd-x) { padding: 13px 18px; margin-top: 8px; }
+    .in-app .lobby[data-step="confirm"] button:not(.link-btn):not(.mini):not(.cd-x):not(.setup-tab) { padding: 13px 18px; margin-top: 8px; }
+    /* App only: info buttons stay square; player count step fits on one screen */
+    .in-app .info-btn { width: 52px !important; padding: 0 !important; font-size: 1rem !important; }
+    .in-app .info-btn svg, .in-app .info-btn .cd-i { width: 26px; height: 26px; }
+    .in-app .lobby[data-step="size"] h3 { margin: 8px 0 8px; }
+    .in-app .lobby[data-step="size"] .mode-row { margin-bottom: 8px; }
+    .in-app .lobby[data-step="size"] .size-tile { padding: 11px 16px !important; }
+    .in-app .lobby[data-step="size"] .size-tile span { font-size: 0.9rem; line-height: 1.3; }
+    /* App only: game mode step fits on one screen */
+    .in-app .lobby[data-step="mode"] h3 { margin: 6px 0 6px; }
+    .in-app .lobby[data-step="mode"] .mode-grid { gap: 6px; }
+    .in-app .lobby[data-step="mode"] .game-tile { min-height: 0 !important; height: 60px; padding: 6px 8px !important; font-size: 0.92rem !important; line-height: 1.15; }
+    .in-app .lobby[data-step="mode"] .info-corner { top: 3px !important; right: 3px !important; width: 22px !important; height: 22px !important; transform: none; }
+    .in-app .lobby[data-step="mode"] .info-corner .info-dot { width: 16px; height: 16px; font-size: 0.62rem; }
+    .in-app .lobby[data-step="mode"] .game-tile { padding: 16px 22px 6px 8px !important; }
+    .in-app .lobby[data-step="mode"] .mode-preview { display: none !important; }
+    /* App only: settings step fits on one screen; descriptions behind an i */
+    .in-app .toggle-row.has-i > div > small { display: none !important; }
+    .in-app .toggle-row.has-i > div { display: flex; align-items: center; gap: 8px; }
+    .in-app .set-i { width: 22px !important; height: 22px !important; min-width: 22px; padding: 0 !important; border-radius: 50%; clip-path: none;
+      background: none !important; border: 1.5px solid var(--glow); color: var(--glow); font: italic 700 0.75rem/1 Georgia, serif !important;
+      display: inline-grid; place-items: center; }
+    .in-app .set-i-text { color: var(--muted); line-height: 1.5; margin: 6px 0 16px; text-align: left; }
+    .in-app .lobby[data-step="setup"] h3 { margin: 6px 0 8px; }
+    .in-app .lobby[data-step="setup"] .toggle-row { padding-top: 12px; padding-bottom: 12px; margin-bottom: 8px; }
+    /* App only: consistent setup type and the settings i on the right */
+    .in-app .lobby h3 { font-size: 1.2rem !important; }
+    .in-app .lobby .field-label { font-size: 1.12rem; font-weight: 600; color: var(--ink); }
+    .in-app .lobby .size-tile b { font-size: 1.12rem; }
+    .in-app .lobby .switch { font-size: 1.05rem; min-width: 56px; }
+    .in-app .lobby .stepper b { font-size: 1.15rem; }
+    .in-app .lobby .link-btn { font-size: 1.1rem !important; }
+    .in-app .toggle-row.has-i { display: flex; align-items: center; gap: 10px; }
+    .in-app .toggle-row.has-i > div:first-child { flex: 1; min-width: 0; }
+    .in-app .set-i { width: 30px !important; height: 30px !important; min-width: 30px; font-size: 0.95rem !important; margin-left: 4px; }
+    /* App only: bet settings live in a popup */
+    .in-app .money-box #money-opts { display: none !important; }
+    .in-app .money-summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 4px 6px; color: var(--muted); font-size: 1rem; }
+    .in-app .money-summary[hidden] { display: none; }
+    .in-app .money-summary .link-btn { padding: 4px 2px; margin: 0; }
+    .in-app .bets-modal .modal-panel { max-height: 86dvh; overflow-y: auto; text-align: left; }
+    /* App only: setup step tabs under the round name and code */
+    .in-app body.in-round h1 + p { margin-bottom: 8px; }
+    .in-app .setup-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px; margin: 0 0 10px; padding: 3px; border-radius: 10px;
+      background: var(--panel); box-shadow: inset 0 0 0 1px rgba(var(--muted-rgb),0.25); }
+    .in-app .lobby .setup-tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; min-height: 44px;
+      margin: 0; padding: 4px 2px; border-radius: 8px; clip-path: none; background: transparent; color: var(--muted); }
+    .in-app .lobby .setup-tab:hover { background: rgba(var(--blue-rgb),0.25); }
+    .in-app .lobby .setup-tab:disabled { opacity: 1; cursor: default; }
+    .in-app .lobby .setup-tab:disabled:not(.done) { opacity: 0.4; }
+    .in-app .lobby .setup-tab:disabled:hover { background: transparent; }
+    .in-app .lobby .setup-tab.done { color: var(--ink); }
+    .in-app .lobby .setup-tab.on, .in-app .lobby .setup-tab.on:hover { background: var(--blue); color: #fff; opacity: 1; }
+    .in-app .setup-tab span { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .in-app .setup-tab .st-label { font-size: 0.8rem; font-weight: 600; line-height: 1.2; }
+    .in-app .setup-tab .st-val { font-size: 0.7rem; line-height: 1.2; opacity: 0.85; }
+    .in-app .setup-tab .st-val:empty { display: none; }
+    .in-app .lobby[data-step] .crabby-desk { margin: 0 0 2px; }
+    .in-app .lobby[data-step] h3 { margin-top: 6px; }
+    /* App only: the room fits on one screen. Game and settings live on their tabs. */
+    .in-app .lobby[data-step="room"] .settings-only { display: none !important; }
+    .in-app .lobby .invite-btn { width: 100%; margin: 0 0 6px; padding: 12px 18px !important; }
+    .in-app .lobby .player-list.room-only { max-height: 40dvh; overflow-y: auto; margin-bottom: 6px; font-size: 1.12rem; }
+    .in-app .player-list li.lp-compact { flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 2px; }
+    .in-app .lp-compact .lp-who { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+    .in-app .lp-compact .lp-who .stick { flex: none; }
+    .in-app .lp-compact .lp-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .in-app .lp-compact .lp-crown { flex: none; font-size: 0.9rem; }
+    .in-app .lp-compact .lp-tags { flex: none; color: var(--muted); font-size: 0.9rem; }
+    .in-app .lp-compact .club-star { flex: none; margin: 0; padding: 0 4px; font-size: 0.7rem; }
+    .in-app .lp-compact > .mini, .in-app .lp-compact > .detail { flex: none; padding: 5px 9px; font-size: 0.85rem; white-space: nowrap; }
+    .in-app .lp-compact > .lp-rm { width: 32px; padding: 5px 0; }
+    .in-app .lp-compact .lobby-ctl { gap: 4px; padding-left: 28px; }
+    .in-app .lp-compact .lobby-ctl .mini { padding: 4px 9px; font-size: 0.8rem; }
+    .in-app .lobby .player-list li.group-head { padding: 8px 2px 2px; }
+    .in-app .lobby .btn-ghost.room-only, .in-app .lobby .room-only > .btn-ghost { margin-top: 0 !important; padding: 11px 18px !important; font-size: 1.05rem !important; }
+    .in-app .lobby[data-step="room"] .start-btn { position: fixed; z-index: 6; left: calc(16px + env(safe-area-inset-left, 0px)); right: calc(16px + env(safe-area-inset-right, 0px));
+      bottom: calc(10px + env(safe-area-inset-bottom, 0px)); width: auto !important; max-width: 448px; margin: 0 auto !important; }
+    .in-app .lobby[data-step="room"]:has(.start-btn) { padding-bottom: calc(66px + env(safe-area-inset-bottom, 0px)); }
+    .in-app body:has(.lobby[data-step="room"] .start-btn) .toast { bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+    .in-app .top-actions .more-top { min-width: 48px; font-weight: 700; }
+    /* App only: no accidental text highlighting (inputs still selectable) */
+    .in-app body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    .in-app input, .in-app textarea, .in-app [contenteditable="true"] { -webkit-user-select: text; user-select: text; }
+    /* App only: confirm step fits under the tabs */
+    .in-app body.in-round h1 { font-size: clamp(1.8rem, 9vw, 2.4rem) !important; margin-bottom: 2px !important; }
+    .in-app body.in-round h1 + p { margin-bottom: 10px !important; }
+    .in-app .lobby[data-step="confirm"] h3 { margin: 4px 0 2px !important; }
+    .in-app .lobby[data-step="confirm"] .confirm-table th, .in-app .lobby[data-step="confirm"] .confirm-table td { padding: 3px 3px !important; }
+    .in-app .lobby[data-step="confirm"] button:not(.link-btn):not(.mini):not(.cd-x):not(.setup-tab) { padding: 11px 18px !important; margin-top: 6px !important; }
+    /* App only: settings boxes all the same size */
+    .in-app .lobby[data-step="setup"] .od-row, .in-app .lobby[data-step="setup"] .money-box { margin: 0 0 10px !important; }
+    .in-app .lobby[data-step="setup"] .money-box { padding: 24px 12px; }
+    .in-app .lobby[data-step="setup"] .money-box > .toggle-row { padding: 0 !important; margin: 0 !important; }
+    /* App only: room rows line up, bigger names and handicap buttons */
+    .in-app .player-list li.lp-compact { display: grid !important; grid-template-columns: minmax(0, 1fr) auto 40px; align-items: center; gap: 6px 8px; padding: 10px 2px; }
+    .in-app .lp-compact .lp-who { grid-column: 1; font-size: 1.25rem; gap: 7px; }
+    .in-app .lp-compact .lp-who .stick { width: 28px !important; height: 38px !important; }
+    .in-app .lp-compact > .mini, .in-app .lp-compact > .detail { grid-column: 2; min-width: 104px; text-align: center; padding: 8px 12px; font-size: 1rem; }
+    .in-app .lp-compact > .lp-rm { grid-column: 3; width: 40px; padding: 8px 0; font-size: 1rem; }
+    .in-app .lp-compact .lobby-ctl { grid-column: 1 / -1; }
+    .in-app .lp-compact .lp-tags, .in-app .lp-compact .lp-crown { font-size: 1rem; }
+    /* ---------- App only: in-round game screen fits on one screen (slim top bar, bottom tabs, pinned score pad) ---------- */
+    .play-bar, .play-nav { display: none; }
+    .in-app body.app-play { height: 100dvh; min-height: 0; overflow: hidden; justify-content: flex-start;
+      padding: calc(60px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) calc(70px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px)) !important; }
+    .in-app body.app-play > h1, .in-app body.app-play > h1 + p, .in-app body.app-play .top-actions, .in-app body.app-play .sound-home,
+    .in-app body.app-play .game > .tabs, .in-app body.app-play .finish-btn, .in-app body.app-play .tourney-note { display: none !important; }
+    .in-app body.app-play .round-box { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; margin-top: 0 !important; max-width: 480px !important; }
+    .in-app body.app-play .round-box > .danger-row, .in-app body.app-play #status { display: none; }
+    .in-app body.app-play .game { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+    .in-app body.app-play .play-panel { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; }
+    .in-app body.app-play .panel-hole { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
+    .in-app body.app-play .panel-chat { display: flex; flex-direction: column; overflow: hidden; }
+    .in-app body.app-play .panel-chat .chat-list { flex: 1 1 auto; min-height: 0; max-height: none; }
+    .in-app body.app-play .panel-chat .chat-form { flex: none; position: static; }
+    .in-app body.app-play .game h3 { margin-top: 12px; }
+    /* Top bar: ‹ Home, the round name, ⋯ */
+    .in-app body.app-play .play-bar { position: fixed; z-index: 8; top: 0; left: 0; right: 0; display: grid; grid-template-columns: minmax(84px, auto) minmax(0, 1fr) minmax(84px, auto);
+      align-items: center; gap: 6px; padding: calc(4px + env(safe-area-inset-top, 0px)) calc(8px + env(safe-area-inset-right, 0px)) 4px calc(8px + env(safe-area-inset-left, 0px));
+      background: var(--bg); border-bottom: 1px solid rgba(var(--glow-rgb),0.18); }
+    .in-app .pb-btn { min-height: 44px; padding: 8px 10px; clip-path: none; border-radius: 10px; background: none; color: var(--glow); font-size: 1.1rem; font-weight: 700; justify-self: start; }
+    .in-app .pb-btn:hover { background: rgba(var(--blue-rgb),0.15); }
+    .in-app .pb-more { justify-self: end; width: 48px; padding: 0; font-size: 1.6rem; line-height: 1; }
+    .in-app .pb-title { font-family: "Bungee", sans-serif; font-size: 1.1rem; line-height: 1.2; color: var(--ink); text-align: center;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 6px rgba(var(--glow-rgb),0.35); }
+    /* Bottom tabs, like the home screen's app bar */
+    .in-app body.app-play .play-nav { position: fixed; z-index: 8; left: 0; right: 0; bottom: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
+      padding: 4px calc(6px + env(safe-area-inset-right, 0px)) calc(4px + env(safe-area-inset-bottom, 0px)) calc(6px + env(safe-area-inset-left, 0px));
+      background: var(--panel); border-top: 1px solid rgba(var(--glow-rgb),0.3); box-shadow: 0 -6px 20px var(--shade); }
+    .in-app .pn-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 0; min-height: 54px; padding: 5px 2px 3px;
+      clip-path: none; background: none; color: var(--muted); font-size: 0.85rem; font-weight: 600; }
+    .in-app .pn-btn[hidden] { display: none; }
+    .in-app .pn-btn:hover { background: none; }
+    .in-app .pn-btn.on { color: var(--glow); }
+    .in-app .pn-btn.on .pn-ic svg { filter: drop-shadow(0 0 4px rgba(var(--glow-rgb),0.6)); }
+    .in-app .pn-ic { position: relative; line-height: 0; }
+    .in-app .pn-ic svg { width: 26px; height: 26px; }
+    .in-app .pn-btn.dot .pn-ic::after { content: ""; position: absolute; top: -2px; right: -5px; width: 10px; height: 10px; border-radius: 50%;
+      background: var(--red); box-shadow: 0 0 0 2px var(--panel); }
+    /* ⋯ menu and the More sheet */
+    .plm-ov { position: fixed; inset: 0; z-index: 9; background: var(--scrim-soft); }
+    .plm { position: fixed; right: calc(10px + env(safe-area-inset-right, 0px)); width: min(300px, calc(100vw - 20px)); max-height: calc(100dvh - 150px); overflow-y: auto;
+      padding: 6px; text-align: left; background: var(--panel); border: 1px solid rgba(var(--glow-rgb),0.35); border-radius: 12px; box-shadow: 0 8px 24px var(--shade); }
+    .plm-top { top: calc(56px + env(safe-area-inset-top, 0px)); }
+    .plm-bottom { bottom: calc(70px + env(safe-area-inset-bottom, 0px)); width: min(220px, calc(100vw - 20px)); }
+    .plm-item { display: block; width: 100%; min-height: 48px; padding: 12px; text-align: left; clip-path: none; border-radius: 8px; background: none; color: var(--ink); font-size: 1.1rem; font-weight: 600; }
+    .plm-item:hover { background: rgba(var(--blue-rgb),0.15); }
+    .plm-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 4px 12px; font-size: 1.1rem; font-weight: 600; color: var(--ink); }
+    .plm-row input[type=range] { flex: 1; min-width: 0; max-width: 160px; accent-color: var(--glow); background: transparent; border: none !important; }
+    .plm-row .switch { min-width: 60px; }
+    .plm-hint { padding: 0 12px 6px; font-size: 0.85rem; line-height: 1.35; color: var(--muted); }
+    .plm-sep { height: 1px; margin: 4px 6px; background: rgba(var(--glow-rgb),0.18); }
+    .plm-summary { padding: 8px 12px 6px; font-size: 1rem; line-height: 1.4; color: var(--muted); }
+    /* Hole card: strip, two-line header, player chips, mode cards (middle), score pad (bottom) */
+    .in-app .play-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 0 !important; background: none !important; border-radius: 0 !important; text-align: left; }
+    .in-app .play-card > * { flex: none; }
+    .in-app .play-card .hole-strip { margin: 0 0 6px; padding: 0; }
+    .in-app .play-card .hole-chip { flex-basis: 42px; height: 44px; }
+    .in-app .play-card .hole-chip small { font-size: 0.65rem; }
+    .in-app .play-card .hole-head { display: block; margin: 0 0 8px; line-height: 1.3; }
+    .in-app .play-card #hole-label { font-family: "Bungee", sans-serif; font-size: 1.1rem; color: var(--ink); }
+    .in-app .play-card .hl-meta { font-size: 1.1rem; font-weight: 700; color: var(--ink); }
+    .in-app .play-card #hole-mine { display: block; font-size: 0.95rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .in-app .play-card #hole-info { display: none !important; }
+    .in-app .play-card .keeper-row { flex-wrap: nowrap; overflow-x: auto; margin: 0 0 8px; padding-bottom: 2px; scrollbar-width: none; }
+    .in-app .play-card .keeper-row::-webkit-scrollbar { display: none; }
+    .in-app .play-card .keeper-row button { flex: none; min-height: 40px; padding: 4px 12px; font-size: 1rem; white-space: nowrap; }
+    .in-app .play-mid { flex: 1 1 auto !important; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+    .in-app .play-mid .ch-box { margin: 0 0 6px; padding: 8px 10px; }
+    .in-app .play-mid #recap-box { padding: 5px 10px; }
+    .in-app .play-mid > :last-child { margin-bottom: 0; }
+    .in-app .play-card #waiting-on { display: none; }
+    .in-app .pad-head .mull-box { min-width: 0; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .in-app .pad-head .mull-box .mini { min-height: 36px; padding: 4px 10px; font-size: 0.95rem; }
+    .in-app .pad-head .mull-box .cp-note { font-size: 0.85rem; }
+    .in-app .ch-box.cc > .cc-hide { display: none !important; }
+    .in-app .cc-head { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+    .in-app .cc-icon { flex: none; font-size: 1.25rem; line-height: 1; }
+    .in-app .cc-title { flex: 1 1 auto; min-width: 0; font-size: 1.1rem; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .in-app .cc-i { flex: none; width: 32px; height: 32px; padding: 0; display: inline-grid; place-items: center; clip-path: none; border-radius: 50%;
+      background: none; border: 1.5px solid var(--glow); color: var(--glow); font: italic 700 0.95rem/1 Georgia, serif; }
+    .in-app .cc-i:hover { background: rgba(var(--blue-rgb),0.15); }
+    .in-app .ch-box.cc > .cc-sub { margin: 2px 0 0 !important; font-size: 0.95rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .in-app .ch-box.cc > .cc-sub:empty { display: none; }
+    .in-app .ch-box.cc .chip-row { flex-wrap: nowrap; overflow-x: auto; gap: 6px; margin-top: 6px; padding-bottom: 2px; scrollbar-width: none; }
+    .in-app .ch-box.cc .chip-row::-webkit-scrollbar { display: none; }
+    .in-app .ch-box.cc .chip-row button { flex: none; min-height: 42px; padding: 6px 12px; font-size: 1rem; white-space: nowrap; }
+    .in-app .ch-box.cc .chip-row .cp-note { flex: none; margin: 0; align-self: center; }
+    .in-app .ch-box.cc .wad-line { margin-top: 4px; }
+    .in-app .ch-box.cc .bbb-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+    .in-app .ch-box.cc .bbb-row .cp-title { flex: none; min-width: 4em; margin: 0; font-size: 1rem; }
+    .in-app .ch-box.cc .bbb-row .cp-note { display: none; }
+    .in-app .ch-box.cc .bbb-row .chip-row button { min-height: 34px; padding: 3px 10px; }
+    .in-app #bbb-box.cc .cc-head { min-height: 26px; }
+    .in-app #bbb-box.cc .bbb-row { margin-top: 4px; }
+    .in-app #bbb-box.cc .bbb-row .stick { width: 14px !important; height: 18px !important; margin-right: 4px; }
+    .in-app .ch-box.cc .bbb-row .chip-row { flex: 1 1 auto; min-width: 0; margin: 0; }
+    .in-app .ch-box.cc #bbb-rows > .cp-note { margin: 4px 0 0; font-size: 0.9rem; }
+    .in-app .play-mid .caddy-pair { margin-bottom: 8px; padding: 10px; }
+    .in-app .play-mid .caddy-pair .cp-title { display: inline; font-size: 1rem; margin: 0; }
+    .in-app .play-mid .caddy-pair .cp-title::after { content: " \00B7 "; color: var(--muted); }
+    .in-app .play-mid .caddy-pair .cp-prompt { display: inline; margin: 0; font-size: 0.95rem; }
+    .in-app .play-mid .caddy-pair .cp-note { margin-top: 4px; }
+    .in-app .play-mid .caddy-pair .chip-row { flex-wrap: nowrap; overflow-x: auto; gap: 6px; margin-top: 6px; padding-bottom: 2px; scrollbar-width: none; }
+    .in-app .play-mid .caddy-pair .chip-row::-webkit-scrollbar { display: none; }
+    .in-app .play-mid .caddy-pair .chip-row button { flex: none; min-height: 40px; padding: 6px 12px; font-size: 1rem; white-space: nowrap; }
+    .in-app .play-mid .caddy-pair .cp-head { font-size: 0.85rem; }
+    .in-app .play-mid .caddy-pair .cp-mull { margin-top: 6px; }
+    .in-app .play-mid .caddy-pair .cp-mull .mini { min-height: 36px; padding: 4px 10px; }
+    .in-app .play-mid .caddy-pair .cp-row { margin-top: 6px; }
+    .in-app .cc-info { margin: 4px 0 16px; text-align: left; line-height: 1.45; color: var(--ink); }
+    .in-app .cc-info > * + * { margin-top: 8px; }
+    .in-app .cc-info .bbb-row { margin-top: 10px; }
+    /* Score pad: just above the tabs, 1-10 and 11+ in two rows */
+    .in-app .play-pad { padding-top: 8px; border-top: 1px solid rgba(var(--glow-rgb),0.2); }
+    .in-app .pad-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 36px; margin: 0 0 6px; }
+    .in-app .pad-head .score-label { flex: none; margin: 0; font-size: 1.1rem; font-weight: 600; color: var(--ink); white-space: nowrap; }
+    .in-app .play-pad .score-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+    .in-app .play-pad .score-grid button { min-height: 52px; padding: 0; font-size: 1.5rem; }
+    .in-app .play-pad .score-grid .score-max { grid-column: span 2; padding: 0; justify-content: center; }
+    .in-app .play-pad .score-max small { display: none; }
+    /* Toasts and recap cards stay above the pad and tabs */
+    .in-app body.app-play .toast { bottom: var(--play-bottom, calc(78px + env(safe-area-inset-bottom, 0px))) !important; top: auto !important; }
+    .in-app body.app-play .recap { padding-top: calc(60px + env(safe-area-inset-top, 0px)); padding-bottom: var(--play-bottom, calc(78px + env(safe-area-inset-bottom, 0px))); }
+    .in-app body.app-play .recap-card { max-height: 100%; overflow-y: auto; }
+    /* ---------- App only: results fit on one screen (slim top bar, compact podium, section tabs, pinned actions) ---------- */
+    .in-app body.app-results { height: 100dvh; min-height: 0; overflow: hidden; justify-content: flex-start;
+      padding: calc(60px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px)) !important; }
+    .in-app body.app-results > h1, .in-app body.app-results > h1 + p, .in-app body.app-results .top-actions, .in-app body.app-results .sound-home,
+    .in-app body.app-results .round-box > .danger-row, .in-app body.app-results #status { display: none !important; }
+    .in-app body.app-results .play-bar { position: fixed; z-index: 8; top: 0; left: 0; right: 0; display: grid; grid-template-columns: minmax(84px, auto) minmax(0, 1fr) minmax(84px, auto);
+      align-items: center; gap: 6px; padding: calc(4px + env(safe-area-inset-top, 0px)) calc(8px + env(safe-area-inset-right, 0px)) 4px calc(8px + env(safe-area-inset-left, 0px));
+      background: var(--bg); border-bottom: 1px solid rgba(var(--glow-rgb),0.18); }
+    .in-app body.app-results .pb-title { display: flex; justify-content: center; font-size: 1rem; }
+    .in-app .pb-title .pb-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .in-app .pb-title .pb-tag { flex: none; }
+    .in-app body.app-results .round-box { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; margin-top: 0 !important; max-width: 480px !important; }
+    .in-app body.app-results .results { flex: 1 1 auto; min-height: 0; display: flex !important; flex-direction: column; }
+    .in-app body.app-results .toast { bottom: var(--play-bottom, calc(24px + env(safe-area-inset-bottom, 0px))) !important; top: auto !important; }
+    /* Podium: ~64px characters on 56 / 44 / 36px blocks, name and result on one line */
+    .in-app .results .podium { flex: none; gap: 6px; margin: 2px 0 8px; }
+    .in-app .results .podium-col > .pod-fig, .in-app .results .award > .pod-fig { width: 47px !important; height: 64px !important; margin: 0 0 3px; }
+    .in-app .results .pod-1 .curse { font-size: 0.65rem; top: -6px; }
+    .in-app .results .pod-line { display: flex; justify-content: center; max-width: 100%; margin: 0 0 4px; font-size: 0.85rem; line-height: 1.2; white-space: nowrap; }
+    .in-app .results .pod-line .podium-name { flex: 0 1 auto; min-width: 2.5em; font-size: inherit; }
+    .in-app .results .pod-line .podium-score { flex: 0 1 auto; min-width: 0; margin: 0; font-size: inherit; overflow: hidden; text-overflow: ellipsis; }
+    .in-app .results .pod-dot { flex: none; color: var(--muted); }
+    .in-app .results .podium-block { padding-top: 6px; font-size: 1rem; }
+    .in-app .results .place-1 .podium-block { height: 56px; }
+    .in-app .results .place-2 .podium-block { height: 44px; }
+    .in-app .results .place-3 .podium-block { height: 36px; }
+    .in-app .results .caddy-awards { flex: none; gap: 8px; margin: 2px 0 8px; }
+    .in-app .results .award { padding: 8px 6px 6px; }
+    .in-app .results .award-title { font-size: 0.85rem; margin-bottom: 4px; }
+    /* Section tabs, then one section at a time that scrolls inside itself only when it has to */
+    .in-app .results .res-tabs { flex: none; display: flex; width: 100%; box-sizing: border-box; margin: 0 0 6px; }
+    .in-app .results .res-tabs[hidden] { display: none; }
+    .in-app .results .res-tabs button { flex: 1 1 0; min-width: 0; min-height: 38px; padding: 6px 4px; font-size: 0.9rem; }
+    .in-app .results .res-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+    .in-app .results .res-sec { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; text-align: left; }
+    .in-app .results .res-sec[hidden] { display: none; }
+    .in-app .results .res-sec > .res-dup { display: none; }
+    .in-app .results .res-sec h3 { margin: 10px 0 2px; font-size: 0.9rem; }
+    .in-app .results .res-sec > h3:first-child, .in-app .results .res-sec > .res-dup + * { margin-top: 0; }
+    .in-app .results .res-sec .waiting, .in-app .results .res-note { margin: 4px 0; font-size: 0.85rem; line-height: 1.3; }
+    .in-app .results .res-note { color: var(--muted); }
+    .in-app .results .res-sec .player-list { margin: 0; font-size: 1rem; }
+    .in-app .results .res-sec .player-list li { align-items: center; gap: 8px; padding: 6px 2px; }
+    .in-app .results .res-sec .player-list li > div { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; }
+    .in-app .results .res-sec .player-list li > div > span:first-child, .in-app .results .res-sec .player-list li > span:first-child {
+      min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .in-app .results .res-sec .player-list .detail { min-width: 0; max-width: 100%; margin: 0; font-size: 0.75rem; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .in-app .results .res-sec .player-list li > span:last-child { flex: none; white-space: nowrap; font-weight: 700; }
+    .in-app .results .res-sec .player-list .stick { width: 15px !important; height: 20px !important; }
+    .in-app .results .res-sec .last-place { justify-content: flex-start; gap: 10px; margin: 8px 0 2px; padding: 6px 10px; font-size: 0.9rem; }
+    .in-app .results .res-sec .last-figs { flex-direction: row; align-items: flex-end; gap: 4px; }
+    .in-app .results .res-sec .last-figs .poop { font-size: 1.1rem; }
+    .in-app .results .res-sec .last-figs .pod-fig { width: 26px !important; height: 36px !important; margin: 0; }
+    .in-app .results .res-sec .last-place .sub { font-size: 0.8rem; }
+    .in-app .results .res-sec .sc-wrap { margin-bottom: 4px; }
+    .in-app .results .res-sec .sc-table { font-size: 0.8rem; }
+    .in-app .results .res-sec .sc-table th, .in-app .results .res-sec .sc-table td { padding: 5px 4px; }
+    .in-app .results .res-sec .sc-table td .stick { width: 12px !important; height: 16px !important; }
+    /* Actions pinned at the bottom: Continue round on top, then Add to season and Home side by side */
+    .in-app .results .res-actions { flex: none; display: flex; flex-direction: column; gap: 8px; padding-top: 8px; border-top: 1px solid rgba(var(--glow-rgb),0.18); }
+    .in-app .results .res-actions:empty { display: none; }
+    .in-app .results .res-actions button { min-height: 46px; padding: 10px 12px; font-size: 1.05rem; }
+    .in-app .results .res-actions .res-continue { margin: 0 !important; }
+    .in-app .results .sc-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+    .in-app .results .sc-actions > button { margin: 0 !important; }
+    .in-app .results .sc-actions > button:only-of-type { grid-column: 1 / -1; }
+    .in-app .results .sc-actions > .waiting, .in-app .results .sc-actions > .chip-row { grid-column: 1 / -1; order: -1; margin: 0; font-size: 0.85rem; }
+    .in-app .results .sc-actions > .waiting:empty, .in-app .results .sc-actions > .chip-row:empty { display: none; }
+    .in-app .results .sc-actions > .chip-row button { min-height: 40px; font-size: 0.95rem; }
+    @media (max-height: 700px) {
+      .in-app .results .podium-col > .pod-fig { width: 41px !important; height: 56px !important; }
+      .in-app .results .place-1 .podium-block { height: 48px; }
+      .in-app .results .place-2 .podium-block { height: 38px; }
+      .in-app .results .place-3 .podium-block { height: 30px; }
+      .in-app .results .res-actions button { min-height: 42px; padding: 8px 10px; }
+    }
+    /* Scorecard marks: circles under par, squares over par (app and website) */
+    .sc-table .sm { position: relative; display: inline-grid; place-items: center; min-width: 1.55em; height: 1.55em; padding: 0 2px; line-height: 1; box-sizing: border-box; }
+    .sc-table .sm-c1, .sc-table .sm-c2, .sc-table .sm-c3 { border: 1.5px solid var(--glow); border-radius: 50%; }
+    .sc-table .sm-s1, .sc-table .sm-s2, .sc-table .sm-s3 { border: 1.5px solid var(--muted); border-radius: 2px; }
+    .sc-table .sm-c2, .sc-table .sm-c3 { outline: 1.5px solid var(--glow); outline-offset: 1.5px; }
+    .sc-table .sm-s2, .sc-table .sm-s3 { outline: 1.5px solid var(--muted); outline-offset: 1.5px; }
+    .sc-table .sm-c3::after, .sc-table .sm-s3::after { content: ""; position: absolute; inset: -6px; border: 1.5px solid; pointer-events: none; }
+    .sc-table .sm-c3::after { border-color: var(--glow); border-radius: 50%; }
+    .sc-table .sm-s3::after { border-color: var(--muted); border-radius: 3px; }
+    .sc-table td:has(.sm-c2), .sc-table td:has(.sm-c3), .sc-table td:has(.sm-s2), .sc-table td:has(.sm-s3) { padding-left: 9px; padding-right: 9px; }
+    /* App only: shirt colors 3 per row, bigger characters */
+    .in-app .swatches { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-height: 42dvh; overflow-y: auto; padding: 2px; }
+    .in-app .swatch { display: grid; place-items: center; padding: 10px 0; border-radius: 12px; }
+    .in-app .swatch .stick { width: 46px !important; height: 62px !important; }
+    .in-app .swatch .stick svg { width: 100%; height: 100%; }
+    /* App only: remove x visible */
+    .in-app .lp-compact > .lp-rm { min-width: 0 !important; width: 40px !important; height: 38px; padding: 0 !important;
+      display: grid; place-items: center; font-size: 1.05rem !important; font-weight: 700; color: var(--danger) !important; }
+    /* App only: score pad fills the space simple modes leave; big game cards still get their room */
+    .in-app .play-mid { flex: 0 1 auto !important; }
+    .in-app .play-pad { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; }
+    .in-app .play-pad .score-grid { flex: 1 1 auto; min-height: 0; max-height: 380px; grid-auto-rows: minmax(52px, 1fr); align-content: stretch; }
+    .in-app .play-pad .score-grid button { height: 100%; font-size: clamp(1.5rem, 4.6vh, 2.2rem); }
+    .in-app .play-pad .score-grid .score-max { font-size: clamp(1.4rem, 4vh, 2rem); }
+    .in-app .play-card .hole-head { font-size: 1.15rem; }
+    .in-app .play-card .hole-head b { font-size: 1.45rem; }
+    .in-app .cc-title { font-size: 1.2rem !important; }
+    /* App only: End Round tab */
+    .in-app .play-nav .pn-end, .in-app .play-nav .pn-end.on { color: var(--danger); }
+    /* App only: results Card tab, front/back 9 sized to fill the space */
+    .in-app .results .res-card { overflow-y: auto; }
+    .in-app .res-card .sc-wrap { overflow: visible; }
+    .in-app .res-card table.card-9 { width: 100%; min-width: 0; table-layout: fixed; margin: 0 0 12px; }
+    .in-app .res-card table.card-9 th, .in-app .res-card table.card-9 td { height: var(--card-row, 36px); padding: 0 1px; font-size: var(--card-font, 15px); text-align: center; }
+    .in-app .res-card table.card-9 th:first-child, .in-app .res-card table.card-9 td:first-child { width: 22%; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .in-app .res-card table.card-9 td:first-child .stick { width: calc(var(--card-font, 15px) * 1.1) !important; height: calc(var(--card-font, 15px) * 1.5) !important; vertical-align: middle; margin-right: 3px; }
+    .in-app .res-card table.card-9 .tot { width: 10%; font-weight: 700; overflow: hidden; }
+    .in-app .res-card table.card-9 .sc-table .sm, .in-app .res-card table.card-9 .sm { min-width: 1.5em; height: 1.5em; }
+    /* Tournament seeding: label on its own line, buttons share the row below (app and website) */
+    .seed-row { flex-wrap: wrap; }
+    .seed-row > div:first-child { flex: 1 0 100%; }
+    .seed-row .fmt-pick { flex: 1 1 0; display: flex; gap: 8px; min-width: 0; }
+    .seed-row .fmt-pick .switch { flex: 1 1 0; min-width: 0; }
+    /* Tournament: tabs pinned at the top; name, code and links only on Setup (app and website) */
+    body.tn-view > .tn-tabs { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 7; width: 100%; max-width: 520px; box-sizing: border-box; margin: 0 auto 12px; }
+    body.tn-view:not([data-tn-tab="main"]) > h1, body.tn-view:not([data-tn-tab="main"]) > h1 + p { display: none !important; }
+    body.tn-view:not([data-tn-tab="main"]) { justify-content: flex-start; }
+    .in-app .res-card table.card-9 td, .in-app .res-card table.card-9 th { overflow: visible; white-space: nowrap; }
+    .in-app .res-card table.card-9 .sm { min-width: 1.45em; height: 1.45em; padding: 0; }
+    .in-app .res-card table.card-9 .sm-c3::after, .in-app .res-card table.card-9 .sm-s3::after { inset: -4px; }
+    .in-app .res-card table.card-9 td:has(.sm) { padding: 0 !important; }
+    /* App only: profile links as rows */
+    .in-app .profile-links { display: flex; flex-direction: column; gap: 0; margin: 12px 0 0; }
+    .in-app .profile-links a { display: flex; align-items: center; justify-content: space-between; padding: 13px 4px; font-size: 1.08rem;
+      color: var(--muted) !important; text-decoration: none !important; border-bottom: 1px solid rgba(var(--muted-rgb),0.2); }
+    .in-app .profile-links a:first-child { border-top: 1px solid rgba(var(--muted-rgb),0.2); }
+    .in-app .profile-links a::after { content: "\203A"; font-size: 1.4rem; line-height: 1; opacity: 0.7; }
   </style>
   <meta name="description" content="Party games, side bets, seasons and tournaments for your golf crew.">
   <meta property="og:type" content="website">
@@ -1238,6 +1610,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 </head>
 <body>
+  <script src="loadup.js"></script>
   <h1 aria-label="Parcade"><span class="L" aria-hidden="true">P</span><span class="L" aria-hidden="true">a</span><span class="L" aria-hidden="true">r</span><span class="L" aria-hidden="true">c</span><span class="L" aria-hidden="true">a</span><span class="L" aria-hidden="true">d</span><span class="L" aria-hidden="true">e</span><svg class="victim" viewBox="0 0 40 40" aria-hidden="true">
     <g class="v-body" fill="none" stroke="#FF5C7A" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="filter:drop-shadow(0 0 3px #FF5C7A)">
       <circle cx="20" cy="10" r="5"/><path d="M20 15V27M20 19l-6 4M20 19l6 4M20 27l-5 11M20 27l5 11"/>

@@ -128,12 +128,15 @@ function figureEl(who, size = 18, extra, roomy) {
   const color = pl ? pl.color : who;
   const pose = extra === true ? "cheer" : typeof extra === "string" ? extra : "idle";
   const outfit = extra && typeof extra === "object" ? extra : pl && pl.outfit;
-  const h = Math.round(size * 1.25), w = Math.round(h * PX.W / PX.H);
+  // App: small standing figures become a face close-up (hat to shirt collar) so they're readable
+  const faceOnly = document.documentElement.classList.contains("in-app") && size <= 20 && pose === "idle";
+  const h = faceOnly ? Math.round(size * 1.4) : Math.round(size * 1.25), w = faceOnly ? h : Math.round(h * PX.W / PX.H);
   const el = document.createElement("span");
-  el.className = "stick";
+  el.className = faceOnly ? "stick stick-face" : "stick";
   el.style.width = w + "px";
   el.style.height = h + "px";
-  el.innerHTML = PX.svg(outfitFor(color, outfit), pose);
+  const svg = PX.svg(outfitFor(color, outfit), pose);
+  el.innerHTML = faceOnly ? svg.replace(/viewBox="0 0 \d+ \d+"/, 'viewBox="3 1 16 16"').replace('preserveAspectRatio="xMidYMax meet"', 'preserveAspectRatio="xMidYMid meet"') : svg;
   return el;
 }
 
@@ -522,6 +525,8 @@ async function ensureUser() {
   return userPromise;
 }
 
+const IN_APP = document.documentElement.classList.contains("in-app");
+
 // ---------- Tiers: guest (no account), free account, Club Member (supabase/club.sql) ----------
 // The database decides who's a member (is_club_member, plus triggers on rounds and tournaments).
 // This copy only picks which options to lock. Reloaded when the account changes or the app comes back into view.
@@ -560,6 +565,11 @@ function clubModeLock() {
 
 // Tapped something that's a Club Member perk
 async function needClub(what) {
+  // iOS app: no way to buy outside in-app purchase yet, so no link to /club (briefs/app-store-ready.md section 6)
+  if (IN_APP) {
+    await pickFrom("This is a Club perk" + (what ? " (" + what + ")" : "") + ".", [{ label: "Got it", value: "ok" }], { noCancel: true });
+    return;
+  }
   const pick = await pickFrom(CRABBY_LINES.clubPerk + (what ? " (" + what + ")" : ""), [
     { label: "Become a Club Member", value: "club" },
     { label: "Not now", value: "no" }
@@ -707,6 +717,7 @@ async function loadRound(code) {
   document.body.classList.add("in-round");
   const box = document.createElement("div");
   box.style.cssText = "margin-top:16px;width:100%;max-width:360px";
+  box.className = "round-box";
   $("status").before(box);
 
   const user = await ensureUser();
@@ -807,6 +818,55 @@ async function loadRound(code) {
     if (navigator.share) { try { await navigator.share({ title: round.name, url: link }); } catch (e) {} }
     else { await navigator.clipboard.writeText(link); share.textContent = "Link copied!"; }
   };
+  if (!navigator.share && window.Native && Native.canShare()) share.onclick = () => Native.share({ title: round.name, url: link });
+  // App only: one Invite friends button (the iOS share sheet) instead of the link box, Copy and Share
+  const inApp = document.documentElement.classList.contains("in-app");
+  const invite = document.createElement("button");
+  invite.className = "invite-btn";
+  invite.textContent = "Invite friends";
+  invite.onclick = async () => {
+    if (window.Native) {
+      const shared = await Native.share({ title: round.name, text: "Join my round on Parcade. Code " + round.code + ".", url: link });
+      if (shared !== null) return;
+    }
+    try { await navigator.clipboard.writeText(link); toast("Link copied", true); }
+    catch (e) { toast("Couldn't copy. The round code is " + round.code); }
+  };
+
+  // App only: Course · Players · Game · Settings · Room tabs under the round name. The host's lobby sets setupTabsState.
+  const STEP_TABS = ["course", "size", "mode", "setup", "room"];
+  const setupTabs = document.createElement("div");
+  setupTabs.className = "setup-tabs";
+  let setupTabsState = null;
+  const shortCourse = name => name.replace(/\s+(Golf\s+)?(Course|Club|Links|Country Club|Golf Club|Golf Links|Mini Golf|Mini-Golf)$/i, "").trim() || name;
+  function renderSetupTabs() {
+    if (!inApp) return;
+    // Joiners only see status: the course, and the room they're in
+    const s = setupTabsState ? setupTabsState() : {
+      cur: 4, go: null,
+      done: [!!course, false, false, false, false],
+      vals: [course ? shortCourse(course.name) : "", "", "", "", players.length + " in"],
+    };
+    setupTabs.innerHTML = "";
+    [round.mini ? "Card" : "Course", "Players", "Game", "Settings", "Room"].forEach((label, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "setup-tab" + (i === s.cur ? " on" : "") + (s.done[i] ? " done" : "");
+      if (i === s.cur) b.setAttribute("aria-current", "step");
+      const lab = document.createElement("span");
+      lab.className = "st-label";
+      lab.textContent = (s.done[i] && i !== s.cur ? "✓ " : "") + label;
+      const val = document.createElement("span");
+      val.className = "st-val";
+      val.textContent = s.done[i] || i === s.cur ? s.vals[i] : "";
+      b.append(lab, val);
+      const tappable = !!s.go && round.status === "lobby" && s.done[i] && i !== s.cur;
+      b.disabled = !tappable && i !== s.cur;
+      if (tappable) b.onclick = () => s.go(STEP_TABS[i]);
+      else b.tabIndex = -1;
+      setupTabs.append(b);
+    });
+  }
 
   const lobbyList = document.createElement("ul");
   lobbyList.className = "player-list";
@@ -849,13 +909,14 @@ async function loadRound(code) {
   const guide = crabbyDesk();
   guide.reserve(Object.values(CRABBY_LINES).filter(l => l !== CRABBY_LINES.welcome));
   const whoTitle = h3("Who's in");
-  [linkRow, share, whoTitle, lobbyList, addPlayerBtn, groupTools, teamTools].forEach(el => el.classList.add("room-only"));
-  lobby.append(guide, linkRow, share, whoTitle, lobbyList, addPlayerBtn, groupTools, teamTools, join, rejoinBtn, hostArea, waiting);
+  [linkRow, share, invite, whoTitle, lobbyList, addPlayerBtn, groupTools, teamTools].forEach(el => el.classList.add("room-only"));
+  lobby.append(guide, ...(inApp ? [invite] : [linkRow, share, whoTitle]), lobbyList, addPlayerBtn, groupTools, teamTools, join, rejoinBtn, hostArea, waiting);
 
   let lobbyUpdateStart = null;
   if (round.host_id === user.id) {
     waiting.style.display = "none";
     const startBtn = document.createElement("button");
+    startBtn.className = "start-btn";
     startBtn.textContent = "Pick a mode to start";
     startBtn.disabled = true;
     startBtn.style.width = "100%";
@@ -932,12 +993,13 @@ async function loadRound(code) {
     setupNext.textContent = "Next: add players";
     setupNext.style.cssText = "width:100%;margin-top:14px";
     setupNext.onclick = () => setStep("room");
-    hostArea.append(setupBack, setupTitle, odRow, odNote);
+    // The app's step tabs replace the Change game link
+    hostArea.append(...(inApp ? [] : [setupBack]), setupTitle, odRow, odNote);
     const roomGame = document.createElement("div");
     roomGame.className = "room-only";
     function renderRoomGame() {
       roomGame.innerHTML = "";
-      if (!pickedSize) return;
+      if (!pickedSize || inApp) return;
       const head = h3("Game mode");
       head.style.marginTop = "28px";
       roomGame.append(head);
@@ -957,7 +1019,8 @@ async function loadRound(code) {
     let settingsPlace = null;
     function placeSettings(st) {
       if (!startBtn.parentNode) return;
-      const where = st === "room" ? "room" : "setup";
+      // The app's room leaves the game and settings to their tabs
+      const where = st === "room" && !inApp ? "room" : "setup";
       if (settingsPlace === where) return;
       settingsPlace = where;
       const els = [odRow, odNote, hcRow, pressRow, money, mullArea];
@@ -1469,7 +1532,8 @@ async function loadRound(code) {
       back.className = "link-btn";
       back.textContent = "Change player count";
       back.onclick = () => { pickedSize = null; pickedMode = null; renderModes(); updateStart(); setStep("size"); };
-      modeArea.append(back, h3("Pick a game mode for " + label.toLowerCase()));
+      if (!inApp) modeArea.append(back);
+      modeArea.append(h3("Pick a game mode for " + label.toLowerCase()));
       slideIn(modeArea);
       const picker = modeGrid({ modes: modesFor(pickedSize), selected: pickedMode, off: modeLock(), info: modeRules, onLocked: lockedMode, onPick: key => {
         pickedMode = key;
@@ -1494,7 +1558,7 @@ async function loadRound(code) {
       picker.fit();
     }
 
-    function updateStart() {
+    function syncStart() {
       const n = players.length;
       if ($("money-switch")) syncMoney();
       syncHc();
@@ -1516,6 +1580,7 @@ async function loadRound(code) {
       startBtn.disabled = false;
       startBtn.textContent = "Start game";
     }
+    function updateStart() { syncStart(); renderSetupTabs(); }
     const stepBar = document.createElement("div");
     stepBar.className = "room-only step-bar";
     const stepBack = document.createElement("button");
@@ -1529,7 +1594,25 @@ async function loadRound(code) {
     stepSettings.textContent = "Change settings";
     stepSettings.onclick = () => setStep("setup");
     stepBar.append(stepBack, stepSettings, stepSummary);
-    lobby.prepend(stepBar);
+    if (!inApp) lobby.prepend(stepBar);
+    // Step tabs: a step is finished once it's been passed and every step before it is finished
+    let maxReached = 0;
+    const SIZE_TABS = { "1": "1 player", "5": "5+ players" };
+    setupTabsState = () => {
+      const st = lobby.dataset.step;
+      const ok = [maxReached > 0, !!pickedSize, !!pickedMode, maxReached > 3, maxReached > 3];
+      const done = ok.reduce((acc, v, i) => acc.concat(v && (i === 0 || acc[i - 1])), []);
+      return {
+        cur: st === "confirm" ? 0 : STEP_TABS.indexOf(st),
+        go: setStep,
+        done,
+        vals: [course ? shortCourse(course.name) : round.mini ? "No card" : "No course",
+          pickedSize ? SIZE_TABS[pickedSize] || pickedSize + " players" : "",
+          pickedMode ? MODES[pickedMode].name : "",
+          "Settings \u2713",
+          players.length + " in"],
+      };
+    };
     function guideLine() {
       const st = lobby.dataset.step;
       if (st === "course") return round.mini ? (isClub ? CRABBY_LINES.courseMini : CRABBY_LINES.courseMiniGuest)
@@ -1555,6 +1638,7 @@ async function loadRound(code) {
     function setStep(st, fromHistory) {
       const stepChanged = lobby.dataset.step !== st;
       lobby.dataset.step = st;
+      maxReached = Math.max(maxReached, st === "confirm" ? 0 : STEP_TABS.indexOf(st));
       placeSettings(st);
       if (stepChanged && lobby.isConnected) {
         window.scrollTo(0, 0);
@@ -1571,6 +1655,7 @@ async function loadRound(code) {
         stepSummary.textContent = MODES[pickedMode].name + ", " + SIZES.find(([k]) => k === pickedSize)[1].toLowerCase() + (course ? ", " + course.name : "");
       }
       renderLobbyList();
+      renderSetupTabs();
       if (!firstStep) { slideIn(lobby); window.scrollTo(0, 0); }
       firstStep = false;
     }
@@ -1660,7 +1745,8 @@ async function loadRound(code) {
         </div>
       </div>`;
     hostArea.append(money);
-    const mq = (id) => money.querySelector("#" + id);
+    const optsRef = money.querySelector("#money-opts");
+    const mq = (id) => id === "money-opts" ? optsRef : (money.querySelector("#" + id) || optsRef.querySelector("#" + id));
     const num = id => { const v = parseFloat(mq(id).value); return isNaN(v) || v < 0 ? 0 : Math.round(v * 100) / 100; };
     const expectedPlayers = () => (pickedSize === "5" ? Math.max(5, Math.round(num("m-count")) || 5) : (+pickedSize || 1));
     const payers = () => (pickedMode === "caddy" ? players.filter(pl => pl.role === "caddy").length : Math.max(players.length, expectedPlayers()));
@@ -1694,11 +1780,56 @@ async function loadRound(code) {
       : stakes === "point" ? { stakes, per_point: num("m-per"), buy_in: null, payouts: null }
       : { stakes: "none", buy_in: null, payouts: null, per_point: null };
     syncMoney();
+    // App only: bet settings open in a popup instead of expanding the row, with a summary + Edit bets in the row
+    if (document.documentElement.classList.contains("in-app")) {
+      const summary = document.createElement("div");
+      summary.className = "money-summary";
+      summary.hidden = true;
+      const sumText = document.createElement("span");
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "link-btn";
+      edit.textContent = "Edit bets";
+      summary.append(sumText, edit);
+      optsRef.before(summary);
+      const showSummary = () => {
+        const on = stakes !== "none";
+        summary.hidden = !on;
+        if (!on) return;
+        sumText.textContent = stakes === "pot" ? "Buy-in pot: $" + (potBox.buyIn() || 0) + " each"
+          : "$" + num("m-per") + " per " + (MONEY_UNITS[pickedMode] || MONEY_UNITS.party).unit;
+      };
+      const openBets = () => {
+        const wrap = document.createElement("div");
+        wrap.className = "modal bets-modal";
+        const panel = document.createElement("div");
+        panel.className = "modal-panel";
+        const h = document.createElement("h2");
+        h.textContent = "Bet settings";
+        const done = document.createElement("button");
+        done.type = "button";
+        done.textContent = "Done";
+        done.style.cssText = "width:100%;margin-top:14px";
+        panel.append(h, optsRef, done);
+        wrap.append(panel);
+        document.body.append(wrap);
+        const close = () => { summary.after(optsRef); wrap.remove(); showSummary(); };
+        done.onclick = close;
+        wrap.onclick = e => { if (e.target === wrap) close(); };
+        new MutationObserver((_, o) => { if (!wrap.isConnected) { o.disconnect(); if (!optsRef.isConnected) summary.after(optsRef); showSummary(); } })
+          .observe(document.body, { childList: true });
+      };
+      edit.onclick = openBets;
+      const sw = mq("money-switch"), toggle = sw.onclick;
+      sw.onclick = () => { const was = stakes; toggle(); if (was === "none" && stakes !== "none") openBets(); showSummary(); };
+      showSummary();
+    }
 
     startBtn.classList.add("room-only");
     startBtn.style.marginTop = "14px";
     hostArea.append(startBtn);
   }
+  if (inApp) lobby.prepend(setupTabs);
 
   // ---------- Game ----------
   const game = document.createElement("div");
@@ -1804,9 +1935,32 @@ async function loadRound(code) {
   });
   tabBtns.rules.classList.add("tab-small");
   tabBtns.course.classList.add("tab-small");
+  Object.entries(panels).forEach(([key, el]) => (el.className = "play-panel panel-" + key));
   panels.hole.append(card);
+  // App only: hole info on top, player chips, mode cards in the middle, score pad pinned at the bottom.
+  // The mulligan button rides on the "Your score" row; "Waiting on" joins the hole status line (appHoleView).
+  if (inApp) {
+    const q = id => card.querySelector("#" + id);
+    card.classList.add("play-card");
+    const meta = document.createElement("span");
+    meta.className = "hl-meta";
+    q("hole-label").after(meta);
+    card.querySelector(".hole-head").after(q("keeper-row"));
+    const mid = document.createElement("div");
+    mid.className = "play-mid";
+    [...card.children].filter(el => !el.matches("#hole-strip, .hole-head, #hole-info, #keeper-row, #mull-box, #recap-box, #score-label, #score-grid, #waiting-on"))
+      .forEach(el => mid.append(el));
+    mid.append(q("recap-box"));
+    const padHead = document.createElement("div");
+    padHead.className = "pad-head";
+    padHead.append(q("score-label"), q("mull-box"));
+    const pad = document.createElement("div");
+    pad.className = "play-pad";
+    pad.append(padHead, q("score-grid"));
+    card.append(mid, pad);
+  }
   const finishBtn = document.createElement("button");
-  finishBtn.className = "btn-ghost";
+  finishBtn.className = "btn-ghost finish-btn";
   finishBtn.textContent = "Finish round";
   finishBtn.style.cssText = "width:100%;margin-top:16px";
   finishBtn.style.display = round.host_id === user.id ? "block" : "none";
@@ -1858,6 +2012,7 @@ async function loadRound(code) {
     refresh();
   };
   let messages = [], unread = 0, activeTab = "hole";
+  let playNav = null, playNavBtns = null, pbTitle = null;
   const chatList = document.createElement("div");
   chatList.className = "chat-list";
   const chatForm = document.createElement("form");
@@ -1882,6 +2037,7 @@ async function loadRound(code) {
 
   function updateChatTab() {
     tabBtns.chat.textContent = "Chat" + (unread ? " (" + unread + ")" : "");
+    syncPlayNav();
   }
 
   function renderChat() {
@@ -1938,8 +2094,10 @@ async function loadRound(code) {
     if (key === "course") renderCoursePanel();
     if (key === "rules") { panels.rules.innerHTML = ""; renderRules(panels.rules, [RULES[round.mode] ? round.mode : "party", "round"], deckFor(round), holesIn(round), round.mini); }
     if (key === "chat") { unread = 0; updateChatTab(); setTimeout(() => (chatList.scrollTop = chatList.scrollHeight), 0); }
-    Object.entries(panels).forEach(([k, el]) => (el.style.display = k === key ? "block" : "none"));
+    Object.entries(panels).forEach(([k, el]) => (el.style.display = k === key ? "" : "none"));
     Object.entries(tabBtns).forEach(([k, b]) => b.classList.toggle("active", k === key));
+    syncPlayNav();
+    syncPlayBottom();
   }
   game.append(lateWrap, tabs, panels.hole, panels.board, panels.chat, panels.bets, panels.course, panels.rules);
   showTab("hole");
@@ -1967,6 +2125,7 @@ async function loadRound(code) {
   homeTop.onclick = () => (location.href = "/");
   const topBar = document.createElement("div");
   topBar.className = "top-actions";
+  let tourneyCode = null, tourneyNote = "";
   let keeperMode = false, scoringFor = null;
   const canKeep = () => round.host_id === user.id || (!!me && me.is_co_leader);
   try { keeperMode = localStorage.getItem("parful-keeper-" + round.id) === "1"; } catch (e) {}
@@ -1995,29 +2154,407 @@ async function loadRound(code) {
   keeperTip.textContent = "Enter scores for everyone in your group from this phone. Handy when only one phone is out.";
   keeperTop.setAttribute("aria-describedby", "keeper-tip");
   keeperWrap.append(keeperTop, keeperTip);
-  topBar.append(homeTop, copyTop, keeperWrap);
+  // App only: Delete this round lives in a ⋯ menu next to Home while the round is being set up
+  const moreTop = document.createElement("button");
+  moreTop.className = "copy-top more-top";
+  moreTop.textContent = "\u22EF";
+  moreTop.setAttribute("aria-label", "More");
+  moreTop.style.display = "none";
+  moreTop.onclick = async () => {
+    const pick = await pickFrom(round.name, [{ label: "Delete this round", value: "delete" }]);
+    if (pick === "delete") deleteRound();
+  };
+  topBar.append(homeTop, moreTop, copyTop, keeperWrap);
   if (round.tournament_id) {
     const { data: tourney } = await db.from("tournaments").select("code, schedule, holes_per_match").eq("id", round.tournament_id).maybeSingle();
     if (tourney) {
       const tourTop = document.createElement("button");
       tourTop.className = "copy-top";
       tourTop.textContent = "Bracket";
-      tourTop.onclick = () => (location.href = "/?t=" + tourney.code);
+      tourTop.onclick = () => (location.href = "/?t=" + tourney.code + "&tab=bracket");
       topBar.append(tourTop);
       const tNote = document.createElement("p");
-      tNote.className = "waiting";
+      tNote.className = "waiting tourney-note";
       tNote.style.cssText = "margin:0 0 12px";
       tNote.textContent = tourney.schedule === "one_day"
         ? "Tournament round. Play all 18. Your matches are scored on the bracket, a chunk of holes at a time."
         : tourney.holes_per_match === 9 ? "Tournament match, 9 holes. It's final after hole 9. The bracket has the team score."
         : "Tournament match. The bracket has the team score.";
       panels.hole.prepend(tNote);
+      tourneyCode = tourney.code;
+      tourneyNote = tNote.textContent;
     }
   }
   const roundSound = soundButton();
   roundSound.classList.add("sound-home");
   document.body.append(roundSound);
   document.body.append(topBar);
+
+  // ---------- App only: slim top bar, bottom tabs and compact hole view while the round is playing ----------
+  const PN_ICONS = {
+    hole: '<path d="M6 21V3l12 4.5L6 12"/><path d="M3 21h9"/>',
+    board: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"/>',
+    chat: '<path d="M4 5h16v11H9l-5 4z"/>',
+    bets: '<path d="M12 3v18M16.5 7.5c-.6-1.5-2.3-2.5-4.5-2.5-2.6 0-4.5 1.4-4.5 3.4 0 4.6 9.5 2.4 9.5 7.2 0 2-2 3.4-5 3.4-2.4 0-4.2-1-5-2.7"/>',
+    more: '<circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/>',
+    end: '<circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor"/>',
+  };
+  if (inApp) {
+    const playBar = document.createElement("div");
+    playBar.className = "play-bar";
+    const pbHome = document.createElement("button");
+    pbHome.type = "button";
+    pbHome.className = "pb-btn";
+    pbHome.textContent = "‹ Home";
+    pbHome.onclick = () => (location.href = "/");
+    pbTitle = document.createElement("div");
+    pbTitle.className = "pb-title";
+    pbTitle.textContent = round.name;
+    const pbMore = document.createElement("button");
+    pbMore.type = "button";
+    pbMore.className = "pb-btn pb-more";
+    pbMore.textContent = "⋯";
+    pbMore.setAttribute("aria-label", "Round menu");
+    pbMore.onclick = openRoundMenu;
+    playBar.append(pbHome, pbTitle, pbMore);
+    playNav = document.createElement("nav");
+    playNav.className = "play-nav";
+    playNav.setAttribute("aria-label", "Round");
+    playNavBtns = {};
+    [["hole", "Hole"], ["board", "Board"], ["chat", "Chat"], ["bets", "Bets"], ["end", "End Round"]].forEach(([key, label]) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "pn-btn";
+      b.innerHTML = '<span class="pn-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        PN_ICONS[key] + "</svg></span><span>" + label + "</span>";
+      if (key === "end") b.classList.add("pn-end");
+      b.onclick = () => (key === "end" ? finishBtn.onclick() : showTab(key));
+      playNav.append(b);
+      playNavBtns[key] = b;
+    });
+    document.body.append(playBar, playNav);
+    addEventListener("resize", () => requestAnimationFrame(syncPlayBottom));
+  }
+
+  // Bets shows when the round has money on it, side bets are possible, or someone already posted one
+  function betsTabOn() {
+    return round.stakes === "pot" || round.stakes === "point" || hostClub || bets.length > 0;
+  }
+
+  function syncPlayNav() {
+    if (!playNavBtns) return;
+    const on = activeTab;
+    Object.entries(playNavBtns).forEach(([k, b]) => {
+      b.classList.toggle("on", k === on);
+      if (k === on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+    });
+    playNavBtns.chat.classList.toggle("dot", unread > 0);
+    playNavBtns.chat.setAttribute("aria-label", unread ? "Chat, " + unread + " new" : "Chat");
+    playNavBtns.bets.hidden = !betsTabOn();
+    playNavBtns.end.hidden = !(round.host_id === user.id && round.status === "playing");
+  }
+
+  // Toasts and recap cards sit above the score pad (Hole) or the tab bar (other tabs)
+  function syncPlayBottom() {
+    if (document.body.classList.contains("app-results")) {
+      const acts = scoreArea.querySelector(".res-actions");
+      const top = acts && acts.childElementCount ? acts.getBoundingClientRect().top : innerHeight - 16;
+      document.body.style.setProperty("--play-bottom", Math.max(0, Math.round(innerHeight - top + 8)) + "px");
+      return;
+    }
+    if (!document.body.classList.contains("app-play") || !playNav) return;
+    const pad = card.querySelector(".play-pad");
+    const r = activeTab === "hole" && pad && pad.offsetParent ? pad.getBoundingClientRect() : playNav.getBoundingClientRect();
+    document.body.style.setProperty("--play-bottom", Math.max(0, Math.round(innerHeight - r.top + 8)) + "px");
+  }
+
+  // A small menu: "top" drops from the ⋯ button, "bottom" rises from the More tab
+  function playMenu(pos, build) {
+    const ov = document.createElement("div");
+    ov.className = "plm-ov";
+    const m = document.createElement("div");
+    m.className = "plm plm-" + pos;
+    m.setAttribute("role", "menu");
+    const close = () => ov.remove();
+    m.append(...build(close));
+    ov.onclick = e => { if (e.target === ov) close(); };
+    ov.append(m);
+    document.body.append(ov);
+  }
+  const plmEl = (tag, cls, text) => { const e = document.createElement(tag); e.className = cls; if (text != null) e.textContent = text; return e; };
+  function plmItem(label, fn) {
+    const b = plmEl("button", "plm-item", label);
+    b.type = "button";
+    b.setAttribute("role", "menuitem");
+    b.onclick = fn;
+    return b;
+  }
+  function plmSwitch(label, get, set) {
+    const row = plmEl("div", "plm-row");
+    const sw = plmEl("button", "switch");
+    sw.type = "button";
+    sw.setAttribute("role", "switch");
+    sw.setAttribute("aria-label", label);
+    const sync = () => { const v = get(); sw.textContent = v ? "On" : "Off"; sw.classList.toggle("on", v); sw.setAttribute("aria-checked", String(v)); };
+    sw.onclick = () => { set(!get()); sync(); };
+    sync();
+    row.append(plmEl("span", "", label), sw);
+    return row;
+  }
+
+  function openMoreSheet() {
+    playMenu("bottom", close => [
+      plmItem("Course", () => { close(); showTab("course"); }),
+      plmItem("Rules", () => { close(); showTab("rules"); }),
+    ]);
+  }
+
+  function openRoundMenu() {
+    playMenu("top", close => {
+      const items = [
+        plmItem("Course", () => { close(); showTab("course"); }),
+        plmItem("Rules", () => { close(); showTab("rules"); }),
+        plmEl("div", "plm-sep"),
+        plmItem(navigator.share ? "Share invite" : "Copy link", () => { close(); invite.onclick(); })];
+      if (round.status === "playing" && canKeep()) {
+        items.push(plmSwitch("Scorekeeper", () => keeperMode, () => keeperTop.onclick()), plmEl("div", "plm-hint", keeperTip.textContent));
+      }
+      items.push(plmEl("div", "plm-sep"));
+      items.push(plmSwitch("Sound", () => !Sound.muted, v => { Sound.setMuted(!v); if (v) setTimeout(() => Sound.play("pop"), 60); }));
+      const vol = plmEl("label", "plm-row");
+      const slider = document.createElement("input");
+      slider.type = "range"; slider.min = "0"; slider.max = "100"; slider.step = "1";
+      slider.value = String(Math.round(Sound.volume * 100));
+      slider.oninput = () => Sound.setVolume(slider.value / 100);
+      slider.onchange = () => Sound.play("pop");
+      vol.append(plmEl("span", "", "Volume"), slider);
+      items.push(vol, plmSwitch("Music", () => Sound.musicOn, v => Sound.setMusic(v)));
+      if (tourneyCode || round.host_id === user.id) items.push(plmEl("div", "plm-sep"));
+      if (tourneyCode) items.push(plmItem("Tournament bracket", () => { close(); location.href = "/?t=" + tourneyCode + "&tab=bracket"; }));
+      if (round.host_id === user.id && round.status === "finished") items.push(plmItem("Delete this round", () => { close(); deleteRound(); }));
+      items.push(plmEl("div", "plm-sep"), plmEl("div", "plm-summary", sub.textContent));
+      if (tourneyNote) items.push(plmEl("div", "plm-summary", tourneyNote));
+      return items;
+    });
+  }
+
+  // Each game-mode card shrinks to one row (icon, title, i) plus a short status line and its controls.
+  // [box, icon, title, status line]. Everything else in the card opens from the i.
+  const COMPACT_CARDS = [
+    ["ch-box", "\u{1F0CF}", "#ch-text", "#ch-winner"],
+    ["wolf-box", "\u{1F43A}", "#wolf-name", "#wolf-teams"],
+    ["wad-box", "\u{1F4B0}", "#wad-pot", null],
+    ["vegas-box", "\u{1F3B0}", "#vegas-teams", "#vegas-result"],
+    ["best-box", "\u{1F91D}", "#best-teams", "#best-result"],
+    ["sixes-box", "\u{1F91D}", "#sixes-teams", "#sixes-result"],
+    ["nassau-box", "⚔️", "#nassau-status", "#nassau-result"],
+    ["match-box", "⚔️", "#match-status", "#match-result"],
+    ["skins-box", "\u{1F4B0}", "#skins-pot", "#skins-result"],
+    ["stab-box", "⭐", "#stab-par", "#stab-result"],
+    ["bbb-box", "\u{1F3AF}", null, null],
+    ["recap-box", "\u{1F3C1}", ".recap-title", null],
+  ];
+  function compactTitle(id, el) {
+    if (id === "bbb-box") return "Bingo Bango Bongo";
+    if (!el) return "";
+    if (id === "nassau-box") {
+      const want = hole <= 9 ? "Front:" : "Back:";
+      const line = [...el.children].map(d => d.textContent).find(t => t.startsWith(want));
+      return line || el.textContent;
+    }
+    if (id === "stab-box") return el.textContent.split(". ")[0] + " · par is 2 points";
+    return el.textContent;
+  }
+  function compactCards() {
+    COMPACT_CARDS.forEach(([id, icon, titleSel, subSel]) => {
+      const box = $(id);
+      if (!box || box.style.display === "none") return;
+      box.classList.add("cc");
+      let head = box.querySelector(":scope > .cc-head");
+      if (!head) {
+        head = plmEl("div", "cc-head");
+        const i = plmEl("button", "cc-i", "i");
+        i.type = "button";
+        i.setAttribute("aria-label", "More about this");
+        i.onclick = () => cardInfo(box);
+        head.append(plmEl("span", "cc-icon"), plmEl("span", "cc-title"), i);
+        box.prepend(head);
+      }
+      const sub = subSel && box.querySelector(subSel);
+      [...box.children].forEach(el => {
+        if (el === head) return;
+        el.classList.toggle("cc-sub", el === sub);
+        el.classList.toggle("cc-hide", el !== sub && !el.matches(".chip-row, #wad-log, #bbb-rows"));
+      });
+      let t = compactTitle(id, titleSel && box.querySelector(titleSel)).trim(), ic = icon;
+      const lead = t.match(/^(\p{Extended_Pictographic}️?)\s*/u);
+      if (lead) { ic = lead[1]; t = t.slice(lead[0].length); }
+      head.querySelector(".cc-icon").textContent = ic;
+      head.querySelector(".cc-title").textContent = t;
+    });
+  }
+  // The full card, minus its buttons, in a popup
+  function cardInfo(box) {
+    const c = box.cloneNode(true);
+    c.querySelectorAll(".cc-head, .chip-row, button, form, input").forEach(e => e.remove());
+    c.querySelectorAll("[id]").forEach(e => e.removeAttribute("id"));
+    c.querySelectorAll(".cc-hide, .cc-sub").forEach(e => e.classList.remove("cc-hide", "cc-sub"));
+    const kick = c.querySelector(".ch-kicker");
+    const title = kick ? kick.textContent : "About this hole";
+    if (kick) kick.remove();
+    c.removeAttribute("id");
+    c.removeAttribute("style");
+    c.className = "cc-info";
+    const wrap = plmEl("div", "modal");
+    const panel = plmEl("div", "modal-panel");
+    const ok = plmEl("button", "", "Got it");
+    ok.type = "button";
+    ok.style.width = "100%";
+    const close = () => wrap.remove();
+    ok.onclick = close;
+    wrap.onclick = e => { if (e.target === wrap) close(); };
+    panel.append(plmEl("h2", "", title), c, ok);
+    wrap.append(panel);
+    document.body.append(wrap);
+  }
+  // Hole header in two lines: "Hole 1 · Par 4 · Hdcp 6", then the status (and who the group is waiting on)
+  function appHoleView() {
+    const bits = [];
+    if (course && Array.isArray(course.pars)) bits.push("Par " + course.pars[hole - 1]);
+    if (course && Array.isArray(course.hcp_index) && course.hcp_index.length === 18) bits.push("Hdcp " + course.hcp_index[hole - 1]);
+    card.querySelector(".hl-meta").textContent = bits.length ? " · " + bits.join(" · ") : "";
+    const waiting = $("waiting-on").textContent;
+    $("hole-mine").textContent = $("hole-mine").textContent.replace(", you get", " · you get") + (waiting ? " · " + waiting : "");
+    compactCards();
+    requestAnimationFrame(syncPlayBottom);
+  }
+
+  // App only: results on one screen. The finished-round view is split into a compact podium, Scores / Payouts /
+  // Details / Card tabs (only the ones with something in them) and the Continue round, Add to season and Home
+  // buttons pinned at the bottom. Layout only: renderScorecard still builds everything.
+  let resTab = "scores";
+  const RES_TABS = [["scores", "Scores"], ["payouts", "Payouts"], ["details", "Details"], ["card", "Card"]];
+  function appResultsView() {
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+    const top = [], acts = [], last = [];
+    const secs = { scores: [], payouts: [], details: [], card: [] };
+    let cur = "details";   // match status lines and the Sixes / Nassau tables come right after the podium
+    [...scoreArea.children].forEach(c => {
+      if (c.matches(".res-continue, .sc-actions")) return acts.push(c);
+      if (c.matches(".podium, .caddy-awards")) return top.push(c);
+      if (c.matches(".last-place")) return last.push(c);
+      if (c.tagName === "H3") {
+        const t = c.textContent;
+        cur = /^(Final scores|Caddies|Golfers)/.test(t) ? "scores" : /Payouts|Who pays who/.test(t) ? "payouts" : /^Scorecard/.test(t) ? "card" : "details";
+        if (/^(Final scores|💵 Payouts|Scorecard)/.test(t)) c.classList.add("res-dup");   // the tab already says it
+      }
+      secs[cur].push(c);
+    });
+    secs.scores.push(...last);
+
+    // Podium: name and result on one line under each character
+    top.forEach(t => t.querySelectorAll(".podium-col, .award").forEach(col => {
+      const nm = col.querySelector(".podium-name"), sc = col.querySelector(".podium-score");
+      if (!nm || !sc) return;
+      const line = el("div", "pod-line");
+      nm.before(line);
+      line.append(nm, el("span", "pod-dot", "\u00A0\u00B7\u00A0"), sc);
+    }));
+
+    // Scores: "Thru N holes" shows once under the list when it's the same for everyone, otherwise as a small tag
+    secs.scores.filter(c => c.matches("ul.player-list")).forEach(ul => {
+      const THRU = /(?:^|, )thru (\d+) holes$/i;
+      const ds = [...ul.querySelectorAll(":scope > li > div > .detail")];
+      const ns = ds.map(d => (d.textContent.match(THRU) || [])[1]).filter(Boolean);
+      if (!ns.length || ns.length !== ds.filter(d => !/^No scores/.test(d.textContent)).length || ns.some(n => n !== ns[0])) return;
+      ds.forEach(d => { d.textContent = d.textContent.replace(THRU, ""); if (!d.textContent) d.remove(); });
+      const i = secs.scores.indexOf(ul);
+      secs.scores.splice(i + 1, 0, el("p", "res-note", "Thru " + ns[0] + " holes"));
+    });
+    // Payouts: the Round / bets breakdown only when there's more than one part (otherwise it repeats the net)
+    secs.payouts.forEach(c => c.matches("ul.player-list") && c.querySelectorAll(".detail").forEach(d => { if (!d.textContent.includes(",")) d.remove(); }));
+
+    const tabs = RES_TABS.filter(([k]) => secs[k].length);
+    if (!secs[resTab].length) resTab = "scores";
+    const seg = el("div", "dress-seg res-tabs");
+    seg.setAttribute("role", "group");
+    seg.setAttribute("aria-label", "Results");
+    seg.hidden = tabs.length < 2;
+    const body = el("div", "res-body");
+    const panes = {};
+    tabs.forEach(([k, label]) => {
+      const pane = el("div", "res-sec res-" + k);
+      pane.append(...secs[k]);
+      panes[k] = pane;
+      body.append(pane);
+      const b = el("button", null, label);
+      b.type = "button";
+      b.dataset.k = k;
+      b.onclick = () => { resTab = k; show(); };
+      seg.append(b);
+    });
+    let show = function () {
+      Object.entries(panes).forEach(([k, p]) => (p.hidden = k !== resTab));
+      seg.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.k === resTab)));
+    };
+    // App: the Card tab splits into front and back 9 and sizes its rows to fill the space for however many players
+    if (panes.card) {
+      const num = t => { const n = parseInt(String(t).replace("*", ""), 10); return isNaN(n) ? null : n; };
+      panes.card.querySelectorAll("table.sc-table").forEach(table => {
+        const rows = [...table.rows];
+        if (!rows.length) return;
+        const n = rows[0].cells.length, holes = n - 2;
+        if (holes <= 9) return;
+        const part = (from, to, label, withTot) => {
+          const t = table.cloneNode(false);
+          rows.forEach((r, ri) => {
+            const tr = r.cloneNode(false);
+            tr.append(r.cells[0].cloneNode(true));
+            let sum = 0, any = false;
+            for (let c = from; c <= to; c++) {
+              const cell = r.cells[c];
+              tr.append(cell.cloneNode(true));
+              const v = num(cell.textContent);
+              if (ri > 0 && v != null) { sum += v; any = true; }
+            }
+            const tag = ri === 0 ? "th" : "td";
+            const out = document.createElement(tag);
+            out.className = "tot";
+            out.textContent = ri === 0 ? label : any ? String(sum) : "-";
+            tr.append(out);
+            if (withTot) tr.append(r.cells[n - 1].cloneNode(true));
+            t.append(tr);
+          });
+          return t;
+        };
+        const front = part(1, 9, "Out", false), back = part(10, holes, "In", true);
+        front.classList.add("card-9"); back.classList.add("card-9");
+        table.replaceWith(front, back);
+      });
+      const fitCard = () => {
+        const p = panes.card;
+        if (p.hidden || !p.clientHeight) return;
+        const rows = [...p.querySelectorAll("table.sc-table tr")].length || 1;
+        const tables = p.querySelectorAll("table.sc-table").length;
+        const avail = p.clientHeight - tables * 12 - 8;
+        // Each hole column is (width - name 22% - totals 10% each) / 9; text and circles must fit inside it
+        const w = p.clientWidth || 340;
+        const cellW = (w * (1 - 0.22 - 0.2)) / 9;
+        const font = Math.max(11, Math.min(22, Math.floor(cellW * 0.48), Math.floor((avail / rows) * 0.42)));
+        const rowH = Math.max(28, Math.min(Math.floor(avail / rows), Math.round(font * 2.6)));
+        p.style.setProperty("--card-row", rowH + "px");
+        p.style.setProperty("--card-font", font + "px");
+      };
+      const baseShow = show;
+      show = () => { baseShow(); requestAnimationFrame(fitCard); };
+      addEventListener("resize", () => requestAnimationFrame(fitCard));
+    }
+    show();
+    const actions = el("div", "res-actions");
+    actions.append(...acts.filter(a => a.childElementCount || a.matches(".res-continue")));
+    scoreArea.append(...top, seg, body, actions);
+    requestAnimationFrame(syncPlayBottom);
+  }
 
   // Best Ball and Vegas always pick teams. Nassau does when it's 2 vs 2.
   function teamsPicked() { return TEAM_MODES.includes(pickedMode) || (pickedMode === "nassau" && nassauTeamGame(players)); }
@@ -2048,8 +2585,9 @@ async function loadRound(code) {
         const li = document.createElement("li");
         li.className = "lobby-player";
         const name = document.createElement("span");
+        if (inApp) li.classList.add("lp-compact");
         name.textContent = pl.name
-          + (pl.user_id === round.host_id ? " (party leader)" : "")
+          + (pl.user_id === round.host_id && !inApp ? " (party leader)" : "")
           + (pl.is_co_leader ? " (co-leader)" : "")
           + (pl.team && pickedMode !== "sixes" && round.mode !== "sixes" && (pickedMode !== "nassau" || teamsPicked()) ? " (" + TEAM_NAMES[pl.team] + ")" : "")
           + (pickedMode === "sixes" && players.indexOf(pl) < 4 ? " (Player " + "ABCD"[players.indexOf(pl)] + ")" : "")
@@ -2058,14 +2596,42 @@ async function loadRound(code) {
               : "") + ")" : "")
           + (pl.user_id === user.id ? " (you)" : "");
         name.prepend(figureEl(pl));
-        if (clubIds.has(pl.user_id)) name.append(clubBadge());
+        if (inApp) {
+          // Compact row: the name cuts off first, then a crown for the party leader and a star chip for the Club
+          const nm = document.createElement("span");
+          nm.className = "lp-name";
+          nm.textContent = pl.name;
+          const tags = document.createElement("span");
+          tags.className = "lp-tags";
+          tags.textContent = name.lastChild.textContent.slice(pl.name.length);
+          name.lastChild.replaceWith(nm);
+          name.className = "lp-who";
+          if (pl.user_id === round.host_id) {
+            const crown = document.createElement("span");
+            crown.className = "lp-crown";
+            crown.textContent = "\u{1F451}";
+            crown.title = "Party leader";
+            crown.setAttribute("aria-label", "Party leader");
+            name.append(crown);
+          }
+          if (tags.textContent) name.append(tags);
+          if (clubIds.has(pl.user_id)) {
+            const star = clubBadge();
+            star.classList.add("club-star");
+            star.textContent = "\u2B50";
+            star.title = "Club Member";
+            star.setAttribute("aria-label", "Club Member");
+            name.append(star);
+          }
+        } else if (clubIds.has(pl.user_id)) name.append(clubBadge());
         li.append(name);
         if (round.handicap) {
-          const txt = pl.hcp != null ? "Handicap " + pl.hcp : pl.usual_score ? "Shoots " + pl.usual_score : "Handicap ?";
+          const txt = inApp ? (pl.hcp != null ? "Hcp " + pl.hcp : pl.usual_score ? "Shoots " + pl.usual_score : "Hcp ?")
+            : pl.hcp != null ? "Handicap " + pl.hcp : pl.usual_score ? "Shoots " + pl.usual_score : "Handicap ?";
           if (isLeader || pl.user_id === user.id) {
             const eb = document.createElement("button");
             eb.className = "mini";
-            eb.textContent = txt + " (edit)";
+            eb.textContent = inApp ? txt + " \u270E" : txt + " (edit)";
             eb.onclick = () => editUsual(pl);
             li.append(eb);
           } else {
@@ -2075,7 +2641,7 @@ async function loadRound(code) {
             li.append(sp);
           }
         }
-        if (round.handicap && pl.usual_score) {
+        if (round.handicap && pl.usual_score && !inApp) {
           const st = document.createElement("span");
           st.className = "detail";
           st.style.width = "100%";
@@ -2118,8 +2684,9 @@ async function loadRound(code) {
         }
         if (isLeader && pl.user_id !== round.host_id) {
           const rm = document.createElement("button");
-          rm.className = "mini";
-          rm.textContent = "Remove";
+          rm.className = "mini" + (inApp ? " lp-rm" : "");
+          rm.textContent = inApp ? "\u2715" : "Remove";
+          rm.setAttribute("aria-label", "Remove " + pl.name);
           rm.onclick = () => removePlayer(pl);
           li.append(rm);
         }
@@ -2314,12 +2881,25 @@ async function loadRound(code) {
     const playing = round.status === "playing";
     const finished = round.status === "finished";
     lobby.style.display = round.status === "lobby" ? "block" : "none";
-    game.style.display = playing ? "block" : "none";
+    game.style.display = playing ? "" : "none";
     document.body.classList.toggle("has-rail", playing);
+    document.body.classList.toggle("app-play", inApp && playing);
+    document.body.classList.toggle("app-results", inApp && finished);
+    if (pbTitle && finished) {
+      // The round name shortens, " · Results" always shows
+      const nm = document.createElement("span"), tag = document.createElement("span");
+      nm.className = "pb-name"; nm.textContent = round.name;
+      tag.className = "pb-tag"; tag.textContent = "\u00A0· Results";
+      pbTitle.replaceChildren(nm, tag);
+    } else if (pbTitle) pbTitle.textContent = round.name;
     Sound.music(!playing);
     if (finished && !playedFinale) {
       playedFinale = true;
       Sound.play("fanfare");
+      // Success buzz if you're on the podium (scorecard.js tags each podium spot with the player id)
+      if (window.Native && me) setTimeout(() => {
+        if (document.querySelector('.podium-col[data-pid="' + me.id + '"]')) Native.haptic("success");
+      }, 700);
       db.rpc("claim_round_coin", { p_round: round.id }).then(({ data }) => {
         if (!data) return;
         const modeName = (MODES[data.mode] || {}).name || "this mode";
@@ -2355,6 +2935,7 @@ async function loadRound(code) {
         const allDone = golfers.length && golfers.every(p => scores.some(x => x.player_id === p.id && x.hole === holesIn(round) && x.strokes));
         if (!allDone) {
           const cont = document.createElement("button");
+          cont.className = "res-continue";
           cont.textContent = "Continue round";
           cont.style.cssText = "width:100%;margin:8px 0 18px";
           cont.onclick = async () => {
@@ -2376,21 +2957,27 @@ async function loadRound(code) {
           scoreArea.prepend(cont);
         }
       }
+    if (finished && inApp) appResultsView();
     sub.textContent = finished ? "Final results" : playing
       ? (MODES[round.mode] || MODES.party).name + (round.handicap ? " with handicaps" : "") + (course ? " at " + course.name : "")
       : "Round code: " + round.code + (round.handicap ? ", handicaps on" : "");
     renderLobbyList();
     if (lobbyUpdateStart) lobbyUpdateStart();
+    renderSetupTabs();
     if (round.host_id !== user.id) guide.say(me ? CRABBY_LINES.joined : CRABBY_LINES.joiner);
     join.style.display = me ? "none" : "block";
     rejoinBtn.style.display = !me && players.length ? "inline-block" : "none";
     if (playing) renderGame();
     renderDelete();
+    syncPlayNav();
+    if (activeTab === "bets" && !betsTabOn()) showTab("hole");
+    requestAnimationFrame(syncPlayBottom);
   }
 
   function renderDelete() {
     deleteArea.innerHTML = "";
-    if (round.host_id !== user.id || round.status === "playing") return;
+    moreTop.style.display = inApp && round.host_id === user.id && round.status === "lobby" ? "block" : "none";
+    if (round.host_id !== user.id || round.status === "playing" || (inApp && round.status === "lobby")) return;
     const del = document.createElement("button");
     del.className = "link-btn danger";
     del.textContent = "Delete this round";
@@ -2529,7 +3116,8 @@ async function loadRound(code) {
         for (let hn = 1; hn <= maxH; hn++) {
           const x = sc.find(s => s.player_id === pl.id && s.hole === hn);
           if (x) tot += x.strokes;
-          tr.append(cell("td", x ? (x.strokes >= 11 ? "11+" : String(x.strokes)) + (pmulls.some(m => m.player_id === pl.id && m.hole === hn) ? "*" : "") : "-"));
+          tr.append(scoreCell(x ? x.strokes : null, course && Array.isArray(course.pars) ? course.pars[hn - 1] : null, null,
+            x && pmulls.some(m => m.player_id === pl.id && m.hole === hn) ? "*" : ""));
         }
         tr.append(cell("td", tot ? String(tot) : "-", "tot"));
         table.append(tr);
@@ -2562,7 +3150,7 @@ async function loadRound(code) {
       hcInfo.append(hh, ul);
     }
     if (isCaddy()) renderCaddyBoard();
-    card.style.display = me ? "block" : "none";
+    card.style.display = me ? "" : "none";
     lateWrap.style.display = me ? "none" : "block";
     const prog = groupProgressHole();
     if (me && !cardReady) {
@@ -2659,6 +3247,11 @@ async function loadRound(code) {
   }
 
   function drawCard() {
+    drawCardInner();
+    if (inApp) appHoleView();
+  }
+
+  function drawCardInner() {
     const myGroup = me ? me.group_no : 1;
     const isLeader = round.host_id === user.id || (!!me && me.is_co_leader);
     const mine = {};
@@ -3781,6 +4374,7 @@ async function loadRound(code) {
   }
 
   async function saveScore(n) {
+    if (window.Native) Native.haptic("light");
     const h = hole;
     const target = keeperTarget(me ? me.group_no : 1);
     const prev = (scores.find(x => x.player_id === target.id && x.hole === h) || {}).strokes;
@@ -3788,6 +4382,11 @@ async function loadRound(code) {
       { round_id: round.id, player_id: target.id, hole: h, strokes: n },
       { onConflict: "player_id,hole" });
     if (error) { toast("Error: " + error.message); return; }
+    // Medium tap when this score completes the hole for the group
+    if (window.Native && prev == null) {
+      const grp = players.filter(x => x.group_no === target.group_no && x.role !== "caddy");
+      if (grp.length && grp.every(x => x.id === target.id || scores.some(sc => sc.player_id === x.id && sc.hole === h))) Native.haptic("medium");
+    }
     const parH = (course && course.pars ? course.pars[h - 1] : null);
     Sound.play(n === 1 ? "ace" : parH ? (n - parH <= -1 ? "fanfare" : n - parH >= 3 ? "sad" : "pop") : n >= 8 ? "sad" : "pop");
     if (n !== prev) {
@@ -3925,6 +4524,12 @@ if (roundCode) loadRound(roundCode);
 else Promise.resolve()
   .then(() => { $("status").textContent = ""; return renderAccount(); })
   .then(() => {
+    if (new URLSearchParams(location.search).get("coins") === "bought") return coinsBought();
+    if (new URLSearchParams(location.search).get("deleted") === "1") {
+      history.replaceState(null, "", "/");
+      toast("Your account was deleted.", true);
+      return;
+    }
     // /club sends guests here to make an account first
     if (new URLSearchParams(location.search).get("create") !== "1") return;
     history.replaceState(null, "", "/");
@@ -4636,6 +5241,8 @@ function coinUI() {
     badge.title = coinsText(SHOP.balance);
   };
   update();
+  const onCoins = () => { if (badge.isConnected) update(); else window.removeEventListener("coins-changed", onCoins); };
+  window.addEventListener("coins-changed", onCoins);
   return { badge, note, update };
 }
 // Asks to confirm, then buys through buy_item. True when the piece is now owned.
@@ -4664,6 +5271,7 @@ async function buyPiece(id) {
   SHOP.balance = data;
   SHOP.owned.add(id);
   Sound.play("coin");
+  if (window.Native) Native.haptic("success");
   return true;
 }
 
@@ -4843,6 +5451,11 @@ async function openProfile() {
     links.append(a);
   });
   acSec.append(out, links);
+  const del = mk("button", "link-btn danger profile-delete", "Delete account");
+  del.type = "button";
+  del.style.cssText = "display:block;width:100%;margin-top:14px";
+  del.onclick = () => deleteAccount(wrap);
+  acSec.append(del);
 
   const done = mk("button", null, "Done");
   done.style.cssText = "width:100%;margin-top:18px";
@@ -4851,6 +5464,38 @@ async function openProfile() {
   stack.append(panel);
   wrap.append(stack);
   document.body.append(wrap);
+}
+
+// ---------- Delete account (App Store 5.1.1(v); website too). Server: netlify/functions/delete-account.mjs ----------
+async function deleteAccount(profileWrap) {
+  let paying = false;
+  try {
+    const { data: row } = await db.from("club_subscriptions").select("stripe_subscription_id, status, current_period_end").maybeSingle();
+    paying = !!(row && row.stripe_subscription_id && ["active", "trialing", "past_due"].includes(row.status)
+      && (!row.current_period_end || new Date(row.current_period_end) > new Date()));
+  } catch (e) {}
+  const note = "This permanently deletes your account, character, coins, gear and stats. Rounds you played stay for the other players, under \u2018Deleted player\u2019." +
+    (paying ? " Your Club membership will be cancelled right away, with no more charges." : "") +
+    " This can't be undone.";
+  const vals = await ask("Delete your account?", [
+    { label: "Type DELETE to confirm", placeholder: "DELETE", max: 6, upper: true }
+  ], "Delete account", note, async ([typed]) => {
+    if (typed.toUpperCase() !== "DELETE") return "Type DELETE to confirm.";
+    try {
+      const r = await authedFetch("/.netlify/functions/delete-account", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ confirm: "DELETE" })
+      });
+      const out = await r.json().catch(() => ({}));
+      if (!r.ok || !out.deleted) return out.error || "Couldn't delete your account. Try again.";
+      return null;
+    } catch (e) { return "Couldn't reach Parcade. Check your connection and try again."; }
+  });
+  if (!vals) return;
+  if (profileWrap) profileWrap.remove();
+  try { await db.auth.signOut({ scope: "local" }); } catch (e) {}
+  try { localStorage.clear(); } catch (e) {}
+  try { sessionStorage.clear(); } catch (e) {}
+  location.replace("/?deleted=1");
 }
 
 // ---------- Dressing room ----------
@@ -5171,7 +5816,8 @@ function openDressingRoom() {
     const takeOff = slot => { cur[slot] = outfitOwned(saved[slot]) ? saved[slot] : DEFAULT_OUTFIT[slot]; draw(); };
     function drawTryBar() {
       const slots = Object.keys(OUTFIT_SLOTS).filter(slot => !outfitOwned(cur[slot]));
-      tryBar.hidden = !slots.length;
+      if (document.documentElement.classList.contains("in-app")) { tryBar.hidden = false; tryBar.style.visibility = slots.length ? "" : "hidden"; }
+      else tryBar.hidden = !slots.length;
       wrap.classList.toggle("trying", !!slots.length);
       tryBar.replaceChildren(...slots.map(slot => {
         const it = OUTFIT_PIECES[cur[slot]].piece, row = SHOP.prices[it.id];
@@ -5386,7 +6032,7 @@ function openProShop(outfit) {
     const wearing = () => pick ? { ...base, [OUTFIT_PIECES[pick].slot]: pick } : base;
     function drawDetail() {
       detail.replaceChildren();
-      if (inApp) { bar.hidden = !pick; hint.hidden = !!pick; }
+      if (inApp) { bar.hidden = false; bar.style.visibility = pick ? "" : "hidden"; hint.hidden = false; hint.style.visibility = pick ? "hidden" : ""; }
       if (!pick) { if (!inApp) detail.append(hint); return; }
       const it = OUTFIT_PIECES[pick].piece, row = SHOP.prices[pick];
       const head = mk("div", "pshop-name");
@@ -5522,14 +6168,17 @@ function openProShop(outfit) {
       swRow("Music", () => Sound.musicOn, v => Sound.setMusic(v)),
       swRow("Light mode", () => isLight(), v => setThemePref(v ? "light" : "dark")));
     menu.append(mk("div", "pm-sep"));
-    const club = mk("button", "pm-link pm-club", tier() === "club" ? "Club membership" : "Become a Club Member");
-    club.type = "button";
-    club.onclick = () => (location.href = "/club");
-    menu.append(club);
+    // iOS app: members can still manage their membership; nobody is offered one (no in-app purchase yet)
+    if (!IN_APP || tier() === "club") {
+      const club = mk("button", "pm-link pm-club", tier() === "club" ? "Club membership" : "Become a Club Member");
+      club.type = "button";
+      club.onclick = () => (location.href = "/club");
+      menu.append(club);
+    }
     if (signed) menu.append(linkRow("Edit profile", openProfile), linkRow("Sign out", signOut));
     else menu.append(linkRow("Create account", createAccount), linkRow("Sign in", signIn));
     const legal = mk("div", "pm-legal");
-    legal.innerHTML = '<a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a>';
+    legal.innerHTML = '<a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a><a href="mailto:support@parcade.golf">Contact support</a>';
     menu.append(mk("div", "pm-sep"), legal);
   }
   function close() { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); }
@@ -5543,6 +6192,56 @@ function openProShop(outfit) {
   menu.onclick = e => e.stopPropagation();
   document.addEventListener("click", close);
   document.addEventListener("keydown", e => { if (e.key === "Escape") close(); });
+})();
+
+// ---------- App only: settings descriptions move behind an i button ----------
+// Any setting row (.toggle-row) with a <small> description gets an i next to its name; the description is hidden
+// (CSS) and shown in a popup, read at tap time so hints the code updates stay current.
+(function settingsInfo() {
+  if (!document.documentElement.classList.contains("in-app")) return;
+  function popup(title, text) {
+    const wrap = document.createElement("div");
+    wrap.className = "modal";
+    const panel = document.createElement("div");
+    panel.className = "modal-panel";
+    const h = document.createElement("h2");
+    h.textContent = title;
+    const p = document.createElement("p");
+    p.className = "set-i-text";
+    p.textContent = text;
+    const ok = document.createElement("button");
+    ok.type = "button";
+    ok.textContent = "Got it";
+    ok.style.width = "100%";
+    const close = () => wrap.remove();
+    ok.onclick = close;
+    wrap.onclick = e => { if (e.target === wrap) close(); };
+    panel.append(h, p, ok);
+    wrap.append(panel);
+    document.body.append(wrap);
+  }
+  function enhance() {
+    document.querySelectorAll(".lobby .toggle-row:not(.has-i)").forEach(row => {
+      const label = row.querySelector(".field-label");
+      const hint = row.querySelector(":scope > div > small");
+      if (!label || !hint) return;
+      row.classList.add("has-i");
+      const i = document.createElement("button");
+      i.type = "button";
+      i.className = "set-i";
+      i.textContent = "i";
+      i.setAttribute("aria-label", "About " + label.textContent);
+      i.onclick = e => { e.stopPropagation(); popup(label.textContent, hint.textContent); };
+      row.append(i);   // right end of the row, after the switch or stepper
+    });
+  }
+  let queued = false;
+  new MutationObserver(() => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; enhance(); });
+  }).observe(document.body, { childList: true, subtree: true });
+  enhance();
 })();
 
 // ---------- App only: Crabby and your character behind the Pro Shop counter on home ----------
@@ -5688,6 +6387,7 @@ function coinMenu(anchor) {
     b.onclick = e => { e.stopPropagation(); menu.remove(); fn(); };
     return b;
   };
+  if (IN_APP) { howToEarn(); return; }   // iOS app: coins are earned, not bought (no in-app purchase yet)
   menu.append(item("Buy coins", buyCoinsScreen), item("How to earn", howToEarn));
   document.body.append(menu);
   const off = e => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener("click", off, true); } };
@@ -5712,21 +6412,43 @@ function coinModal(title) {
 }
 
 function buyCoinsScreen() {
+  if (IN_APP) return howToEarn();
   const { wrap, panel, done } = coinModal("Buy coins");
   const bal = document.createElement("p");
   bal.className = "waiting";
   bal.innerHTML = "You have " + COIN_SVG + " <b>" + (SHOP.signedIn ? SHOP.balance : 0) + "</b>";
   const grid = document.createElement("div");
   grid.className = "coin-bundles";
-  [[10, 1, 0, ""], [55, 5, 5, ""], [120, 10, 20, "Best value"]].forEach(([n, usd, bonus, tag]) => {
+  // Display only: the server (netlify/lib/coins.mjs) decides what each bundle gives
+  const buttons = [];
+  [[10, 1, "", ""], [60, 5, "+20% bonus", ""], [150, 10, "+50% bonus", "Best value"]].forEach(([n, usd, bonus, tag]) => {
     const card = document.createElement("div");
     card.className = "coin-bundle" + (tag ? " best" : "");
     card.innerHTML = (tag ? '<span class="cb-tag">' + tag + "</span>" : "") +
       '<div class="cb-coins">' + COIN_SVG.replace('width="16" height="16"', 'width="34" height="34"') + "<b>" + n + "</b></div>" +
-      '<div class="cb-sub">' + (bonus ? "Includes " + bonus + " bonus" : "coins") + "</div>";
+      '<div class="cb-sub">' + (bonus || "coins") + "</div>";
     const b = document.createElement("button");
     b.type = "button"; b.textContent = "$" + usd;
-    b.onclick = () => toast("Coming soon. Payments aren't set up yet.");
+    b.onclick = async () => {
+      await loadShop();
+      if (!SHOP.signedIn) { wrap.remove(); needAccount("buying coins"); return; }
+      buttons.forEach(x => { x.disabled = true; });
+      b.textContent = "...";
+      try {
+        const r = await authedFetch("/.netlify/functions/coins-checkout", {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bundle: String(n) })
+        });
+        const out = await r.json().catch(() => ({}));
+        if (!r.ok || !out.url) throw new Error(out.error || "Something went sideways. Try again.");
+        try { sessionStorage.setItem(COINS_BEFORE_KEY, String(SHOP.balance)); } catch (e) {}
+        location.href = out.url;
+      } catch (e) {
+        buttons.forEach(x => { x.disabled = false; });
+        b.textContent = "$" + usd;
+        toast(e.message);
+      }
+    };
+    buttons.push(b);
     card.append(b);
     grid.append(card);
   });
@@ -5743,7 +6465,7 @@ function howToEarn() {
   list.className = "coin-ways";
   [["Play a round", "Finish all 18 holes while signed in and get 1 coin. Max 1 coin a day from rounds."],
    ["Try a new game mode", "The first time you finish a round of each game mode (except Stroke Play), get a 10 coin bonus on top. Every other mode comes with the Club."],
-   ["Buy coins", "Grab a coin bundle any time from Buy coins."]].forEach(([t, d]) => {
+   ...(IN_APP ? [] : [["Buy coins", "Short on coins? Bundles start at 10 coins for $1, and bigger ones come with bonus coins. Tap Buy coins below."]])].forEach(([t, d]) => {
     const row = document.createElement("div");
     row.className = "coin-way";
     row.innerHTML = COIN_SVG.replace('width="16" height="16"', 'width="26" height="26"');
@@ -5767,8 +6489,25 @@ function howToEarn() {
   buy.type = "button"; buy.className = "btn-ghost"; buy.textContent = "Buy coins";
   buy.style.cssText = "width:100%;margin-top:12px";
   buy.onclick = () => { wrap.remove(); buyCoinsScreen(); };
-  panel.append(list, buy, done);
+  panel.append(list, ...(IN_APP ? [] : [buy]), done);
   document.body.append(wrap);
+}
+
+// Back from Stripe with ?coins=bought: the webhook can lag, so poll the balance for a bit
+const COINS_BEFORE_KEY = "parcade-coins-before";
+async function coinsBought() {
+  history.replaceState(null, "", "/");
+  toast("Coins are in. Try not to blow them all on one hat.", true);
+  let before = null;
+  try { before = sessionStorage.getItem(COINS_BEFORE_KEY); sessionStorage.removeItem(COINS_BEFORE_KEY); } catch (e) {}
+  await loadShop(true);
+  const start = before === null ? SHOP.balance : Number(before);
+  for (let i = 0; i < 8 && SHOP.balance <= start; i++) {
+    await new Promise(r => setTimeout(r, 1500));
+    await loadShop(true);
+  }
+  if (SHOP.balance > start) { Sound.play("coin"); if (window.Native) Native.haptic("success"); }
+  window.dispatchEvent(new Event("coins-changed"));
 }
 
 // Guests tapped something that needs an account

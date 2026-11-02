@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script src="native.js"></script>
   <script>
     // Same saved theme as the app, applied before first paint
     (function () {
@@ -58,6 +59,8 @@
     button:hover, .btn:hover { background: var(--blue-hover); }
     button:focus-visible, .btn:focus-visible { outline: none; background: var(--glow); color: var(--bg); }
     button:disabled { opacity: 0.5; cursor: default; }
+    /* iOS app: nothing for sale here until in-app purchase (briefs/app-store-ready.md section 6) */
+    .in-app .price, .in-app .cancel, .in-app .legal-billing { display: none; }
     .ghost { background: rgba(var(--glow-rgb),0.12); color: var(--glow); margin-top: 10px; }
     .ghost:hover { background: rgba(var(--glow-rgb),0.22); }
     .member { text-align: center; font-weight: 700; color: var(--gold); padding: 12px; border: 1px solid rgba(var(--gold-rgb),0.5);
@@ -87,12 +90,13 @@
     <div id="action"><button type="button" disabled>Checking your account...</button></div>
     <p id="note" class="note" role="status"></p>
   </div>
-  <p class="legal">Billed monthly through Stripe. Cancel and you keep the Club until the end of the month you paid for.
+  <p class="legal"><span class="legal-billing">Billed monthly through Stripe. Cancel and you keep the Club until the end of the month you paid for.</span>
     <a href="/terms">Terms</a> &middot; <a href="/privacy">Privacy</a></p>
 </main>
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+  if (window.Native && Native.isApp) document.querySelector("h1").textContent = "Parcade Club";
   const db = supabase.createClient(PARFUL_CONFIG.SUPABASE_URL, PARFUL_CONFIG.SUPABASE_KEY);
   const action = document.getElementById("action");
   const note = document.getElementById("note");
@@ -115,7 +119,9 @@
       const r = await fetch("/.netlify/functions/" + fn, { method: "POST", headers: { authorization: "Bearer " + s.access_token } });
       const out = await r.json().catch(() => ({}));
       if (!r.ok || !out.url) throw new Error(out.error || "Something went sideways. Try again.");
-      location.href = out.url;
+      if (window.Native) Native.open(out.url); else location.href = out.url;   // app: Stripe opens in the in-app browser
+      btn.disabled = false;
+      say("");
     } catch (e) {
       btn.disabled = false;
       say(e.message, true);
@@ -149,6 +155,10 @@
       action.append(manage);
       if (m.current_period_end) say((m.cancel_at_period_end ? "Your Club ends on " : "Renews on ") + day(m.current_period_end) + ".");
       return m;
+    }
+    if (window.Native && Native.isApp) {
+      action.append(mk("p", "note", "These are Club perks. You're on the free plan."));
+      return null;
     }
     const join = mk("button", null, "Join the Club");
     join.type = "button";

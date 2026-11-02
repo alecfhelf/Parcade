@@ -469,8 +469,56 @@ async function loadTournament(code) {
   const teamsArea = el("div");
   const membersArea = el("div");
   const ownerArea = el("div");
-  box.append(backBtn("/?tournaments", "All tournaments"), infoLink("How tournaments work", () => showRulesModal("Tournaments", ["tournaments"])),
-    desk, banner, summary, invite, goArea, resultsArea, bracketArea, teamsArea, membersArea, ownerArea);
+
+  // Tabs: Setup (Overview once it starts) · Bracket · Teams. Every tournament format is a bracket, so Bracket is always there.
+  const paneMain = el("div", { className: "tn-pane" }, desk, banner, summary, invite, goArea, resultsArea, ownerArea);
+  const paneBracket = el("div", { className: "tn-pane tn-pane-bk" }, bracketArea);
+  const paneTeams = el("div", { className: "tn-pane" }, teamsArea, membersArea);
+  const PANES = { main: paneMain, bracket: paneBracket, teams: paneTeams };
+  const tabsEl = el("div", { className: "dress-seg tn-tabs" });
+  tabsEl.setAttribute("role", "group");
+  tabsEl.setAttribute("aria-label", "Tournament sections");
+  const tabBtns = {};
+  [["main", "Setup"], ["bracket", "Bracket"], ["teams", "Teams"]].forEach(([k, label]) => {
+    tabBtns[k] = el("button", { type: "button", className: "tn-tab", textContent: label, onclick: () => showTab(k, true) });
+    tabsEl.append(tabBtns[k]);
+  });
+  paneMain.prepend(backBtn("/?tournaments", "All tournaments"), infoLink("How tournaments work", () => showRulesModal("Tournaments", ["tournaments"])));
+  box.append(paneMain, paneBracket, paneTeams);
+  // Tabs sit at the very top; the tournament name, code and links only show on Setup
+  const pageTitle = document.querySelector("h1");
+  if (pageTitle) pageTitle.before(tabsEl); else box.prepend(tabsEl);
+  document.body.classList.add("tn-view");
+
+  // The last tab is remembered per tournament on this device, but only while the tournament is in the same stage,
+  // so a tournament that just started opens on the bracket. ?tab=bracket (the round's Bracket links) wins.
+  const TAB_KEY = "parcade-tn-tab-" + t.id;
+  const linkSp = new URLSearchParams(location.search);
+  const linkTab = linkSp.get("tab");
+  if (linkTab) {
+    linkSp.delete("tab");
+    try { history.replaceState(history.state, "", location.pathname + "?" + linkSp.toString()); } catch (e) {}
+  }
+  let tab = null;
+  function initialTab() {
+    if (PANES[linkTab]) return linkTab;
+    try {
+      const saved = JSON.parse(localStorage.getItem(TAB_KEY) || "null");
+      if (saved && PANES[saved.tab] && saved.status === t.status) return saved.tab;
+    } catch (e) {}
+    return t.status === "setup" ? "main" : "bracket";
+  }
+  function showTab(k, user) {
+    const changed = tab !== k;
+    tab = k;
+    Object.entries(PANES).forEach(([key, pane]) => { pane.hidden = key !== k; tabBtns[key].setAttribute("aria-pressed", String(key === k)); });
+    document.body.dataset.tnTab = k;
+    if (user) try { localStorage.setItem(TAB_KEY, JSON.stringify({ tab: k, status: t.status })); } catch (e) {}
+    if (k === "bracket") {
+      if (changed) window.scrollTo(0, 0);
+      if (bkLive) { bkLive.layout(); requestAnimationFrame(() => bkLive && bkLive.layout()); }
+    }
+  }
 
   let S = null, seq = 0, swapPick = null, subKey = null, gone = false, courseCache = null;
 
@@ -614,6 +662,8 @@ async function loadTournament(code) {
     : !!d.match.round_id) || !!d.match.override_winner;
 
   function render() {
+    tabBtns.main.textContent = t.status === "setup" ? "Setup" : "Overview";
+    if (!tab) showTab(initialTab());
     renderHeader();
     renderGo();
     renderResults();
@@ -691,11 +741,14 @@ async function loadTournament(code) {
 
   // ---------- Bracket ----------
   // The whole bracket at once: columns by round with connector lines. 16+ teams split into two halves that meet at
-  // the championship in the middle. Cards are absolutely placed on one canvas, scaled for zoom, with one SVG for lines.
+  // the championship in the middle. Cards are absolutely placed on one canvas with one SVG for lines. The canvas is
+  // moved with a CSS transform (translate + scale) for drag, pinch and wheel zoom, so page zoom is never involved.
   const BK = { W: 184, H: 66, GAP: 12, COL: 34, HEAD: 44, PAD: 12 };
-  const BK_MIN = 0.75; // Smallest starting zoom that still reads on a phone. Fit goes smaller if you ask for it.
-  let bkZoom = 1, bkMode = "start", bkFocus = true, bkWidth = 0;
-  const bkReset = () => { bkMode = "start"; bkFocus = true; };
+  const BK_MIN = 0.4, BK_MAX = 2.5; // Zoom range. Fit can go below the minimum so a 64-team bracket still fits a phone.
+  // Survives refreshes, so a live update doesn't throw you back to the fitted view
+  const bk = { s: 1, x: 0, y: 0, mode: "fit" };
+  let bkLive = null, bkPending = false;
+  const bkReset = () => { bk.mode = "fit"; };
 
   function bracketLayout() {
     const R = S.R, two = t.team_count >= 16;
@@ -733,13 +786,17 @@ async function loadTournament(code) {
   }
 
   function renderBracket() {
-    const old = bracketArea.querySelector(".bk-view");
-    const keep = old ? { l: old.scrollLeft, t: old.scrollTop } : null;
+    // Don't swap the DOM out from under a finger mid-drag or mid-pinch; redraw when it lets go
+    if (bkLive && bkLive.busy()) { bkPending = true; return; }
+    bkPending = false;
+    bkLive = null;
     bracketArea.innerHTML = "";
-    if (!S.teams.length) return;
+    if (!S.teams.length || !S.bracket.length) {
+      bracketArea.append(el("p", { className: "waiting tn-bk-note", textContent: "The bracket appears once teams are set and the tournament starts." }));
+      return;
+    }
     const R = S.R, { W, H, COL } = BK;
-    bracketArea.append(h3el(t.status === "setup" ? "Bracket preview" : "Bracket"));
-    if (t.status === "setup") bracketArea.append(el("p", { className: "waiting", textContent: "Seeded " +
+    if (t.status === "setup") bracketArea.append(el("p", { className: "waiting tn-bk-note", textContent: "Preview. Seeded " +
       ({ handicap: "by team handicap", random: "randomly", manual: "by hand" })[t.seeding] + ". Matchups lock when the tournament starts." + (isOwner ? " Tap a match to swap teams." : "") }));
     const L = bracketLayout();
     const hasMine = r => S.myTeam && S.bracket.some(m => m.round_no === r && !m.is_third_place && [S.D.get(m.id).teamA, S.D.get(m.id).teamB].includes(S.myTeam));
@@ -795,56 +852,181 @@ async function loadTournament(code) {
       canvas.append(card);
     });
 
-    const sizer = el("div", { className: "bk-sizer" }, canvas);
-    const view = el("div", { className: "bk-view" }, sizer);
+    const view = el("div", { className: "bk-view" }, canvas);
     view.setAttribute("role", "region");
-    view.setAttribute("aria-label", "Bracket. Scroll sideways to see every round.");
+    view.setAttribute("aria-label", "Bracket. Drag to move around. Pinch, scroll or use the zoom buttons to zoom.");
     const zoomText = el("span", { className: "bk-zoom" });
-    const tool = (text, label, fn) => { const b = el("button", { type: "button", className: "mini", textContent: text, onclick: fn }); b.setAttribute("aria-label", label); return b; };
+    zoomText.setAttribute("aria-live", "polite");
+    const tool = (text, label, fn, cls) => {
+      const b = el("button", { type: "button", className: "mini" + (cls ? " " + cls : ""), textContent: text, onclick: fn });
+      b.setAttribute("aria-label", label);
+      return b;
+    };
     const tools = el("div", { className: "bk-tools" });
     const target = myMatchPos(L);
-    if (target) tools.append(tool("My team", "Scroll to my team", () => scrollToPos(view, target, true)));
-    tools.append(zoomText,
-      tool("−", "Zoom out", () => zoomBy(view, sizer, canvas, L, 0.8, zoomText)),
-      tool("+", "Zoom in", () => zoomBy(view, sizer, canvas, L, 1.25, zoomText)),
-      tool("Fit", "Fit the whole bracket", () => { bkMode = "fit"; applyZoom(view, sizer, canvas, L, fitZoom(view, L), zoomText); view.scrollLeft = 0; }));
-    bracketArea.append(el("div", { className: "bk-wrap" }, tools, view));
+    if (target) tools.append(tool("My team", "Go to my team", () => focusOn(target.x + W / 2, target.y + H / 2, Math.max(bk.s, roomy())), "bk-mine"));
+    tools.append(
+      tool("−", "Zoom out", () => zoomAt(bk.s / 1.25, view.clientWidth / 2, view.clientHeight / 2, true)),
+      zoomText,
+      tool("+", "Zoom in", () => zoomAt(bk.s * 1.25, view.clientWidth / 2, view.clientHeight / 2, true)),
+      tool("Fit", "Fit the whole bracket", () => fit(true)));
+    bracketArea.append(el("div", { className: "bk-wrap" }, view, tools));
 
-    bkWidth = view.clientWidth;
-    const z = bkMode === "manual" ? bkZoom : fitZoom(view, L);
-    applyZoom(view, sizer, canvas, L, z, zoomText);
-    if (bkFocus) { bkFocus = false; view.scrollLeft = 0; view.scrollTop = 0; }
-    else if (keep) { view.scrollLeft = keep.l; view.scrollTop = keep.t; }
+    // ----- Zoom and pan -----
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const fitScale = () => Math.min(1, (view.clientWidth - 16) / L.w, (view.clientHeight - 16) / L.h);
+    const minScale = () => Math.min(BK_MIN, fitScale());
+    // A zoom where one round's cards read comfortably on this screen
+    const roomy = () => clamp(Math.min(1, (view.clientWidth - 16) / (W + COL)), minScale(), BK_MAX);
 
-    // Tap a round name: zoom to full size and jump to that column
+    function apply(anim) {
+      const vw = view.clientWidth, vh = view.clientHeight, w = L.w * bk.s, h = L.h * bk.s, slack = 40;
+      // Keep the bracket on screen: inside the view when it's smaller, edges no further in than a little slack when bigger
+      bk.x = w <= vw ? clamp(bk.x, 0, vw - w) : clamp(bk.x, vw - w - slack, slack);
+      bk.y = h <= vh ? clamp(bk.y, 0, vh - h) : clamp(bk.y, vh - h - slack, slack);
+      canvas.classList.toggle("bk-anim", !!anim);
+      canvas.style.transform = "translate(" + bk.x + "px, " + bk.y + "px) scale(" + bk.s + ")";
+      zoomText.textContent = Math.round(bk.s * 100) + "%";
+    }
+    function fit(anim) {
+      bk.mode = "fit";
+      bk.s = fitScale();
+      bk.x = (view.clientWidth - L.w * bk.s) / 2;
+      bk.y = (view.clientHeight - L.h * bk.s) / 2;
+      apply(anim);
+    }
+    // Zoom keeping the canvas point under (px, py) in view coordinates where it is
+    function zoomAt(s, px, py, anim) {
+      s = clamp(s, minScale(), BK_MAX);
+      const cx = (px - bk.x) / bk.s, cy = (py - bk.y) / bk.s;
+      bk.s = s;
+      bk.x = px - cx * s;
+      bk.y = py - cy * s;
+      bk.mode = "manual";
+      apply(anim);
+    }
+    // Center a canvas point at zoom s
+    function focusOn(cx, cy, s) {
+      bk.s = clamp(s, minScale(), BK_MAX);
+      bk.x = view.clientWidth / 2 - cx * bk.s;
+      bk.y = view.clientHeight / 2 - cy * bk.s;
+      bk.mode = "manual";
+      apply(true);
+    }
+    // Tap a round name: zoom in on that column, starting at its first match
     function jumpToRound(r, col) {
-      bkMode = "manual";
-      applyZoom(view, sizer, canvas, L, 1, zoomText);
-      const x = BK.PAD + col * (BK.W + BK.COL);
+      const x = BK.PAD + col * (W + COL);
       let top = Infinity;
       L.pos.forEach(p => { if (p.match.round_no === r && !p.match.is_third_place && p.x === x) top = Math.min(top, p.y); });
-      view.scrollTo({ left: Math.max(0, x - BK.PAD), top: top === Infinity ? 0 : Math.max(0, top - BK.HEAD), behavior: "smooth" });
-      view.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      if (top === Infinity) top = BK.HEAD;
+      bk.s = roomy();
+      bk.x = view.clientWidth / 2 - (x + W / 2) * bk.s;
+      bk.y = 8 - Math.max(0, top - BK.HEAD) * bk.s;
+      bk.mode = "manual";
+      apply(true);
     }
-  }
 
-  const fitZoom = (view, L) => Math.min(1, (view.clientWidth - 2) / L.w);
+    // Fill the screen below the tabs without the page scrolling
+    function size() {
+      if (!view.isConnected || paneBracket.hidden) return false;
+      const top = view.getBoundingClientRect().top + window.scrollY;
+      const pad = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
+      const h = Math.max(200, Math.floor(window.innerHeight - top - pad));
+      view.style.height = h + "px";
+      const over = document.documentElement.scrollHeight - window.innerHeight;
+      if (over > 0) view.style.height = Math.max(200, h - over) + "px";
+      return true;
+    }
+    function layout() {
+      if (!size()) return;
+      if (bk.mode === "fit") fit(); else apply();
+    }
 
-  function applyZoom(view, sizer, canvas, L, z, zoomText) {
-    bkZoom = Math.max(0.1, Math.min(1.5, z));
-    canvas.style.transform = "scale(" + bkZoom + ")";
-    sizer.style.width = L.w * bkZoom + "px";
-    sizer.style.height = L.h * bkZoom + "px";
-    zoomText.textContent = Math.round(bkZoom * 100) + "%";
-  }
+    // Pointers: one drags, two pinch. A tap only counts as a pan once it moves more than 6px, so card taps still open.
+    const pts = new Map();
+    let drag = null, pinch = null, moved = false;
+    const local = p => { const rc = view.getBoundingClientRect(); return { x: p.x - rc.left, y: p.y - rc.top }; };
+    const startDrag = id => { const p = pts.get(id); drag = { id, sx: p.x, sy: p.y, x: bk.x, y: bk.y }; };
+    const startPinch = () => {
+      const [a, b] = [...pts.values()];
+      const mid = local({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+      pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, s: bk.s, cx: (mid.x - bk.x) / bk.s, cy: (mid.y - bk.y) / bk.s };
+      drag = null;
+      moved = true;
+    };
+    view.addEventListener("pointerdown", e => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 1) { moved = false; pinch = null; startDrag(e.pointerId); }
+      else if (pts.size === 2) startPinch();
+    });
+    view.addEventListener("pointermove", e => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch && pts.size >= 2) {
+        const [a, b] = [...pts.values()];
+        const mid = local({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+        bk.s = clamp(pinch.s * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d, minScale(), BK_MAX);
+        bk.x = mid.x - pinch.cx * bk.s;
+        bk.y = mid.y - pinch.cy * bk.s;
+        bk.mode = "manual";
+        apply();
+        return;
+      }
+      if (!drag || drag.id !== e.pointerId) return;
+      const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+      if (!moved && Math.hypot(dx, dy) > 6) {
+        moved = true;
+        view.classList.add("dragging");
+        try { view.setPointerCapture(e.pointerId); } catch (err) {}
+      }
+      if (!moved) return;
+      bk.x = drag.x + dx;
+      bk.y = drag.y + dy;
+      bk.mode = "manual";
+      apply();
+    });
+    const lift = e => {
+      if (!pts.delete(e.pointerId)) return;
+      if (pts.size === 1) { pinch = null; startDrag([...pts.keys()][0]); return; }
+      if (pts.size) return;
+      drag = pinch = null;
+      view.classList.remove("dragging");
+      // Let the click (or the suppressed click) land before a held-back redraw replaces the cards
+      if (bkPending) setTimeout(() => { if (!pts.size && bkLive && bkLive.view === view) renderBracket(); }, 350);
+    };
+    view.addEventListener("pointerup", lift);
+    view.addEventListener("pointercancel", lift);
+    view.addEventListener("lostpointercapture", e => { if (e.pointerType === "mouse") lift(e); });
+    // A mouse let go outside the view before it ever dragged never sends pointerup here
+    view.addEventListener("pointerleave", e => { if (e.pointerType === "mouse" && !view.hasPointerCapture(e.pointerId)) lift(e); });
+    // A drag that ends on a card isn't a tap. Keyboard clicks (detail 0) always go through.
+    view.addEventListener("click", e => {
+      if (moved && e.detail !== 0) { e.preventDefault(); e.stopPropagation(); }
+      moved = false;
+    }, true);
+    view.addEventListener("wheel", e => {
+      e.preventDefault();
+      const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1);
+      const p = local({ x: e.clientX, y: e.clientY });
+      // ctrlKey is a trackpad pinch: finer steps
+      zoomAt(bk.s * Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015)), p.x, p.y);
+    }, { passive: false });
+    // Safari's own pinch would zoom the page
+    ["gesturestart", "gesturechange"].forEach(k => view.addEventListener(k, e => e.preventDefault()));
+    view.addEventListener("dragstart", e => e.preventDefault());
+    // Focus moving to an off-screen card (Tab key) would scroll the clipped view; bring it into sight with the transform
+    view.addEventListener("scroll", () => { view.scrollLeft = 0; view.scrollTop = 0; });
+    view.addEventListener("focusin", e => {
+      const c = e.target.closest(".bk-card, .bk-head");
+      if (!c || !c.matches(":focus-visible")) return;
+      const x = bk.x + c.offsetLeft * bk.s, y = bk.y + c.offsetTop * bk.s, w = c.offsetWidth * bk.s, h = c.offsetHeight * bk.s;
+      if (x < 0 || y < 0 || x + w > view.clientWidth || y + h > view.clientHeight)
+        focusOn(c.offsetLeft + c.offsetWidth / 2, c.offsetTop + c.offsetHeight / 2, Math.max(bk.s, roomy()));
+    });
 
-  // Zoom around the middle of what's on screen
-  function zoomBy(view, sizer, canvas, L, f, zoomText) {
-    const cx = (view.scrollLeft + view.clientWidth / 2) / bkZoom, cy = (view.scrollTop + view.clientHeight / 2) / bkZoom;
-    bkMode = "manual";
-    applyZoom(view, sizer, canvas, L, bkZoom * f, zoomText);
-    view.scrollLeft = cx * bkZoom - view.clientWidth / 2;
-    view.scrollTop = cy * bkZoom - view.clientHeight / 2;
+    bkLive = { view, layout, busy: () => pts.size > 0 };
+    layout();
   }
 
   // Where the viewer's team is now: their live or next match, or the last one they played
@@ -858,11 +1040,6 @@ async function loadTournament(code) {
       if ((d.teamA === S.myTeam || d.teamB === S.myTeam) && (!best || p.match.round_no > best.match.round_no)) best = p;
     });
     return best;
-  }
-
-  function scrollToPos(view, p, smooth) {
-    const left = (p.x + BK.W / 2) * bkZoom - view.clientWidth / 2, top = (p.y + BK.H / 2) * bkZoom - view.clientHeight / 2;
-    view.scrollTo({ left, top, behavior: smooth ? "smooth" : "auto" });
   }
 
   function matchCard(d) {
@@ -1231,7 +1408,7 @@ async function loadTournament(code) {
     };
     if (t.status === "setup") {
       btn("Edit settings", editSettings, true);
-      const seedRow = el("div", { className: "toggle-row" }, el("div", {}, el("span", { className: "field-label", textContent: "Seeding" }),
+      const seedRow = el("div", { className: "toggle-row seed-row" }, el("div", {}, el("span", { className: "field-label", textContent: "Seeding" }),
         el("small", { textContent: "Lowest team handicap is the 1 seed, or shuffle, or swap by hand in the bracket." })));
       const pick = el("div", { className: "fmt-pick" });
       [["handicap", "HCP"], ["random", "Random"], ["manual", "Manual"]].forEach(([k, label]) => {
@@ -1348,11 +1525,8 @@ async function loadTournament(code) {
     refresh();
   }
 
-  // Phones fire resize when the address bar slides; only redraw when the width actually changed
-  window.addEventListener("resize", () => {
-    const v = S && box.isConnected && bracketArea.querySelector(".bk-view");
-    if (v && v.clientWidth !== bkWidth) renderBracket();
-  });
+  // Rotation, window resizes and the phone address bar sliding: refit the bracket view to the new space
+  window.addEventListener("resize", () => { if (S && box.isConnected && bkLive) bkLive.layout(); });
   document.addEventListener("visibilitychange", () => { if (!document.hidden && box.isConnected) refresh(); });
   await refresh();
 }
